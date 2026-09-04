@@ -80,7 +80,7 @@ The backend uses PostgreSQL connection settings from environment variables, with
 - Port: `5432`
 - Database: `tunaxa`
 - User: `postgres`
-- Password: `tunaxa2024`
+- Password: `password`
 
 If you want to override these values, define environment variables such as:
 
@@ -89,7 +89,7 @@ export PGHOST=127.0.0.1
 export PGPORT=5432
 export PGDATABASE=tunaxa
 export PGUSER=postgres
-export PGPASSWORD=tunaxa2024
+export PGPASSWORD=password
 ```
 
 For Redis-backed services, set:
