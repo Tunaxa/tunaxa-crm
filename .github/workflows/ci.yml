@@ -1,0 +1,11 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    uses: Tunaxa/.github/.github/workflows/reusable-lint-test.yml@main

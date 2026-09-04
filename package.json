@@ -1,0 +1,45 @@
+{
+  "name": "tunaxa-crm",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173 --open",
+    "server": "node backend/server.js",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173 --open",
+    "start": "node start.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@sentry/node": "^10.71.0",
+    "@sentry/react": "^10.71.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "bullmq": "^6.2.1",
+    "express": "^5.1.0",
+    "graphql": "^17.0.2",
+    "graphql-yoga": "^5.22.0",
+    "i18next": "^26.4.0",
+    "ioredis": "^6.0.0",
+    "multer": "^2.0.2",
+    "nodemailer": "^9.0.5",
+    "pg": "^8.23.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-i18next": "^17.0.12",
+    "react-router-dom": "^7.18.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "supertest": "^7.2.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0",
+    "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  }
+}

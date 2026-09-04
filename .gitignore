@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+backend/uploads/
+backend/backups/
+backend/data/db.json
+backend/__tests__/test-db.json
+.opencode/
