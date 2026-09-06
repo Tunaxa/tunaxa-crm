@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1 --port 5173 --open",
+    "dev": "vite --config web/vite.config.ts --host 127.0.0.1 --port 5173 --open",
     "server": "node backend/server.js",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
-    "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173 --open",
+    "build": "vite build --config web/vite.config.ts",
+    "preview": "vite preview --config web/vite.config.ts --host 127.0.0.1 --port 4173 --open",
     "start": "node start.js",
     "test": "jest",
     "test:watch": "vitest"
