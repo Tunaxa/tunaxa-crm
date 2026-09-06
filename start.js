@@ -79,7 +79,6 @@ async function main() {
       "127.0.0.1",
       "--port",
       "5173",
-      "--open",
     ],
     {
       cwd: webRoot,
