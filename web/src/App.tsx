@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -3866,24 +3865,13 @@ function RecordingsPage() {
 }
 
 function InboxPage() {
-  const { items, create, update, remove, load } = useResource<Row>("messages");
+  const { items, update, remove, load } = useResource<Row>("messages");
   const { toast } = useApp();
   const [compose, setCompose] = useState(false);
   const [selected, setSelected] = useState<Row | null>(null);
   const [sending, setSending] = useState(false);
   const [templates, setTemplates] = useState<Row[]>([]);
   const [templateId, setTemplateId] = useState("");
-  const fields: FieldSpec[] = [
-    {
-      key: "channel",
-      label: "Channel",
-      type: "select",
-      options: ["Email", "SMS"],
-    },
-    { key: "to", label: "Recipient", required: true },
-    { key: "subject", label: "Subject" },
-    { key: "body", label: "Message", type: "textarea", required: true },
-  ];
 
   useEffect(() => {
     api<Row[]>("/templates")

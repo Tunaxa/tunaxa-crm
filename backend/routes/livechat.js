@@ -2,7 +2,6 @@ import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import { id, now } from "../helpers.js";
-import { getSettings, isAiConfigured } from "../services/config.js";
 import { createRateLimiter } from "../services/rateLimit.js";
 
 const publicLimiter = createRateLimiter({
@@ -46,7 +45,9 @@ function botReply(text, flow) {
           intent: node.intent,
         };
       }
-    } catch {}
+    } catch (error) {
+      if (error && error.name !== "AbortError") throw error;
+    }
   }
   return {
     reply:

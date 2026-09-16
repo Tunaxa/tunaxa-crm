@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { query } from "../db/pg.js";
-import { getWebhookQueue, signPayload } from "../services/webhookQueue.js";
+import { getWebhookQueue } from "../services/webhookQueue.js";
 import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 
