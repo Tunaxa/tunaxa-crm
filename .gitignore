@@ -1,6 +1,9 @@
 node_modules/
 dist/
+.superpowers
+.vscode
 *.log
+docs
 backend/uploads/
 backend/backups/
 backend/data/db.json

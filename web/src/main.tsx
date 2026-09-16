@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/react";
 import App from "./App";
 import "./i18n";
 import "./styles/app.css";
+import "./styles/blueprint.css";
 
 if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
