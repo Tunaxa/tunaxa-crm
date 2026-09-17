@@ -155,6 +155,13 @@ const paths: Record<string, ReactNode> = {
       <path d="m8 12 3 3 5-6" />
     </>
   ),
+  alertCircle: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v5" />
+      <path d="M12 16.5h.01" />
+    </>
+  ),
   clock: (
     <>
       <circle cx="12" cy="12" r="9" />
