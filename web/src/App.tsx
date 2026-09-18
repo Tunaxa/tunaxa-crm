@@ -29,6 +29,7 @@ import {
 } from "./components/ui";
 import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -491,301 +492,328 @@ function Shell() {
           </div>
         </header>
         <main className="content">
-          <Routes>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route
-              path="/leads/:id"
-              element={
-                <RecordDetailPage
-                  resource="leads"
-                  fields={leadFields}
-                  title={t("nav.leads")}
-                />
-              }
-            />
-            <Route
-              path="/contacts/:id"
-              element={
-                <RecordDetailPage
-                  resource="contacts"
-                  fields={contactFields}
-                  title={t("nav.contacts")}
-                />
-              }
-            />
-            <Route
-              path="/companies/:id"
-              element={
-                <RecordDetailPage
-                  resource="companies"
-                  fields={[
-                    { key: "name", label: "Company name" },
-                    { key: "industry", label: "Industry" },
-                    { key: "website", label: "Website" },
-                    { key: "country", label: "Country" },
-                    { key: "employees", label: "Employees", type: "number" },
-                    { key: "owner", label: "Owner" },
-                  ]}
-                  title={t("nav.companies")}
-                />
-              }
-            />
-            <Route
-              path="/deals/:id"
-              element={
-                <RecordDetailPage
-                  resource="deals"
-                  fields={[
-                    { key: "title", label: "Deal name" },
-                    { key: "company", label: "Company" },
-                    { key: "value", label: "Value", type: "number" },
-                    {
-                      key: "stage",
-                      label: "Stage",
-                      type: "select",
-                      options: stages.map((x) => x.id),
-                    },
-                    { key: "owner", label: "Owner" },
-                    { key: "closeDate", label: "Close date", type: "date" },
-                  ]}
-                  title={t("nav.deals")}
-                />
-              }
-            />
-            <Route
-              path="/campaigns/:id"
-              element={
-                <RecordDetailPage
-                  resource="campaigns"
-                  fields={campaignFields}
-                  title={t("nav.campaigns")}
-                />
-              }
-            />
-            <Route
-              path="/email-lists/:id"
-              element={
-                <RecordDetailPage
-                  resource="emailLists"
-                  fields={emailListFields}
-                  title={t("nav.emailLists")}
-                />
-              }
-            />
-            <Route
-              path="/landing-pages/:id"
-              element={
-                <RecordDetailPage
-                  resource="landingPages"
-                  fields={landingPageFields}
-                  title={t("nav.landingPages")}
-                />
-              }
-            />
-            <Route
-              path="/products/:id"
-              element={
-                <RecordDetailPage
-                  resource="products"
-                  fields={productFields}
-                  title={t("nav.products")}
-                />
-              }
-            />
-            <Route
-              path="/orders/:id"
-              element={
-                <RecordDetailPage
-                  resource="orders"
-                  fields={orderFields}
-                  title={t("nav.orders")}
-                />
-              }
-            />
-            <Route
-              path="/invoices/:id"
-              element={
-                <RecordDetailPage
-                  resource="invoices"
-                  fields={invoiceFields}
-                  title={t("nav.invoices")}
-                />
-              }
-            />
-            <Route
-              path="/expenses/:id"
-              element={
-                <RecordDetailPage
-                  resource="expenses"
-                  fields={expenseFields}
-                  title={t("nav.expenses")}
-                />
-              }
-            />
-            <Route
-              path="/employees/:id"
-              element={
-                <RecordDetailPage
-                  resource="employees"
-                  fields={employeeFields}
-                  title={t("nav.employees")}
-                />
-              }
-            />
-            <Route
-              path="/leave/:id"
-              element={
-                <RecordDetailPage
-                  resource="leaveRequests"
-                  fields={leaveFields}
-                  title={t("nav.leave")}
-                />
-              }
-            />
-            <Route
-              path="/attendance/:id"
-              element={
-                <RecordDetailPage
-                  resource="attendance"
-                  fields={attendanceFields}
-                  title={t("nav.attendance")}
-                />
-              }
-            />
-            <Route
-              path="/leads"
-              element={
-                <PeoplePage
-                  resource="leads"
-                  title={t("nav.leads")}
-                  description="Capture and qualify new opportunities."
-                  icon="lead"
-                  fields={leadFields}
-                />
-              }
-            />
-            <Route
-              path="/contacts"
-              element={
-                <PeoplePage
-                  resource="contacts"
-                  title={t("nav.contacts")}
-                  description="Customer and prospect contact records."
-                  icon="contacts"
-                  fields={contactFields}
-                />
-              }
-            />
-            <Route path="/companies" element={<CompaniesPage />} />
-            <Route path="/pipeline" element={<PipelinePage />} />
-            <Route path="/activities" element={<ActivitiesPage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/workflows" element={<WorkflowsPage />} />
-            <Route path="/calls" element={<CallsPage />} />
-            <Route path="/recordings" element={<RecordingsPage />} />
-            <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/sequences" element={<SequencesPage />} />
-            <Route path="/webhooks" element={<WebhooksPage />} />
-            <Route path="/campaigns" element={<CampaignsPage />} />
-            <Route path="/email-lists" element={<EmailListsPage />} />
-            <Route path="/landing-pages" element={<LandingPagesPage />} />
-            <Route path="/forms" element={<FormsPage />} />
-            <Route path="/products" element={<ProductsPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/finance" element={<FinancePage />} />
-            <Route path="/invoices" element={<InvoicesPage />} />
-            <Route path="/expenses" element={<ExpensesPage />} />
-            <Route path="/forecast" element={<ForecastPage />} />
-            <Route path="/employees" element={<EmployeesPage />} />
-            <Route path="/leave" element={<LeavePage />} />
-            <Route path="/attendance" element={<AttendancePage />} />
-            <Route path="/marketing-emails" element={<MarketingEmailsPage />} />
-            <Route
-              path="/marketing-emails/:id"
-              element={
-                <RecordDetailPage
-                  resource="marketingEmails"
-                  fields={marketingEmailFields}
-                  title={t("nav.marketingEmails")}
-                />
-              }
-            />
-            <Route path="/events" element={<EventsPage />} />
-            <Route
-              path="/events/:id"
-              element={
-                <RecordDetailPage
-                  resource="marketingEvents"
-                  fields={marketingEventFields}
-                  title={t("nav.events")}
-                />
-              }
-            />
-            <Route path="/quotes" element={<QuotesPage />} />
-            <Route
-              path="/quotes/:id"
-              element={
-                <RecordDetailPage
-                  resource="quotes"
-                  fields={quoteFields}
-                  title={t("nav.quotes")}
-                />
-              }
-            />
-            <Route path="/contracts" element={<ContractsPage />} />
-            <Route
-              path="/contracts/:id"
-              element={
-                <RecordDetailPage
-                  resource="contracts"
-                  fields={contractFields}
-                  title={t("nav.contracts")}
-                />
-              }
-            />
-            <Route path="/surveys" element={<SurveysPage />} />
-            <Route
-              path="/surveys/:id"
-              element={
-                <RecordDetailPage
-                  resource="surveys"
-                  fields={surveyFields}
-                  title={t("nav.surveys")}
-                />
-              }
-            />
-            <Route path="/survey-responses" element={<SurveyResponsesPage />} />
-            <Route
-              path="/survey-responses/:id"
-              element={
-                <RecordDetailPage
-                  resource="surveyResponses"
-                  fields={surveyResponseFields}
-                  title={t("nav.surveyResponses")}
-                />
-              }
-            />
-            <Route path="/goals" element={<GoalsPage />} />
-            <Route
-              path="/goals/:id"
-              element={
-                <RecordDetailPage
-                  resource="goals"
-                  fields={goalFields}
-                  title={t("nav.goals")}
-                />
-              }
-            />
-            <Route path="/duplicates" element={<DuplicatesPage />} />
-            <Route path="/portal" element={<PortalPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/team" element={<TeamPage />} />
-            <Route path="/fields" element={<FieldsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+          <ErrorBoundary fallbackMessage="Something went wrong. Please reload.">
+            <Routes>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <ErrorBoundary
+                    key={location.pathname}
+                    fallbackMessage="Dashboard failed to load."
+                  >
+                    <DashboardPage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/leads/:id"
+                element={
+                  <RecordDetailPage
+                    resource="leads"
+                    fields={leadFields}
+                    title={t("nav.leads")}
+                  />
+                }
+              />
+              <Route
+                path="/contacts/:id"
+                element={
+                  <RecordDetailPage
+                    resource="contacts"
+                    fields={contactFields}
+                    title={t("nav.contacts")}
+                  />
+                }
+              />
+              <Route
+                path="/companies/:id"
+                element={
+                  <RecordDetailPage
+                    resource="companies"
+                    fields={[
+                      { key: "name", label: "Company name" },
+                      { key: "industry", label: "Industry" },
+                      { key: "website", label: "Website" },
+                      { key: "country", label: "Country" },
+                      { key: "employees", label: "Employees", type: "number" },
+                      { key: "owner", label: "Owner" },
+                    ]}
+                    title={t("nav.companies")}
+                  />
+                }
+              />
+              <Route
+                path="/deals/:id"
+                element={
+                  <RecordDetailPage
+                    resource="deals"
+                    fields={[
+                      { key: "title", label: "Deal name" },
+                      { key: "company", label: "Company" },
+                      { key: "value", label: "Value", type: "number" },
+                      {
+                        key: "stage",
+                        label: "Stage",
+                        type: "select",
+                        options: stages.map((x) => x.id),
+                      },
+                      { key: "owner", label: "Owner" },
+                      { key: "closeDate", label: "Close date", type: "date" },
+                    ]}
+                    title={t("nav.deals")}
+                  />
+                }
+              />
+              <Route
+                path="/campaigns/:id"
+                element={
+                  <RecordDetailPage
+                    resource="campaigns"
+                    fields={campaignFields}
+                    title={t("nav.campaigns")}
+                  />
+                }
+              />
+              <Route
+                path="/email-lists/:id"
+                element={
+                  <RecordDetailPage
+                    resource="emailLists"
+                    fields={emailListFields}
+                    title={t("nav.emailLists")}
+                  />
+                }
+              />
+              <Route
+                path="/landing-pages/:id"
+                element={
+                  <RecordDetailPage
+                    resource="landingPages"
+                    fields={landingPageFields}
+                    title={t("nav.landingPages")}
+                  />
+                }
+              />
+              <Route
+                path="/products/:id"
+                element={
+                  <RecordDetailPage
+                    resource="products"
+                    fields={productFields}
+                    title={t("nav.products")}
+                  />
+                }
+              />
+              <Route
+                path="/orders/:id"
+                element={
+                  <RecordDetailPage
+                    resource="orders"
+                    fields={orderFields}
+                    title={t("nav.orders")}
+                  />
+                }
+              />
+              <Route
+                path="/invoices/:id"
+                element={
+                  <RecordDetailPage
+                    resource="invoices"
+                    fields={invoiceFields}
+                    title={t("nav.invoices")}
+                  />
+                }
+              />
+              <Route
+                path="/expenses/:id"
+                element={
+                  <RecordDetailPage
+                    resource="expenses"
+                    fields={expenseFields}
+                    title={t("nav.expenses")}
+                  />
+                }
+              />
+              <Route
+                path="/employees/:id"
+                element={
+                  <RecordDetailPage
+                    resource="employees"
+                    fields={employeeFields}
+                    title={t("nav.employees")}
+                  />
+                }
+              />
+              <Route
+                path="/leave/:id"
+                element={
+                  <RecordDetailPage
+                    resource="leaveRequests"
+                    fields={leaveFields}
+                    title={t("nav.leave")}
+                  />
+                }
+              />
+              <Route
+                path="/attendance/:id"
+                element={
+                  <RecordDetailPage
+                    resource="attendance"
+                    fields={attendanceFields}
+                    title={t("nav.attendance")}
+                  />
+                }
+              />
+              <Route
+                path="/leads"
+                element={
+                  <PeoplePage
+                    resource="leads"
+                    title={t("nav.leads")}
+                    description="Capture and qualify new opportunities."
+                    icon="lead"
+                    fields={leadFields}
+                  />
+                }
+              />
+              <Route
+                path="/contacts"
+                element={
+                  <ErrorBoundary
+                    key={location.pathname}
+                    fallbackMessage="Contacts failed to load."
+                  >
+                    <PeoplePage
+                      resource="contacts"
+                      title={t("nav.contacts")}
+                      description="Customer and prospect contact records."
+                      icon="contacts"
+                      fields={contactFields}
+                    />
+                  </ErrorBoundary>
+                }
+              />
+              <Route path="/companies" element={<CompaniesPage />} />
+              <Route
+                path="/pipeline"
+                element={
+                  <ErrorBoundary
+                    key={location.pathname}
+                    fallbackMessage="Pipeline failed to load."
+                  >
+                    <PipelinePage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route path="/activities" element={<ActivitiesPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/calendar" element={<CalendarPage />} />
+              <Route path="/workflows" element={<WorkflowsPage />} />
+              <Route path="/calls" element={<CallsPage />} />
+              <Route path="/recordings" element={<RecordingsPage />} />
+              <Route path="/inbox" element={<InboxPage />} />
+              <Route path="/sequences" element={<SequencesPage />} />
+              <Route path="/webhooks" element={<WebhooksPage />} />
+              <Route path="/campaigns" element={<CampaignsPage />} />
+              <Route path="/email-lists" element={<EmailListsPage />} />
+              <Route path="/landing-pages" element={<LandingPagesPage />} />
+              <Route path="/forms" element={<FormsPage />} />
+              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/finance" element={<FinancePage />} />
+              <Route path="/invoices" element={<InvoicesPage />} />
+              <Route path="/expenses" element={<ExpensesPage />} />
+              <Route path="/forecast" element={<ForecastPage />} />
+              <Route path="/employees" element={<EmployeesPage />} />
+              <Route path="/leave" element={<LeavePage />} />
+              <Route path="/attendance" element={<AttendancePage />} />
+              <Route path="/marketing-emails" element={<MarketingEmailsPage />} />
+              <Route
+                path="/marketing-emails/:id"
+                element={
+                  <RecordDetailPage
+                    resource="marketingEmails"
+                    fields={marketingEmailFields}
+                    title={t("nav.marketingEmails")}
+                  />
+                }
+              />
+              <Route path="/events" element={<EventsPage />} />
+              <Route
+                path="/events/:id"
+                element={
+                  <RecordDetailPage
+                    resource="marketingEvents"
+                    fields={marketingEventFields}
+                    title={t("nav.events")}
+                  />
+                }
+              />
+              <Route path="/quotes" element={<QuotesPage />} />
+              <Route
+                path="/quotes/:id"
+                element={
+                  <RecordDetailPage
+                    resource="quotes"
+                    fields={quoteFields}
+                    title={t("nav.quotes")}
+                  />
+                }
+              />
+              <Route path="/contracts" element={<ContractsPage />} />
+              <Route
+                path="/contracts/:id"
+                element={
+                  <RecordDetailPage
+                    resource="contracts"
+                    fields={contractFields}
+                    title={t("nav.contracts")}
+                  />
+                }
+              />
+              <Route path="/surveys" element={<SurveysPage />} />
+              <Route
+                path="/surveys/:id"
+                element={
+                  <RecordDetailPage
+                    resource="surveys"
+                    fields={surveyFields}
+                    title={t("nav.surveys")}
+                  />
+                }
+              />
+              <Route path="/survey-responses" element={<SurveyResponsesPage />} />
+              <Route
+                path="/survey-responses/:id"
+                element={
+                  <RecordDetailPage
+                    resource="surveyResponses"
+                    fields={surveyResponseFields}
+                    title={t("nav.surveyResponses")}
+                  />
+                }
+              />
+              <Route path="/goals" element={<GoalsPage />} />
+              <Route
+                path="/goals/:id"
+                element={
+                  <RecordDetailPage
+                    resource="goals"
+                    fields={goalFields}
+                    title={t("nav.goals")}
+                  />
+                }
+              />
+              <Route path="/duplicates" element={<DuplicatesPage />} />
+              <Route path="/portal" element={<PortalPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/team" element={<TeamPage />} />
+              <Route path="/fields" element={<FieldsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </ErrorBoundary>
         </main>
       </section>
       {quickOpen ? <QuickCreate onClose={() => setQuickOpen(false)} /> : null}
