@@ -30,6 +30,7 @@ import {
 import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { CornerBrackets } from "./components/CornerBrackets";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -1078,7 +1079,8 @@ function DashboardPage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -1087,7 +1089,7 @@ function DashboardPage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -4933,7 +4935,8 @@ function FinancePage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -4942,7 +4945,7 @@ function FinancePage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -5152,7 +5155,8 @@ function ReportsPage() {
         </button>
       </PageHeader>
       <div className="stats-grid">
-        <article className="stat-card">
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-blue">
             <Icon name="lead" />
           </div>
@@ -5161,8 +5165,9 @@ function ReportsPage() {
             <strong>{leads.items.length}</strong>
             <span>All lead records</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-green">
             <Icon name="pipeline" />
           </div>
@@ -5174,8 +5179,9 @@ function ReportsPage() {
               total value
             </span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-purple">
             <Icon name="phone" />
           </div>
@@ -5184,8 +5190,9 @@ function ReportsPage() {
             <strong>{calls.items.length}</strong>
             <span>Inbound and outbound</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-amber">
             <Icon name="tasks" />
           </div>
@@ -5196,7 +5203,7 @@ function ReportsPage() {
             </strong>
             <span>Needs attention</span>
           </div>
-        </article>
+        </div>
       </div>
       <section className="surface report-table">
         <div className="section-head">

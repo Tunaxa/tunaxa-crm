@@ -7451,8 +7451,6 @@ th {
 .inbox-shell {
   position: relative;
 }
-.stat-card::before,
-.stat-card::after,
 .company-card::before,
 .company-card::after,
 .workflow-card::before,
@@ -7466,7 +7464,6 @@ th {
   pointer-events: none;
   z-index: 1;
 }
-.stat-card::before,
 .company-card::before,
 .workflow-card::before,
 .detail-section::before {
@@ -7475,7 +7472,6 @@ th {
   border-top: 2px solid var(--brand);
   border-left: 2px solid var(--brand);
 }
-.stat-card::after,
 .company-card::after,
 .workflow-card::after,
 .detail-section::after {
@@ -7483,6 +7479,32 @@ th {
   right: -1px;
   border-bottom: 2px solid var(--brand);
   border-right: 2px solid var(--brand);
+}
+
+.corner-brackets {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 1;
+}
+.hover-crm-card:hover .corner-brackets {
+  opacity: 1;
+}
+.corner-brackets path {
+  fill: none;
+  stroke: var(--corner-bracket-stroke);
+  stroke-width: 3.3;
+  vector-effect: non-scaling-stroke;
+}
+.corner-brackets-sm {
+  padding: 0;
+}
+.corner-brackets-md {
+  padding: 0;
 }
 
 /* ---------- Panels: flat hairline boxes ---------- */
