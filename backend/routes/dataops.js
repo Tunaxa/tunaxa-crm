@@ -34,8 +34,8 @@ function similarity(left, right) {
 
 function duplicateScore(left, right, resource) {
   if (resource === 'contacts' && norm(left.email) && norm(left.email) === norm(right.email)) return 1;
-  const leftName = resource === 'companies' ? left.name : (left.name || left.email);
-  const rightName = resource === 'companies' ? right.name : (right.name || right.email);
+  const leftName = left.name;
+  const rightName = right.name;
   return similarity(leftName, rightName);
 }
 
