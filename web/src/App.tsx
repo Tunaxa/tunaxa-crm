@@ -31,6 +31,7 @@ import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useResource } from "./lib/useResource";
+import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
 
 const logo = "/assets/tunaxa-logo.png";
@@ -378,6 +379,41 @@ function Shell() {
     i18n.changeLanguage(next);
     localStorage.setItem("tunaxa.language", next);
   }
+
+  const refreshAll = () =>
+    window.dispatchEvent(new CustomEvent("tunaxa:resource-changed"));
+  const sseHandlers: SSEHandlers = {
+    "record.created": (data) =>
+      window.dispatchEvent(
+        new CustomEvent("tunaxa:resource-changed", {
+          detail: { resource: data.resource },
+        }),
+      ),
+    "workflow.created": refreshAll,
+    "workflow.updated": refreshAll,
+    "workflow.deleted": refreshAll,
+    "workflow.graph_saved": refreshAll,
+    "sequence.enrolled": refreshAll,
+    "sequence.ran": refreshAll,
+    "form.submitted": refreshAll,
+    "form.created": refreshAll,
+    "form.updated": refreshAll,
+    "form.deleted": refreshAll,
+    "user.role.changed": refreshAll,
+    "user.created": refreshAll,
+    "user.deleted": refreshAll,
+    "lifecycle.transitioned": refreshAll,
+    "leadscoring.rules_changed": refreshAll,
+    "leadscoring.recalculated": refreshAll,
+    "webhook.created": refreshAll,
+    "webhook.updated": refreshAll,
+    "webhook.deleted": refreshAll,
+    "webhook.received": refreshAll,
+    "ticket.opened": refreshAll,
+    "ticket.updated": refreshAll,
+    "execution.processed": refreshAll,
+  };
+  useSSE(sseHandlers);
 
   return (
     <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
