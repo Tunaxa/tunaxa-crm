@@ -160,6 +160,16 @@ function AuthScreen() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [theme, setTheme] = useState(
+    document.documentElement.classList.contains("dark"),
+  );
+
+  function toggleTheme() {
+    const next = !theme;
+    setTheme(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
+  }
 
   useEffect(() => {
     api<{ needsSetup: boolean }>("/auth/status")
@@ -248,6 +258,15 @@ function AuthScreen() {
                   : "Open your CRM workspace"}
               </p>
             </div>
+            <button
+              className="login-theme-toggle"
+              type="button"
+              onClick={toggleTheme}
+              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
+              title={theme ? "Light mode" : "Dark mode"}
+            >
+              <Icon name={theme ? "sun" : "moon"} />
+            </button>
           </div>
           <div className="login-card-body">
             {mode === "setup" ? (

@@ -244,10 +244,10 @@ svg {
 
 .login-card {
   width: min(400px, 100%);
-  background: #1a1d24;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 .login-card-head {
@@ -255,7 +255,7 @@ svg {
   gap: 14px;
   align-items: center;
   padding: 28px 28px 24px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border);
 }
 .login-card-icon {
   width: 40px;
@@ -263,8 +263,8 @@ svg {
   border-radius: 10px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #0072ce, #00a3e0);
-  color: #fff;
+  background: linear-gradient(135deg, var(--brand), var(--brand-600));
+  color: var(--surface);
   font-size: 13px;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -274,14 +274,34 @@ svg {
   font-size: 20px;
   margin: 0 0 4px;
   letter-spacing: -0.025em;
-  color: #f0f2f5;
+  color: var(--text);
   font-weight: 650;
 }
 .login-card-head p {
   margin: 0;
-  color: #7d8590;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 400;
+}
+.login-theme-toggle {
+  width: 34px;
+  height: 34px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.login-theme-toggle:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.login-theme-toggle svg {
+  width: 16px;
+  height: 16px;
 }
 .login-card-body {
   padding: 28px;
@@ -291,15 +311,15 @@ svg {
   margin-bottom: 18px;
 }
 .login-card-body .field > span {
-  color: #9ca3af;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
 .login-card-body .field input {
-  background: #12141a;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #e6edf3;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
   border-radius: 9px;
   height: 44px;
   font-size: 14px;
@@ -308,18 +328,18 @@ svg {
     box-shadow 0.2s;
 }
 .login-card-body .field input::placeholder {
-  color: #484f58;
+  color: var(--soft);
 }
 .login-card-body .field input:focus {
-  border-color: #00a3e0;
-  box-shadow: 0 0 0 3px rgba(0, 163, 224, 0.15);
-  background: #141720;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-100);
+  background: var(--surface);
 }
 .login-card-body .input-with-action button {
-  color: #484f58;
+  color: var(--soft);
 }
 .login-card-body .input-with-action button:hover {
-  color: #8b949e;
+  color: var(--muted);
 }
 
 .login-helper-row {
@@ -332,13 +352,13 @@ svg {
   display: flex;
   align-items: center;
   gap: 7px;
-  color: #8b949e;
+  color: var(--muted);
   font-size: 13px;
   cursor: pointer;
   user-select: none;
 }
 .check input {
-  accent-color: #00a3e0;
+  accent-color: var(--brand);
   width: 15px;
   height: 15px;
   cursor: pointer;
@@ -349,8 +369,8 @@ svg {
   height: 46px;
   border: 0;
   border-radius: 9px;
-  background: #00a3e0;
-  color: #fff;
+  background: var(--brand);
+  color: var(--surface);
   font-size: 15px;
   font-weight: 650;
   cursor: pointer;
@@ -362,15 +382,13 @@ svg {
   letter-spacing: -0.01em;
 }
 .login-submit:hover {
-  background: #0090cc;
-  box-shadow:
-    0 4px 20px rgba(0, 163, 224, 0.35),
-    0 0 40px rgba(0, 163, 224, 0.1);
+  background: var(--brand-600);
+  box-shadow: var(--shadow-lg);
   transform: translateY(-1px);
 }
 .login-submit:active {
   transform: translateY(0);
-  box-shadow: 0 2px 10px rgba(0, 163, 224, 0.2);
+  box-shadow: var(--shadow);
 }
 .login-submit:disabled {
   opacity: 0.45;
@@ -383,19 +401,19 @@ svg {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--soft);
   font-size: 11px;
   padding: 14px 28px;
-  background: rgba(255, 255, 255, 0.015);
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
 }
 .demo-credentials {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--soft);
   margin: 16px 0 0;
 }
 .demo-credentials b {
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--muted);
 }
 
 .field {
