@@ -4612,28 +4612,25 @@ function DuplicatesPage() {
   const [scope, setScope] = useState<"contacts" | "companies">("contacts");
   const [data, setData] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
   const load = () =>
     api<any>(`/duplicates?resource=${scope}`)
       .then(setData)
       .catch((err) => toast(err.message, "error"));
   useEffect(() => {
+    setSkipped([]);
     load();
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, [scope]);
-  async function mergeGroup(group: any) {
+  async function mergePair(group: any, keep: Row, merge: Row) {
     setBusy(true);
     try {
-      for (let i = 1; i < group.ids.length; i++)
-        await api(
-          `/duplicates/merge`,
-          json("POST", {
-            resource: scope,
-            keepId: group.ids[0],
-            mergeId: group.ids[i],
-          }),
-        );
-      toast("Duplicates merged");
+      await api(
+        `/duplicates/merge`,
+        json("POST", { resource: scope, keepId: keep.id, mergeId: merge.id }),
+      );
+      toast("Duplicate merged");
       load();
       window.dispatchEvent(new Event("tunaxa:resource-changed"));
     } catch (error) {
@@ -4642,7 +4639,42 @@ function DuplicatesPage() {
       setBusy(false);
     }
   }
-  const groups = data?.duplicates || [];
+  function skipPair(key: string) {
+    setSkipped((current) => [...current, key]);
+  }
+  const groups = (data?.duplicates || [])
+    .map((group: any) => ({
+      ...group,
+      records: group.records || group.ids.map((id: string, index: number) => ({
+        id,
+        name: group.names[index],
+      })),
+    }))
+    .flatMap((group: any) =>
+      group.records.slice(1).map((merge: Row) => ({
+        group,
+        keep: group.records[0] as Row,
+        merge,
+        key: `${group.records[0].id}:${merge.id}`,
+      })),
+    )
+    .filter((pair: any) => !skipped.includes(pair.key));
+  const pair = groups[0];
+  const comparisonKeys = pair
+    ? [...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)])].filter(
+        (key) => key !== "id",
+      )
+    : [];
+  const displayName = (record: Row) =>
+    String(record.name || record.email || record.id || "Untitled");
+  const displayValue = (value: unknown) => {
+    if (value === undefined || value === null || value === "") return "—";
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+  const labelFor = (key: string) =>
+    key.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
   return (
     <div className="page">
       <PageHeader
@@ -4670,37 +4702,41 @@ function DuplicatesPage() {
           Companies
         </button>
       </PageHeader>
-      <section className="surface table-surface">
-        {groups.length ? (
-          groups.map((group: any, idx: number) => (
-            <div className="dupe-group" key={idx}>
-              <div className="dupe-group-head">
-                <div className="dupe-member">
-                  <Avatar name={group.names[0]} />
-                  <div>
-                    <b>{group.names[0]}</b>
-                    <small>Primary record (kept)</small>
-                  </div>
-                </div>
-                <button
-                  className="btn secondary compact"
-                  disabled={busy}
-                  onClick={() => mergeGroup(group)}
-                >
-                  <Icon name="check" /> Merge into primary
-                </button>
+      <section className="surface duplicate-comparison">
+        {pair ? (
+          <>
+            <div className="duplicate-comparison-head">
+              <div>
+                <span className="eyebrow">Potential duplicate</span>
+                <h2>Review these records</h2>
               </div>
-              {group.names.slice(1).map((name: string, j: number) => (
-                <div className="dupe-member" key={j}>
-                  <Avatar name={name} />
-                  <div>
-                    <b>{name}</b>
-                    <small>Duplicate (will be merged)</small>
-                  </div>
-                </div>
-              ))}
+              <Badge tone="blue">{pair.group.confidence ?? 0}% match</Badge>
             </div>
-          ))
+            <div className="duplicate-columns">
+              <article className="duplicate-record keep">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.keep)} />
+                  <div><small>Record to keep</small><h3>{displayName(pair.keep)}</h3></div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.keep[key])}</b></div>)}
+                </div>
+              </article>
+              <article className="duplicate-record merge">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.merge)} />
+                  <div><small>Record to merge and delete</small><h3>{displayName(pair.merge)}</h3></div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.merge[key])}</b></div>)}
+                </div>
+              </article>
+            </div>
+            <div className="duplicate-actions">
+              <button className="btn secondary" disabled={busy} onClick={() => skipPair(pair.key)}><Icon name="close" /> Skip</button>
+              <button className="btn primary" disabled={busy} onClick={() => mergePair(pair.group, pair.keep, pair.merge)}><Icon name="check" /> Merge</button>
+            </div>
+          </>
         ) : (
           <Empty
             icon="duplicate"

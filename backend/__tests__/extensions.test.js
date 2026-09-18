@@ -75,6 +75,8 @@ describe('Duplicate management', () => {
     const group = find.body.duplicates.find(g => g.names.includes('Jane Doe'));
     expect(group).toBeTruthy();
     expect(group.ids.length).toBe(2);
+    expect(group.records).toHaveLength(2);
+    expect(group.confidence).toBe(100);
 
     const merge = await request(app).post('/api/duplicates/merge').set('Authorization', `Bearer ${token}`).send({ resource: 'contacts', keepId: group.ids[0], mergeId: group.ids[1] });
     expect(merge.status).toBe(200);
@@ -82,6 +84,17 @@ describe('Duplicate management', () => {
 
     const list = await request(app).get('/api/contacts').set('Authorization', `Bearer ${token}`);
     expect(list.body.filter(c => c.email === 'jane@test.com').length).toBe(1);
+  });
+
+  it('returns confidence for fuzzy company name matches', async () => {
+    await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Acme Corporation' });
+    await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Acme Corporaton' });
+
+    const find = await request(app).get('/api/duplicates?resource=companies').set('Authorization', `Bearer ${token}`);
+    const group = find.body.duplicates.find(g => g.names.includes('Acme Corporation'));
+    expect(group).toBeTruthy();
+    expect(group.confidence).toBeGreaterThan(80);
+    expect(group.confidence).toBeLessThan(100);
   });
 });
 
