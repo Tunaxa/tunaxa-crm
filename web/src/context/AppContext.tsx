@@ -1,11 +1,13 @@
 import {
   createContext,
   useContext,
+  useCallback,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
-import { api, json, setToken } from "../lib/api";
+import { api, json, registerLogoutHandler, setToken } from "../lib/api";
 
 type User = { id: string; name: string; email: string; role: string };
 type Toast = { id: number; message: string; tone: "ok" | "error" };
@@ -31,7 +33,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  async function logout() {
+  const logout = useCallback(async () => {
     try {
       await api("/auth/logout", json("POST"));
     } catch (error) {
@@ -39,9 +41,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     setToken("");
     setUser(null);
-  }
+    if (window.location.hash !== "#/") window.location.hash = "#/";
+  }, []);
 
-  const value = useMemo(() => ({ user, setUser, toast, logout }), [user]);
+  useEffect(() => registerLogoutHandler(logout), [logout]);
+
+  const value = useMemo(() => ({ user, setUser, toast, logout }), [user, logout]);
   return (
     <AppContext.Provider value={value}>
       {children}

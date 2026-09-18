@@ -48,6 +48,21 @@ export default function registerAuthRoutes(app) {
     res.json({ token, user: publicUser(user) });
   });
 
+  app.post('/api/auth/refresh', async (req, res) => {
+    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+    if (!token) return res.status(401).json({ error: 'Unauthorized' });
+    const db = await readDb();
+    const session = db.sessions.find(x => x.token === token);
+    const user = session && db.users.find(x => x.id === session.userId);
+    if (!session || !user) return res.status(401).json({ error: 'Session expired' });
+    const nextToken = crypto.randomBytes(32).toString('hex');
+    await mutateDb(next => {
+      next.sessions = next.sessions.filter(x => x.token !== token);
+      next.sessions.push({ token: nextToken, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
+    });
+    res.json({ token: nextToken });
+  });
+
   app.get('/api/auth/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
 
   app.post('/api/auth/logout', auth, async (req, res) => {
