@@ -7979,6 +7979,9 @@ html.dark .detail-section::after {
   font-size: 9px;
   color: var(--muted);
 }
+.dupe-member .row-actions {
+  margin-left: auto;
+}
 .portal-public-page {
   min-height: 100vh;
   background: var(--surface-2);
