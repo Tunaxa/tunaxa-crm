@@ -4624,15 +4624,14 @@ function DuplicatesPage() {
   async function mergeGroup(group: any) {
     setBusy(true);
     try {
-      for (let i = 1; i < group.ids.length; i++)
-        await api(
-          `/duplicates/merge`,
-          json("POST", {
-            resource: scope,
-            keepId: group.ids[0],
-            mergeId: group.ids[i],
-          }),
-        );
+      await api(
+        `/duplicates/merge`,
+        json("POST", {
+          resource: scope,
+          keepId: group.ids[0],
+          mergeIds: group.ids.slice(1),
+        }),
+      );
       toast("Duplicates merged");
       load();
       window.dispatchEvent(new Event("tunaxa:resource-changed"));

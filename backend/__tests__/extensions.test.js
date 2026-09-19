@@ -83,6 +83,42 @@ describe('Duplicate management', () => {
     const list = await request(app).get('/api/contacts').set('Authorization', `Bearer ${token}`);
     expect(list.body.filter(c => c.email === 'jane@test.com').length).toBe(1);
   });
+
+  it('merges multiple duplicates into the primary record in a single atomic request', async () => {
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Bulk One', email: 'bulk@test.com' });
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Bulk Two', email: 'bulk@test.com', phone: '+456', company: 'ACME' });
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Bulk Three', email: 'bulk@test.com' });
+
+    const find = await request(app).get('/api/duplicates?resource=contacts').set('Authorization', `Bearer ${token}`);
+    const group = find.body.duplicates.find(g => g.names.includes('Bulk One'));
+    expect(group).toBeTruthy();
+    expect(group.ids.length).toBe(3);
+    const keepId = group.ids[group.names.indexOf('Bulk One')];
+
+    const merge = await request(app).post('/api/duplicates/merge').set('Authorization', `Bearer ${token}`).send({ resource: 'contacts', keepId, mergeIds: group.ids.filter(id => id !== keepId) });
+    expect(merge.status).toBe(200);
+    expect(merge.body.phone).toBe('+456');
+    expect(merge.body.company).toBe('ACME');
+
+    const list = await request(app).get('/api/contacts').set('Authorization', `Bearer ${token}`);
+    expect(list.body.filter(c => c.email === 'bulk@test.com').length).toBe(1);
+  });
+
+  it('rolls back cleanly when a requested mergeId does not exist', async () => {
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Ghost Keep', email: 'ghost@test.com' });
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Ghost Dup', email: 'ghost@test.com' });
+
+    const find = await request(app).get('/api/duplicates?resource=contacts').set('Authorization', `Bearer ${token}`);
+    const group = find.body.duplicates.find(g => g.names.includes('Ghost Keep'));
+    expect(group).toBeTruthy();
+    expect(group.ids.length).toBe(2);
+
+    const merge = await request(app).post('/api/duplicates/merge').set('Authorization', `Bearer ${token}`).send({ resource: 'contacts', keepId: group.ids[0], mergeIds: [group.ids[1], 'missing-id'] });
+    expect(merge.status).toBe(404);
+
+    const list = await request(app).get('/api/contacts').set('Authorization', `Bearer ${token}`);
+    expect(list.body.filter(c => c.email === 'ghost@test.com').length).toBe(2);
+  });
 });
 
 describe('Customer portal', () => {
