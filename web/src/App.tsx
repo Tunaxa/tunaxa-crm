@@ -30,6 +30,7 @@ import {
 import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { GoalProgress } from "./components/goals/GoalProgress";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -1518,6 +1519,7 @@ function CrudTablePage({
   primary,
   statusTone,
   moneyColumn,
+  extraColumn,
 }: {
   resource: string;
   title: string;
@@ -1531,6 +1533,7 @@ function CrudTablePage({
   primary?: (row: Row) => string;
   statusTone?: (value?: string) => BadgeTone;
   moneyColumn?: string[];
+  extraColumn?: { title: string; render: (row: Row) => ReactNode };
 }) {
   const { items, loading, load, create, update, remove } =
     useResource<Row>(resource);
@@ -1671,6 +1674,7 @@ function CrudTablePage({
                 {cols.slice(1).map((c) => (
                   <th key={c.key}>{c.label}</th>
                 ))}
+                {extraColumn ? <th>{extraColumn.title}</th> : null}
                 <th />
               </tr>
             </thead>
@@ -1704,6 +1708,7 @@ function CrudTablePage({
                       <td key={c.key}>{cell(row, c)}</td>
                     ),
                   )}
+                  {extraColumn ? <td>{extraColumn.render(row)}</td> : null}
                   <td>
                     <div className="row-actions">
                       <button
@@ -4570,9 +4575,20 @@ function GoalsPage() {
       description="Time-bound targets and progress across teams."
       icon="goal"
       fields={goalFields}
+      columns={goalFields.slice(0, 4)}
       nameKey="name"
       statusField="period"
       synopsis={(r) => `${r.metric || ""}${r.owner ? " · " + r.owner : ""}`}
+      extraColumn={{
+        title: "Progress",
+        render: (goal) => (
+          <GoalProgress
+            name={String(goal.name || "Goal")}
+            current={goal.current}
+            target={goal.target}
+          />
+        ),
+      }}
     />
   );
 }
