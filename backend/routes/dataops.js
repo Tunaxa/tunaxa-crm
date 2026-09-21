@@ -149,19 +149,25 @@ export default function registerDataOpsRoutes(app) {
 
   app.post('/api/duplicates/merge', auth, requireRole('admin', 'member'), async (req, res) => {
     const { resource, keepId, mergeId } = req.body || {};
+    const mergeIds = Array.isArray(req.body?.mergeIds) ? req.body.mergeIds : (mergeId ? [mergeId] : []);
     if (!['contacts', 'companies'].includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
-    if (!keepId || !mergeId || keepId === mergeId) return res.status(400).json({ error: 'keepId and mergeId are required and distinct' });
+    if (!keepId || !mergeIds.length) return res.status(400).json({ error: 'keepId and at least one mergeId are required' });
+    if (mergeIds.includes(keepId)) return res.status(400).json({ error: 'keepId and mergeIds must be distinct' });
+    if (new Set(mergeIds).size !== mergeIds.length) return res.status(400).json({ error: 'mergeIds must be unique' });
     const result = await mutateDb(db => {
       const rows = db[resource] || [];
       const keep = rows.find(r => r.id === keepId);
-      const merge = rows.find(r => r.id === mergeId);
-      if (!keep || !merge) return { error: 'One or both records not found' };
-      for (const key of Object.keys(merge)) {
-        if (key === 'id') continue;
-        if ((keep[key] === undefined || keep[key] === null || keep[key] === '') && merge[key] !== undefined && merge[key] !== '') keep[key] = merge[key];
+      if (!keep) return { error: 'One or both records not found' };
+      const merges = mergeIds.map(id => rows.find(r => r.id === id));
+      if (merges.some(r => !r)) return { error: 'One or both records not found' };
+      for (const merge of merges) {
+        for (const key of Object.keys(merge)) {
+          if (key === 'id') continue;
+          if ((keep[key] === undefined || keep[key] === null || keep[key] === '') && merge[key] !== undefined && merge[key] !== '') keep[key] = merge[key];
+        }
       }
       keep.updatedAt = now();
-      db[resource] = rows.filter(r => r.id !== mergeId);
+      db[resource] = rows.filter(r => !mergeIds.includes(r.id));
       return { keep };
     });
     if (result.error) return res.status(404).json({ error: result.error });
