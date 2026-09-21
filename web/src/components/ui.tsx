@@ -24,12 +24,15 @@ const initialFormFieldSelector = [
 
 function useFocusTrap() {
   const containerRef = useRef<HTMLElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(
+    typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null),
+  );
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousFocus = previousFocusRef.current;
     const getFocusableElements = () =>
       Array.from(container.querySelectorAll<HTMLElement>(focusableSelector));
     const focusFirst = () => {
