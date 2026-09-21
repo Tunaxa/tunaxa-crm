@@ -90,10 +90,19 @@ export default function registerWebhookEndpointRoutes(app) {
 
     const payload = req.body || {};
     const receivedAt = now();
-    const delivery = { id: id('delivery'), endpointId: endpoint.id, payload, receivedAt, status: 'received' };
+    const delivery = {
+      id: id('delivery'),
+      endpointId: endpoint.id,
+      payload,
+      receivedAt,
+      status: 'received',
+      contentType: String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase(),
+      remoteIp: String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim()
+    };
 
     await mutateDb(db => {
       if (!db.webhookDeliveries) db.webhookDeliveries = [];
+      delivery.attemptNumber = (db.webhookDeliveries.filter(d => d.endpointId === endpoint.id).length || 0) + 1;
       db.webhookDeliveries.unshift(delivery);
       const current = (db.webhookEndpoints || []).find(w => w.id === endpoint.id);
       if (current) {
@@ -117,5 +126,17 @@ export default function registerWebhookEndpointRoutes(app) {
     let rows = db.webhookDeliveries || [];
     if (req.query.endpointId) rows = rows.filter(d => d.endpointId === req.query.endpointId);
     res.json(rows.slice(0, 50));
+  });
+
+  // Recent deliveries for a specific endpoint
+  app.get('/api/webhookEndpoints/:id/deliveries', auth, async (req, res) => {
+    const db = await readDb();
+    const endpoint = (db.webhookEndpoints || []).find(w => w.id === req.params.id);
+    if (!endpoint) return res.status(404).json({ error: 'Webhook endpoint not found' });
+    const rows = (db.webhookDeliveries || [])
+      .filter(d => d.endpointId === req.params.id)
+      .sort((a, b) => String(b.receivedAt || '').localeCompare(String(a.receivedAt || '')))
+      .slice(0, 50);
+    res.json(rows);
   });
 }
