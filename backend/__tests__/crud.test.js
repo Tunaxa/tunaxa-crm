@@ -44,6 +44,22 @@ describe('Generic CRUD - leads', () => {
     expect(res.body[0].name).toBe('Acme Corp');
   });
 
+  it('GET /api/leads/export.csv downloads all leads as CSV', async () => {
+    const res = await request(app)
+      .get('/api/leads/export.csv')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('leads.csv');
+    expect(res.text).toContain('"name"');
+    expect(res.text).toContain('"Acme Corp"');
+  });
+
+  it('GET /api/leads/export.csv requires authentication', async () => {
+    const res = await request(app).get('/api/leads/export.csv');
+    expect(res.status).toBe(401);
+  });
+
   it('PUT /api/leads/:id updates lead', async () => {
     const res = await request(app)
       .put(`/api/leads/${leadId}`)
@@ -73,6 +89,23 @@ describe('Generic CRUD - leads', () => {
   it('DELETE /api/leads/:id returns 404 for missing', async () => {
     const res = await request(app).delete('/api/leads/lead_nonexistent').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(404);
+  });
+});
+
+describe('CSV export', () => {
+  it.each(['contacts', 'companies'])('exports %s with quoted CSV values', async (resource) => {
+    const name = 'North, "Division"';
+    const created = await request(app)
+      .post(`/api/${resource}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name });
+    expect(created.status).toBe(201);
+
+    const res = await request(app)
+      .get(`/api/${resource}/export.csv`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('"North, ""Division"""');
   });
 });
 

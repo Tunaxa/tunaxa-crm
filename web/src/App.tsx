@@ -1780,6 +1780,22 @@ function useSchema(object: string): FieldSpec[] {
   return custom;
 }
 
+async function downloadResourceCsv(resource: string) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`/api/${resource}/export.csv`, { headers });
+  if (!response.ok) throw new Error(`Export failed (${response.status})`);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${resource}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 function PeoplePage({
   resource,
   title,
@@ -1840,23 +1856,12 @@ function PeoplePage({
     }
   }
 
-  function exportCsv() {
-    if (!items.length) return toast("Nothing to export", "error");
-    const keys = allFields.map((x) => x.key);
-    const csv = [
-      keys.join(","),
-      ...items.map((row) =>
-        keys
-          .map((key) => `"${String(row[key] || "").replace(/"/g, '""')}"`)
-          .join(","),
-      ),
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${resource}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  async function exportCsv() {
+    try {
+      await downloadResourceCsv(resource);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
   }
 
   return (
@@ -1877,10 +1882,9 @@ function PeoplePage({
         </button>
         <button
           className="btn secondary"
-          disabled={!items.length}
           onClick={exportCsv}
         >
-          <Icon name="download" /> Export
+          <Icon name="download" /> Export CSV
         </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
           <Icon name="plus" /> Add {title.slice(0, -1).toLowerCase()}
@@ -2529,6 +2533,7 @@ function CompaniesPage() {
     { key: "owner", label: "Owner" },
   ];
   const { items, create, update, remove } = useResource<Row>("companies");
+  const { toast } = useApp();
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const custom = useSchema("companies");
@@ -2539,12 +2544,22 @@ function CompaniesPage() {
     ...nonPhoto,
     ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
   ];
+  async function exportCsv() {
+    try {
+      await downloadResourceCsv("companies");
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
   return (
     <div className="page">
       <PageHeader
         title="Companies"
         description="Accounts, organizations and relationship ownership."
       >
+        <button className="btn secondary" onClick={exportCsv}>
+          <Icon name="download" /> Export CSV
+        </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
           <Icon name="plus" /> Add company
         </button>
