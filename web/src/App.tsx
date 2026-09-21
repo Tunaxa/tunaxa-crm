@@ -4681,23 +4681,45 @@ function DuplicatesPage() {
                     <small>Primary record (kept)</small>
                   </div>
                 </div>
-                <button
-                  className="btn secondary compact"
-                  disabled={busy}
-                  onClick={() => mergeGroup(group)}
-                >
-                  <Icon name="check" /> Merge into primary
-                </button>
-              </div>
-              {group.names.slice(1).map((name: string, j: number) => (
-                <div className="dupe-member" key={j}>
-                  <Avatar name={name} />
-                  <div>
-                    <b>{name}</b>
-                    <small>Duplicate (will be merged)</small>
-                  </div>
+                <div className="row-actions">
+                  <button
+                    className="btn secondary compact"
+                    disabled={busy}
+                    onClick={() => mergeGroup(group)}
+                  >
+                    <Icon name="check" /> Merge into primary
+                  </button>
                 </div>
-              ))}
+              </div>
+              {group.names.slice(1).map((name: string, j: number) => {
+                const sc = group.matches?.[j]?.score ?? null;
+                return (
+                  <div className="dupe-member" key={j}>
+                    <Avatar name={name} />
+                    <div>
+                      <b>{name}</b>
+                      <small>Duplicate (will be merged)</small>
+                    </div>
+                    <div className="row-actions">
+                      <Badge
+                        tone={
+                          sc == null
+                            ? "neutral"
+                            : sc >= 0.8
+                              ? "green"
+                              : sc >= 0.6
+                                ? "amber"
+                                : "red"
+                        }
+                      >
+                        {sc == null
+                          ? "n/a"
+                          : `${Math.round(sc * 100)}% match to primary`}
+                      </Badge>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ))
         ) : (
