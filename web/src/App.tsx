@@ -214,7 +214,7 @@ function AuthScreen() {
 
   return (
     <main className="login-page">
-      <img className="login-bg" src="/crm-dashboard-bg.jpg" alt="" />
+      <img className="login-bg" src="/crm-dashboard-bg.webp" alt="" />
       <div className="login-overlay" />
       <section className="login-hero">
         <div className="login-hero-inner">
