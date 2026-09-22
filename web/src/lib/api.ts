@@ -126,16 +126,16 @@ export async function api<T>(
   };
 
   let response = await requestWithRetry();
-  const body = await response.json().catch(() => ({}));
+  let body = await response.json().catch(() => ({}));
   if (response.status === 401 && path !== "/auth/refresh") {
     const token = await refreshToken();
     if (token) {
       response = await requestWithRetry();
-      const retryBody = await response.json().catch(() => ({}));
-      if (response.ok) return retryBody as T;
+      body = await response.json().catch(() => ({}));
+      if (response.ok) return body as T;
       if (response.status !== 401) {
         const error = new Error(
-          retryBody.error || `Request failed (${response.status})`,
+          body.error || `Request failed (${response.status})`,
         ) as ApiError;
         error.status = response.status;
         throw error;
