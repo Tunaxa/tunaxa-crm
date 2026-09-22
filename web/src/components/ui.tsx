@@ -6,7 +6,7 @@ const focusableSelector = [
   'a[href]',
   'area[href]',
   'button:not([disabled])',
-  'input:not([disabled]):not([type="hidden"])',
+  'input:not([disabled]):not([hidden]):not([type="hidden"])',
   'select:not([disabled])',
   'textarea:not([disabled])',
   'iframe',
