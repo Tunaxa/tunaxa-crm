@@ -92,14 +92,30 @@ export async function api<T>(
   };
 
   const requestWithRetry = async () => {
+    const method = String(options.method || "GET").toUpperCase();
+    const retryEnabled =
+      method === "GET" ||
+      method === "HEAD" ||
+      method === "OPTIONS" ||
+      new Headers(options.headers || {}).has("Idempotency-Key");
+
     for (let attempt = 0; attempt < MAX_REQUEST_ATTEMPTS; attempt += 1) {
       try {
         const response = await request();
         if (
+          !retryEnabled ||
           !isRetryableStatus(response.status) ||
           attempt === MAX_REQUEST_ATTEMPTS - 1
         )
           return response;
+        await waitForRetry(attempt, response);
+      } catch (error) {
+        if (!retryEnabled || attempt === MAX_REQUEST_ATTEMPTS - 1) throw error;
+        await waitForRetry(attempt);
+      }
+    }
+    throw new Error("Request retry limit exceeded");
+  };
         await waitForRetry(attempt, response);
       } catch (error) {
         if (attempt === MAX_REQUEST_ATTEMPTS - 1) throw error;
