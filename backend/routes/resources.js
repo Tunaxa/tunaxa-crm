@@ -6,6 +6,7 @@ import { requireRole } from "../middleware/rbac.js";
 import {
   id,
   now,
+  auditEntry,
   coerceBuiltIns,
   coerceCustomFields,
   resources,
@@ -49,6 +50,30 @@ export default function registerResourceRoutes(app) {
       rows = rows.filter((item) =>
         JSON.stringify(item).toLowerCase().includes(q),
       );
+    if (req.params.resource === "activities") {
+      const type = String(req.query.type || "").toLowerCase();
+      if (type) {
+        const directTypes = ["email", "call", "meeting", "note"];
+        rows = rows.filter((item) => {
+          const itemType = String(item.type || "").toLowerCase();
+          return type === "system"
+            ? !directTypes.includes(itemType)
+            : itemType === type;
+        });
+      }
+      const recordId = String(req.query.recordId || "");
+      const contact = String(req.query.contact || "").trim().toLowerCase();
+      if (recordId || contact) {
+        rows = rows.filter((item) =>
+          (recordId && item.recordId === recordId) ||
+          (contact && (
+            String(item.contact || "").toLowerCase() === contact ||
+            String(item.company || "").toLowerCase() === contact ||
+            String(item.title || "").toLowerCase().includes(contact)
+          )),
+        );
+      }
+    }
     if (req.fieldPerms)
       rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
     res.json(rows);
@@ -116,12 +141,13 @@ export default function registerResourceRoutes(app) {
           });
         }
         if (resource !== "audit")
-          db.audit.unshift({
-            id: id("audit"),
+          db.audit.unshift(auditEntry({
             action: `Created ${resource.slice(0, -1)}`,
             actor: req.user.name,
             createdAt,
-          });
+            req,
+            resourceId: record.id,
+          }));
         return record;
       });
       const event = createdEvent(resource);
@@ -152,12 +178,12 @@ export default function registerResourceRoutes(app) {
           updatedAt: now(),
         }));
         db[resource].unshift(...rows);
-        db.audit.unshift({
-          id: id("audit"),
+        db.audit.unshift(auditEntry({
           action: `Imported ${rows.length} ${resource}`,
           actor: req.user.name,
-          createdAt: now(),
-        });
+          req,
+          resourceId: rows.map((row) => row.id).join(","),
+        }));
         return rows;
       });
       broadcast("records.batch", { resource, count: saved.length });
@@ -194,12 +220,12 @@ export default function registerResourceRoutes(app) {
           db[resource][index],
           req.user,
         );
-        db.audit.unshift({
-          id: id("audit"),
+        db.audit.unshift(auditEntry({
           action: `Updated ${resource.slice(0, -1)}`,
           actor: req.user.name,
-          createdAt: now(),
-        });
+          req,
+          resourceId: req.params.id,
+        }));
         return db[resource][index];
       });
       if (!item) return res.status(404).json({ error: "Record not found" });
@@ -247,12 +273,12 @@ export default function registerResourceRoutes(app) {
           db.activities = db.activities.filter(
             (item) => item.messageId !== record.id,
           );
-        db.audit.unshift({
-          id: id("audit"),
+        db.audit.unshift(auditEntry({
           action: `Deleted ${resource.slice(0, -1)}`,
           actor: req.user.name,
-          createdAt: now(),
-        });
+          req,
+          resourceId: record.id,
+        }));
         return { files };
       });
       if (!result) return res.status(404).json({ error: "Record not found" });
