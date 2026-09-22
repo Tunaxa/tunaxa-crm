@@ -3,21 +3,14 @@ import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
 import { getSettings, isEmailConfigured, isTwilioConfigured } from '../services/config.js';
-import { sendEmail } from '../services/smtp.js';
+import { sendEmail, injectTracking } from '../services/smtp.js';
 import { sendSms } from '../services/twilio.js';
 import { triggerWorkflows } from '../services/workflows.js';
 import { validate, MessageSchema } from '../services/validate.js';
 import { createRateLimiter } from '../services/rateLimit.js';
+import crypto from 'node:crypto';
 
 const providerLimiter = createRateLimiter({ windowMs: 60_000, max: 30, prefix: 'provider' });
-
-function injectTracking(body, messageId, publicBaseUrl) {
-  const baseUrl = publicBaseUrl || 'http://127.0.0.1:3001';
-  const pixel = `<img src="${baseUrl}/api/tracking/open/${messageId}" width="1" height="1" style="display:none" alt="" />`;
-  let html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#33475b">${body.replace(/\n/g, '<br>')}</div>${pixel}`;
-  html = html.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${baseUrl}/api/tracking/click/${messageId}?url=${encodeURIComponent(url)}">${url}</a>`);
-  return html;
-}
 
 export default function registerMessageRoutes(app) {
   app.post('/api/messages/send', auth, requireRole('admin', 'member'), providerLimiter, validate(MessageSchema), async (req, res) => {
@@ -26,6 +19,7 @@ export default function registerMessageRoutes(app) {
     const createdAt = now();
     let message = null;
     let replay = false;
+    let token = '';
     await mutateDb(db => {
       if (idempotencyKey) {
         const found = db.messages.find(x => x.idempotencyKey === idempotencyKey);
@@ -57,7 +51,14 @@ export default function registerMessageRoutes(app) {
           message = { ...db.messages[index] };
         }
       }
-      db.activities.unshift({ id: id('activity'), title: `${channel} to ${message.to}`, type: channel === 'SMS' ? 'SMS' : 'Email', contact: message.to, notes: subject || body, date: createdAt.slice(0, 10), messageId: message.id, createdAt, updatedAt: createdAt });
+      const activity = { id: id('activity'), title: `${channel} to ${message.to}`, type: channel === 'SMS' ? 'SMS' : 'Email', contact: message.to, notes: subject || body, date: createdAt.slice(0, 10), messageId: message.id, createdAt, updatedAt: createdAt };
+      db.activities.unshift(activity);
+      if (channel === 'Email' && settings.emailTracking !== false && settings.publicBaseUrl) {
+        token = crypto.randomBytes(16).toString('hex');
+        db.emailTracking = db.emailTracking || [];
+        db.emailTracking.unshift({ token, activityId: activity.id, recipient: message.to, openCount: 0, firstOpenedAt: null, lastOpenedAt: null, clicks: [], createdAt });
+        if (db.emailTracking.length > 5000) db.emailTracking.length = 5000;
+      }
       db.audit.unshift({ id: id('audit'), action: `Queued ${channel} to ${message.to}`, actor: req.user.name, createdAt });
     });
     if (replay) return res.json(message);
@@ -68,9 +69,12 @@ export default function registerMessageRoutes(app) {
         ? await sendSms(settings, { to: message.to, body: message.body })
         : { delivered: false, status: 'Saved', error: 'Twilio is not configured in Settings' };
     } else {
-      const track = settings.emailTracking !== false && settings.publicBaseUrl;
+      const track = Boolean(token) && settings.emailTracking !== false && settings.publicBaseUrl;
+      const html = track
+        ? injectTracking(`<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#33475b">${message.body.replace(/\n/g, '<br>')}</div>`, token, settings.publicBaseUrl)
+        : undefined;
       result = isEmailConfigured(settings)
-        ? await sendEmail(settings, { to: message.to, subject: message.subject, text: message.body, html: track ? injectTracking(message.body, message.id, settings.publicBaseUrl) : undefined })
+        ? await sendEmail(settings, { to: message.to, subject: message.subject, text: message.body, html })
         : { delivered: false, status: 'Saved', error: 'SMTP is not configured in Settings' };
     }
 

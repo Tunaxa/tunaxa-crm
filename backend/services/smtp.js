@@ -64,6 +64,34 @@ function getTransporter(settings) {
   return transporter;
 }
 
+const CLICK_SENTINEL = "/api/tracking/click/";
+
+export function injectTracking(htmlContent, token, baseUrl) {
+  const target = String(htmlContent || "");
+  const base = String(baseUrl || "").replace(/\/+$/, "");
+  const trackingUrl = `${base}/api/tracking/open/${token}`;
+  const clickUrl = `${base}/api/tracking/click/${token}?url=`;
+  const pixel = `<img src="${trackingUrl}" width="1" height="1" style="display:none !important;" alt="" />`;
+
+  let html = target.replace(
+    /<a\b([^>]*)href="(https?:\/\/[^"]+)"/gi,
+    (match, attrs, href) => {
+      if (href.includes(CLICK_SENTINEL)) return match;
+      return `<a${attrs}href="${clickUrl}${encodeURIComponent(href)}"`;
+    },
+  );
+  html = html.replace(
+    /<a\b([^>]*)href='(https?:\/\/[^']+)'/gi,
+    (match, attrs, href) => {
+      if (href.includes(CLICK_SENTINEL)) return match;
+      return `<a${attrs}href='${clickUrl}${encodeURIComponent(href)}'`;
+    },
+  );
+
+  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${pixel}</body>`);
+  return `${html}${pixel}`;
+}
+
 const fromAddress = (settings) =>
   settings.emailFrom ||
   `"${settings.workspaceName || "Tunaxa"}" <${settings.smtpUser || settings.emailSender || "no-reply@tunaxa.app"}>`;
