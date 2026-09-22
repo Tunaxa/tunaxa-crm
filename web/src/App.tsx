@@ -30,6 +30,7 @@ import {
 import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { GoalProgress } from "./components/goals/GoalProgress";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -126,6 +127,7 @@ const navGroups: NavGroup[] = [
       { path: "/reports", label: "nav.reports", icon: "reports" },
       { path: "/goals", label: "nav.goals", icon: "goal" },
       { path: "/duplicates", label: "nav.duplicates", icon: "duplicate" },
+      { path: "/audit", label: "nav.audit", icon: "shield" },
     ],
   },
   {
@@ -213,7 +215,7 @@ function AuthScreen() {
 
   return (
     <main className="login-page">
-      <img className="login-bg" src="/crm-dashboard-bg.jpg" alt="" />
+      <img className="login-bg" src="/crm-dashboard-bg.webp" alt="" />
       <div className="login-overlay" />
       <section className="login-hero">
         <div className="login-hero-inner">
@@ -827,6 +829,7 @@ function Shell() {
               <Route path="/duplicates" element={<DuplicatesPage />} />
               <Route path="/portal" element={<PortalPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/audit" element={<AuditPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
@@ -1518,6 +1521,7 @@ function CrudTablePage({
   primary,
   statusTone,
   moneyColumn,
+  extraColumn,
 }: {
   resource: string;
   title: string;
@@ -1531,6 +1535,7 @@ function CrudTablePage({
   primary?: (row: Row) => string;
   statusTone?: (value?: string) => BadgeTone;
   moneyColumn?: string[];
+  extraColumn?: { title: string; render: (row: Row) => ReactNode };
 }) {
   const { items, loading, load, create, update, remove } =
     useResource<Row>(resource);
@@ -1671,6 +1676,7 @@ function CrudTablePage({
                 {cols.slice(1).map((c) => (
                   <th key={c.key}>{c.label}</th>
                 ))}
+                {extraColumn ? <th>{extraColumn.title}</th> : null}
                 <th />
               </tr>
             </thead>
@@ -1704,6 +1710,7 @@ function CrudTablePage({
                       <td key={c.key}>{cell(row, c)}</td>
                     ),
                   )}
+                  {extraColumn ? <td>{extraColumn.render(row)}</td> : null}
                   <td>
                     <div className="row-actions">
                       <button
@@ -1780,6 +1787,22 @@ function useSchema(object: string): FieldSpec[] {
   return custom;
 }
 
+async function downloadResourceCsv(resource: string) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`/api/${resource}/export.csv`, { headers });
+  if (!response.ok) throw new Error(`Export failed (${response.status})`);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${resource}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 function PeoplePage({
   resource,
   title,
@@ -1840,23 +1863,12 @@ function PeoplePage({
     }
   }
 
-  function exportCsv() {
-    if (!items.length) return toast("Nothing to export", "error");
-    const keys = allFields.map((x) => x.key);
-    const csv = [
-      keys.join(","),
-      ...items.map((row) =>
-        keys
-          .map((key) => `"${String(row[key] || "").replace(/"/g, '""')}"`)
-          .join(","),
-      ),
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${resource}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  async function exportCsv() {
+    try {
+      await downloadResourceCsv(resource);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
   }
 
   return (
@@ -1877,10 +1889,9 @@ function PeoplePage({
         </button>
         <button
           className="btn secondary"
-          disabled={!items.length}
           onClick={exportCsv}
         >
-          <Icon name="download" /> Export
+          <Icon name="download" /> Export CSV
         </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
           <Icon name="plus" /> Add {title.slice(0, -1).toLowerCase()}
@@ -2016,6 +2027,15 @@ function PeoplePage({
 
 const detailTabList = ["Overview", "Activity", "Notes", "Emails"] as const;
 type DetailTab = (typeof detailTabList)[number];
+const activityFilters = ["All", "Emails", "Calls", "Meetings", "Notes", "System"] as const;
+type ActivityFilter = (typeof activityFilters)[number];
+const activityFilterTypes: Partial<Record<ActivityFilter, string>> = {
+  Emails: "Email",
+  Calls: "Call",
+  Meetings: "Meeting",
+  Notes: "Note",
+  System: "System",
+};
 
 function RecordDetailPage({
   resource,
@@ -2034,11 +2054,15 @@ function RecordDetailPage({
   const [tab, setTab] = useState<DetailTab>("Overview");
   const [edit, setEdit] = useState(false);
   const [activities, setActivities] = useState<Row[]>([]);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("All");
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState(false);
   const [messages, setMessages] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
+  const showActivityFilters = resource === "contacts" || resource === "companies";
 
   const photoKey = resource === "companies" ? "logo" : "avatar";
   const photoField: FieldSpec = {
@@ -2063,25 +2087,34 @@ function RecordDetailPage({
   }, [id, resource]);
 
   useEffect(() => {
-    if (!record) return;
+    if (!record || (tab !== "Activity" && tab !== "Notes")) return;
+    const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
-    api<Row[]>("/activities")
-      .then((items) =>
-        setActivities(
-          items.filter(
-            (a) =>
-              a.contact === name ||
-              a.title?.toLowerCase().includes(name.toLowerCase()),
-          ),
-        ),
-      )
+    if (name) params.set("contact", name);
+    const type = tab === "Notes"
+      ? "Note"
+      : showActivityFilters ? activityFilterTypes[activityFilter] : undefined;
+    if (type) params.set("type", type);
+    const controller = new AbortController();
+    setActivities([]);
+    setActivityError(false);
+    setActivityLoading(true);
+    api<Row[]>(`/activities?${params}`, { signal: controller.signal })
+      .then(setActivities)
+      .catch((error) => {
+        if (error.name !== "AbortError") setActivityError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setActivityLoading(false);
+      });
+    return () => controller.abort();
+  }, [record, tab, activityFilter, showActivityFilters]);
+
+  useEffect(() => {
+    if (!record?.email) return;
+    api<Row[]>("/messages")
+      .then((items) => setMessages(items.filter((m) => m.to === record.email)))
       .catch(() => {});
-    if (record.email)
-      api<Row[]>("/messages")
-        .then((items) =>
-          setMessages(items.filter((m) => m.to === record.email)),
-        )
-        .catch(() => {});
   }, [record]);
 
   async function addNote() {
@@ -2211,7 +2244,7 @@ function RecordDetailPage({
             {t}
             {t === "Emails" && messages.length ? (
               <span>{messages.length}</span>
-            ) : t === "Activity" && activities.length ? (
+            ) : t === "Activity" && tab === "Activity" && activities.length ? (
               <span>{activities.length}</span>
             ) : null}
           </button>
@@ -2243,7 +2276,26 @@ function RecordDetailPage({
 
         {tab === "Activity" && (
           <div className="detail-activity">
-            {activities.length ? (
+            {showActivityFilters && (
+              <div className="detail-tabs activity-filter-tabs" role="group" aria-label="Filter activities">
+                {activityFilters.map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    aria-pressed={activityFilter === filter}
+                    className={activityFilter === filter ? "active" : ""}
+                    onClick={() => setActivityFilter(filter)}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            )}
+            {activityLoading ? (
+              <div className="table-loading">Loading activities…</div>
+            ) : activityError ? (
+              <Empty icon="activity" title="Could not load activities" text="Try another filter." />
+            ) : activities.length ? (
               activities.map((a) => (
                 <div className="activity-item" key={a.id}>
                   {activityIcon(a.type)}
@@ -2291,7 +2343,7 @@ function RecordDetailPage({
                 {noteBusy ? "Saving…" : "Add note"}
               </button>
             </div>
-            {activities
+            {!activityLoading && activities
               .filter((a) => a.type === "Note")
               .map((n) => (
                 <div className="note-card" key={n.id}>
@@ -2302,7 +2354,11 @@ function RecordDetailPage({
                   <p>{n.notes || n.title}</p>
                 </div>
               ))}
-            {!activities.filter((a) => a.type === "Note").length &&
+            {activityLoading ? (
+              <div className="table-loading">Loading notes…</div>
+            ) : activityError ? (
+              <Empty icon="edit" title="Could not load notes" text="Try reopening this tab." />
+            ) : !activities.filter((a) => a.type === "Note").length &&
             !noteText ? (
               <Empty
                 icon="edit"
@@ -2529,6 +2585,7 @@ function CompaniesPage() {
     { key: "owner", label: "Owner" },
   ];
   const { items, create, update, remove } = useResource<Row>("companies");
+  const { toast } = useApp();
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const custom = useSchema("companies");
@@ -2539,12 +2596,22 @@ function CompaniesPage() {
     ...nonPhoto,
     ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
   ];
+  async function exportCsv() {
+    try {
+      await downloadResourceCsv("companies");
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
   return (
     <div className="page">
       <PageHeader
         title="Companies"
         description="Accounts, organizations and relationship ownership."
       >
+        <button className="btn secondary" onClick={exportCsv}>
+          <Icon name="download" /> Export CSV
+        </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
           <Icon name="plus" /> Add company
         </button>
@@ -4570,9 +4637,20 @@ function GoalsPage() {
       description="Time-bound targets and progress across teams."
       icon="goal"
       fields={goalFields}
+      columns={goalFields.slice(0, 4)}
       nameKey="name"
       statusField="period"
       synopsis={(r) => `${r.metric || ""}${r.owner ? " · " + r.owner : ""}`}
+      extraColumn={{
+        title: "Progress",
+        render: (goal) => (
+          <GoalProgress
+            name={String(goal.name || "Goal")}
+            current={goal.current}
+            target={goal.target}
+          />
+        ),
+      }}
     />
   );
 }
@@ -5261,6 +5339,70 @@ function ReportsPage() {
             icon="reports"
             title="No report data"
             text="Add leads, deals, calls or tasks and reporting will populate automatically."
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function AuditPage() {
+  const { toast } = useApp();
+  const [items, setItems] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api<{ items: Row[] }>("/audit")
+      .then((result) => setItems(result.items))
+      .catch((error) => toast((error as Error).message, "error"))
+      .finally(() => setLoading(false));
+  }, [toast]);
+
+  return (
+    <div className="page">
+      <PageHeader
+        title="Audit log"
+        description="Review workspace changes and request details."
+      />
+      <section className="surface table-surface">
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : items.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Actor</th>
+                  <th>Created</th>
+                  <th>IP</th>
+                  <th>User agent</th>
+                  <th>Resource ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{entry.action || "—"}</td>
+                    <td>{entry.actor || "—"}</td>
+                    <td>
+                      {entry.createdAt
+                        ? new Date(entry.createdAt).toLocaleString()
+                        : "—"}
+                    </td>
+                    <td>{entry.ip || "—"}</td>
+                    <td>{entry.userAgent || "—"}</td>
+                    <td>{entry.resourceId || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty
+            icon="shield"
+            title="No audit entries"
+            text="Workspace activity will appear here."
           />
         )}
       </section>

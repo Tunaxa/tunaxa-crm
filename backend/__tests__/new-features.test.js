@@ -20,6 +20,26 @@ afterAll(async () => {
 const auth = () => ({ Authorization: `Bearer ${token}` });
 
 describe("Audit Log", () => {
+  it("records request metadata for resource mutations", async () => {
+    const userAgent = "audit-test-agent";
+    const created = await request(app)
+      .post("/api/leads")
+      .set(auth())
+      .set("User-Agent", userAgent)
+      .send({ name: "Audit detail lead" });
+    expect(created.status).toBe(201);
+
+    const res = await request(app).get("/api/audit?limit=1").set(auth());
+    expect(res.status).toBe(200);
+    expect(res.body.items[0]).toMatchObject({
+      action: "Created lead",
+      actor: "Test User",
+      userAgent,
+      resourceId: created.body.id,
+    });
+    expect(res.body.items[0].ip).toBeTruthy();
+  });
+
   it("GET /api/audit lists audit entries", async () => {
     const res = await request(app).get("/api/audit").set(auth());
     expect(res.status).toBe(200);
