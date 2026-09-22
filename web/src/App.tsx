@@ -126,6 +126,7 @@ const navGroups: NavGroup[] = [
       { path: "/reports", label: "nav.reports", icon: "reports" },
       { path: "/goals", label: "nav.goals", icon: "goal" },
       { path: "/duplicates", label: "nav.duplicates", icon: "duplicate" },
+      { path: "/audit", label: "nav.audit", icon: "shield" },
     ],
   },
   {
@@ -827,6 +828,7 @@ function Shell() {
               <Route path="/duplicates" element={<DuplicatesPage />} />
               <Route path="/portal" element={<PortalPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/audit" element={<AuditPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
@@ -5246,6 +5248,70 @@ function ReportsPage() {
             icon="reports"
             title="No report data"
             text="Add leads, deals, calls or tasks and reporting will populate automatically."
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function AuditPage() {
+  const { toast } = useApp();
+  const [items, setItems] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api<{ items: Row[] }>("/audit")
+      .then((result) => setItems(result.items))
+      .catch((error) => toast((error as Error).message, "error"))
+      .finally(() => setLoading(false));
+  }, [toast]);
+
+  return (
+    <div className="page">
+      <PageHeader
+        title="Audit log"
+        description="Review workspace changes and request details."
+      />
+      <section className="surface table-surface">
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : items.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Actor</th>
+                  <th>Created</th>
+                  <th>IP</th>
+                  <th>User agent</th>
+                  <th>Resource ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{entry.action || "—"}</td>
+                    <td>{entry.actor || "—"}</td>
+                    <td>
+                      {entry.createdAt
+                        ? new Date(entry.createdAt).toLocaleString()
+                        : "—"}
+                    </td>
+                    <td>{entry.ip || "—"}</td>
+                    <td>{entry.userAgent || "—"}</td>
+                    <td>{entry.resourceId || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty
+            icon="shield"
+            title="No audit entries"
+            text="Workspace activity will appear here."
           />
         )}
       </section>
