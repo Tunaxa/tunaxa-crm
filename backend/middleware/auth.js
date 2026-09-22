@@ -26,6 +26,7 @@ export function createAuth({ allowQueryToken = false } = {}) {
     const db = await readDb();
     const session = db.sessions.find(x => x.token === token);
     if (!session || sessionIsExpired(session)) return res.status(401).json({ error: 'Session expired' });
+    if (session.purpose === 'sse' && !allowQueryToken) return res.status(401).json({ error: 'Unauthorized' });
     if (queryToken && session.purpose !== 'sse') return res.status(401).json({ error: 'Unauthorized' });
     const user = db.users.find(x => x.id === session.userId);
     if (!user) return res.status(401).json({ error: 'User not found' });
