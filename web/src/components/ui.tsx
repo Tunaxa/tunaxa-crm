@@ -88,7 +88,7 @@ export function Modal({ title, children, onClose, footer }: { title: string; chi
   }, [onClose]);
 
   return <div className="modal-backdrop" onMouseDown={onClose}>
-    <section ref={modalRef} className="modal" role="dialog" aria-modal="true" tabIndex={-1} onMouseDown={event => event.stopPropagation()}>
+    <section ref={modalRef} className="modal" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onMouseDown={event => event.stopPropagation()}>
       <header><h3>{title}</h3><button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button></header>
       <div className="modal-body">{children}</div>
       {footer ? <footer>{footer}</footer> : null}
