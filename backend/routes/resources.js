@@ -50,6 +50,30 @@ export default function registerResourceRoutes(app) {
       rows = rows.filter((item) =>
         JSON.stringify(item).toLowerCase().includes(q),
       );
+    if (req.params.resource === "activities") {
+      const type = String(req.query.type || "").toLowerCase();
+      if (type) {
+        const directTypes = ["email", "call", "meeting", "note"];
+        rows = rows.filter((item) => {
+          const itemType = String(item.type || "").toLowerCase();
+          return type === "system"
+            ? !directTypes.includes(itemType)
+            : itemType === type;
+        });
+      }
+      const recordId = String(req.query.recordId || "");
+      const contact = String(req.query.contact || "").trim().toLowerCase();
+      if (recordId || contact) {
+        rows = rows.filter((item) =>
+          (recordId && item.recordId === recordId) ||
+          (contact && (
+            String(item.contact || "").toLowerCase() === contact ||
+            String(item.company || "").toLowerCase() === contact ||
+            String(item.title || "").toLowerCase().includes(contact)
+          )),
+        );
+      }
+    }
     if (req.fieldPerms)
       rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
     res.json(rows);
