@@ -3871,6 +3871,9 @@ tbody tr:hover {
 .audit-list {
   padding: 0 15px;
 }
+.table-scroll {
+  overflow-x: auto;
+}
 .audit-list article {
   height: 58px;
   display: grid;

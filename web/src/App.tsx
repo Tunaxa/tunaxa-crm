@@ -127,6 +127,7 @@ const navGroups: NavGroup[] = [
       { path: "/reports", label: "nav.reports", icon: "reports" },
       { path: "/goals", label: "nav.goals", icon: "goal" },
       { path: "/duplicates", label: "nav.duplicates", icon: "duplicate" },
+      { path: "/audit", label: "nav.audit", icon: "shield" },
     ],
   },
   {
@@ -214,7 +215,7 @@ function AuthScreen() {
 
   return (
     <main className="login-page">
-      <img className="login-bg" src="/crm-dashboard-bg.jpg" alt="" />
+      <img className="login-bg" src="/crm-dashboard-bg.webp" alt="" />
       <div className="login-overlay" />
       <section className="login-hero">
         <div className="login-hero-inner">
@@ -828,6 +829,7 @@ function Shell() {
               <Route path="/duplicates" element={<DuplicatesPage />} />
               <Route path="/portal" element={<PortalPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/audit" element={<AuditPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
@@ -2021,6 +2023,15 @@ function PeoplePage({
 
 const detailTabList = ["Overview", "Activity", "Notes", "Emails"] as const;
 type DetailTab = (typeof detailTabList)[number];
+const activityFilters = ["All", "Emails", "Calls", "Meetings", "Notes", "System"] as const;
+type ActivityFilter = (typeof activityFilters)[number];
+const activityFilterTypes: Partial<Record<ActivityFilter, string>> = {
+  Emails: "Email",
+  Calls: "Call",
+  Meetings: "Meeting",
+  Notes: "Note",
+  System: "System",
+};
 
 function RecordDetailPage({
   resource,
@@ -2039,11 +2050,15 @@ function RecordDetailPage({
   const [tab, setTab] = useState<DetailTab>("Overview");
   const [edit, setEdit] = useState(false);
   const [activities, setActivities] = useState<Row[]>([]);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("All");
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState(false);
   const [messages, setMessages] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
+  const showActivityFilters = resource === "contacts" || resource === "companies";
 
   const photoKey = resource === "companies" ? "logo" : "avatar";
   const photoField: FieldSpec = {
@@ -2068,25 +2083,34 @@ function RecordDetailPage({
   }, [id, resource]);
 
   useEffect(() => {
-    if (!record) return;
+    if (!record || (tab !== "Activity" && tab !== "Notes")) return;
+    const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
-    api<Row[]>("/activities")
-      .then((items) =>
-        setActivities(
-          items.filter(
-            (a) =>
-              a.contact === name ||
-              a.title?.toLowerCase().includes(name.toLowerCase()),
-          ),
-        ),
-      )
+    if (name) params.set("contact", name);
+    const type = tab === "Notes"
+      ? "Note"
+      : showActivityFilters ? activityFilterTypes[activityFilter] : undefined;
+    if (type) params.set("type", type);
+    const controller = new AbortController();
+    setActivities([]);
+    setActivityError(false);
+    setActivityLoading(true);
+    api<Row[]>(`/activities?${params}`, { signal: controller.signal })
+      .then(setActivities)
+      .catch((error) => {
+        if (error.name !== "AbortError") setActivityError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setActivityLoading(false);
+      });
+    return () => controller.abort();
+  }, [record, tab, activityFilter, showActivityFilters]);
+
+  useEffect(() => {
+    if (!record?.email) return;
+    api<Row[]>("/messages")
+      .then((items) => setMessages(items.filter((m) => m.to === record.email)))
       .catch(() => {});
-    if (record.email)
-      api<Row[]>("/messages")
-        .then((items) =>
-          setMessages(items.filter((m) => m.to === record.email)),
-        )
-        .catch(() => {});
   }, [record]);
 
   async function addNote() {
@@ -2216,7 +2240,7 @@ function RecordDetailPage({
             {t}
             {t === "Emails" && messages.length ? (
               <span>{messages.length}</span>
-            ) : t === "Activity" && activities.length ? (
+            ) : t === "Activity" && tab === "Activity" && activities.length ? (
               <span>{activities.length}</span>
             ) : null}
           </button>
@@ -2248,7 +2272,26 @@ function RecordDetailPage({
 
         {tab === "Activity" && (
           <div className="detail-activity">
-            {activities.length ? (
+            {showActivityFilters && (
+              <div className="detail-tabs activity-filter-tabs" role="group" aria-label="Filter activities">
+                {activityFilters.map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    aria-pressed={activityFilter === filter}
+                    className={activityFilter === filter ? "active" : ""}
+                    onClick={() => setActivityFilter(filter)}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            )}
+            {activityLoading ? (
+              <div className="table-loading">Loading activities…</div>
+            ) : activityError ? (
+              <Empty icon="activity" title="Could not load activities" text="Try another filter." />
+            ) : activities.length ? (
               activities.map((a) => (
                 <div className="activity-item" key={a.id}>
                   {activityIcon(a.type)}
@@ -2296,7 +2339,7 @@ function RecordDetailPage({
                 {noteBusy ? "Saving…" : "Add note"}
               </button>
             </div>
-            {activities
+            {!activityLoading && activities
               .filter((a) => a.type === "Note")
               .map((n) => (
                 <div className="note-card" key={n.id}>
@@ -2307,7 +2350,11 @@ function RecordDetailPage({
                   <p>{n.notes || n.title}</p>
                 </div>
               ))}
-            {!activities.filter((a) => a.type === "Note").length &&
+            {activityLoading ? (
+              <div className="table-loading">Loading notes…</div>
+            ) : activityError ? (
+              <Empty icon="edit" title="Could not load notes" text="Try reopening this tab." />
+            ) : !activities.filter((a) => a.type === "Note").length &&
             !noteText ? (
               <Empty
                 icon="edit"
@@ -5262,6 +5309,70 @@ function ReportsPage() {
             icon="reports"
             title="No report data"
             text="Add leads, deals, calls or tasks and reporting will populate automatically."
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function AuditPage() {
+  const { toast } = useApp();
+  const [items, setItems] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api<{ items: Row[] }>("/audit")
+      .then((result) => setItems(result.items))
+      .catch((error) => toast((error as Error).message, "error"))
+      .finally(() => setLoading(false));
+  }, [toast]);
+
+  return (
+    <div className="page">
+      <PageHeader
+        title="Audit log"
+        description="Review workspace changes and request details."
+      />
+      <section className="surface table-surface">
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : items.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Actor</th>
+                  <th>Created</th>
+                  <th>IP</th>
+                  <th>User agent</th>
+                  <th>Resource ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{entry.action || "—"}</td>
+                    <td>{entry.actor || "—"}</td>
+                    <td>
+                      {entry.createdAt
+                        ? new Date(entry.createdAt).toLocaleString()
+                        : "—"}
+                    </td>
+                    <td>{entry.ip || "—"}</td>
+                    <td>{entry.userAgent || "—"}</td>
+                    <td>{entry.resourceId || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty
+            icon="shield"
+            title="No audit entries"
+            text="Workspace activity will appear here."
           />
         )}
       </section>
