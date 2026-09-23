@@ -303,6 +303,7 @@ function AuthScreen() {
                 />
                 <button
                   type="button"
+                  aria-label={show ? "Hide password" : "Show password"}
                   onClick={() => setShow((value) => !value)}
                 >
                   <Icon name="eye" />
@@ -395,6 +396,8 @@ function Shell() {
           </button>
           <button
             className="collapse-btn"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
             onClick={() => setCollapsed((value) => !value)}
           >
             <Icon name="arrowLeft" />
@@ -434,6 +437,7 @@ function Shell() {
           <div className="topbar-left">
             <button
               className="icon-btn mobile-menu"
+              aria-label="Open navigation menu"
               onClick={() => setMobile(true)}
             >
               <Icon name="menu" />
@@ -462,11 +466,16 @@ function Shell() {
             >
               <Icon name="plus" /> New
             </button>
-            <button className="icon-btn" onClick={toggleTheme}>
+            <button
+              className="icon-btn"
+              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
+              onClick={toggleTheme}
+            >
               <Icon name={theme ? "sun" : "moon"} />
             </button>
             <button
               className="icon-btn notification-btn"
+              aria-label="Notifications"
               onClick={() => toast("No new notifications")}
             >
               <Icon name="bell" />
@@ -970,11 +979,16 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           <Icon name="search" />
           <input
             autoFocus
+            aria-label="Search workspace"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search leads, contacts, deals, tasks..."
           />
-          <button className="icon-btn tiny" onClick={onClose}>
+          <button
+            className="icon-btn tiny"
+            aria-label="Close search"
+            onClick={onClose}
+          >
             <Icon name="close" />
           </button>
         </div>
@@ -1659,6 +1673,7 @@ function CrudTablePage({
           <div className="header-search">
             <Icon name="search" />
             <input
+              aria-label={`Search ${title.toLowerCase()}`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
@@ -1902,6 +1917,7 @@ function PeoplePage({
           <div className="header-search">
             <Icon name="search" />
             <input
+              aria-label={`Search ${title.toLowerCase()}`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
@@ -2226,6 +2242,7 @@ function RecordDetailPage({
             </button>
             <button
               className="btn ghost compact danger-link"
+              aria-label={`Delete ${record.name || record.title || "record"}`}
               onClick={deleteRecord}
             >
               <Icon name="trash" />
@@ -2330,6 +2347,7 @@ function RecordDetailPage({
           <div className="detail-notes">
             <div className="note-compose">
               <textarea
+                aria-label="Add a note"
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 placeholder="Write a note…"
@@ -2644,12 +2662,14 @@ function CompaniesPage() {
                 >
                   <button
                     className="icon-btn tiny"
+                    aria-label={`Edit ${company.name || "company"}`}
                     onClick={() => setEdit(company)}
                   >
                     <Icon name="edit" />
                   </button>
                   <button
                     className="icon-btn tiny danger-link"
+                    aria-label={`Delete ${company.name || "company"}`}
                     onClick={() =>
                       confirm("Delete this company?") && remove(company.id)
                     }
@@ -2792,12 +2812,14 @@ function PipelinePage() {
                         <div className="row-actions">
                           <button
                             className="icon-btn tiny"
+                            aria-label={`Edit ${row.title || "deal"}`}
                             onClick={() => setEdit(row)}
                           >
                             <Icon name="edit" />
                           </button>
                           <button
                             className="icon-btn tiny danger-link"
+                            aria-label={`Delete ${row.title || "deal"}`}
                             onClick={() =>
                               confirm("Delete this deal?") && remove(row.id)
                             }
@@ -2963,6 +2985,11 @@ function TasksPage() {
                     <div>
                       <button
                         className={`task-check ${status === "Completed" ? "checked" : ""}`}
+                        aria-label={
+                          status === "Completed"
+                            ? `Mark ${task.title || "task"} as open`
+                            : `Mark ${task.title || "task"} as completed`
+                        }
                         onClick={() =>
                           update(task.id, {
                             status:
@@ -2993,12 +3020,14 @@ function TasksPage() {
                       <div className="row-actions">
                         <button
                           className="icon-btn tiny"
+                          aria-label={`Edit ${task.title || "task"}`}
                           onClick={() => setEdit(task)}
                         >
                           <Icon name="edit" />
                         </button>
                         <button
                           className="icon-btn tiny danger-link"
+                          aria-label={`Delete ${task.title || "task"}`}
                           onClick={() =>
                             confirm("Delete this task?") && remove(task.id)
                           }
@@ -3149,6 +3178,7 @@ function CalendarPage() {
         <div className="calendar-top">
           <button
             className="icon-btn"
+            aria-label="Previous month"
             onClick={() =>
               setCursor((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))
             }
@@ -3158,6 +3188,7 @@ function CalendarPage() {
           <h2>{monthLabel}</h2>
           <button
             className="icon-btn"
+            aria-label="Next month"
             onClick={() =>
               setCursor((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))
             }
@@ -3443,6 +3474,7 @@ function WorkflowForm({
           <div className="workflow-action" key={index}>
             <div className="workflow-action-head">
               <select
+                aria-label={`Action ${index + 1} type`}
                 value={action.type}
                 onChange={(e) => setAction(index, { type: e.target.value })}
               >
@@ -3571,17 +3603,20 @@ function WorkflowsPage() {
                 </div>
                 <div className="flow-actions">
                   <Toggle
+                    label={`${flow.enabled ? "Disable" : "Enable"} ${flow.name || "workflow"}`}
                     value={Boolean(flow.enabled)}
                     onChange={(enabled) => update(flow.id, { enabled })}
                   />
                   <button
                     className="icon-btn tiny"
+                    aria-label={`Edit ${flow.name || "workflow"}`}
                     onClick={() => setEdit(flow)}
                   >
                     <Icon name="edit" />
                   </button>
                   <button
                     className="icon-btn tiny danger-link"
+                    aria-label={`Delete ${flow.name || "workflow"}`}
                     onClick={() =>
                       confirm("Delete this workflow?") && remove(flow.id)
                     }
@@ -3730,6 +3765,7 @@ function CallsPage() {
           </div>
           <input
             className="dial-input"
+            aria-label="Phone number"
             value={number}
             onChange={(e) => setNumber(e.target.value)}
             placeholder="Enter a number"
@@ -4163,6 +4199,7 @@ function InboxPage() {
                 </button>
                 <button
                   className="icon-btn danger-link"
+                  aria-label="Delete message"
                   onClick={() => {
                     confirm("Delete this message?") && remove(selected.id);
                     setSelected(null);
@@ -4389,6 +4426,7 @@ function SequencesPage() {
               {item.enabled ? "Active" : "Paused"}
             </Badge>
             <Toggle
+              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "sequence"}`}
               value={Boolean(item.enabled)}
               onChange={(enabled) => update(item.id, { enabled })}
             />
@@ -4909,6 +4947,7 @@ function PortalView({
             <div className="portal-access-form">
               <input
                 type="email"
+                aria-label="Account email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
@@ -5466,6 +5505,7 @@ function TeamPage() {
                     <div className="row-actions">
                       <button
                         className="icon-btn tiny"
+                        aria-label={`Edit ${member.name || member.email || "team member"}`}
                         onClick={() => setEdit(member)}
                       >
                         <Icon name="edit" />
@@ -5473,6 +5513,7 @@ function TeamPage() {
                       {member.role !== "Owner" ? (
                         <button
                           className="icon-btn tiny danger-link"
+                          aria-label={`Remove ${member.name || member.email || "team member"}`}
                           onClick={() =>
                             confirm("Remove this member?") && remove(member.id)
                           }
@@ -5581,6 +5622,7 @@ function FieldsPage() {
                   <td>{item.type}</td>
                   <td>
                     <Toggle
+                      label={`Make ${item.name || "field"} ${item.required ? "optional" : "required"}`}
                       value={Boolean(item.required)}
                       onChange={(required) => update(item.id, { required })}
                     />
@@ -5589,12 +5631,14 @@ function FieldsPage() {
                     <div className="row-actions">
                       <button
                         className="icon-btn tiny"
+                        aria-label={`Edit ${item.name || "custom field"}`}
                         onClick={() => setEdit(item)}
                       >
                         <Icon name="edit" />
                       </button>
                       <button
                         className="icon-btn tiny danger-link"
+                        aria-label={`Delete ${item.name || "custom field"}`}
                         onClick={() =>
                           confirm("Delete this custom field?") &&
                           remove(item.id)
@@ -5703,11 +5747,16 @@ function TemplatesManager() {
                 <small>{t.subject}</small>
               </div>
               <div className="row-actions">
-                <button className="icon-btn tiny" onClick={() => setEdit(t)}>
+                <button
+                  className="icon-btn tiny"
+                  aria-label={`Edit ${t.name || "template"}`}
+                  onClick={() => setEdit(t)}
+                >
                   <Icon name="edit" />
                 </button>
                 <button
                   className="icon-btn tiny danger-link"
+                  aria-label={`Delete ${t.name || "template"}`}
                   onClick={() => removeTemplate(t)}
                 >
                   <Icon name="trash" />
@@ -6127,7 +6176,7 @@ function Setting({
         <b>{title}</b>
         <p>{text}</p>
       </div>
-      <Toggle value={Boolean(value)} onChange={onChange} />
+      <Toggle label={title} value={Boolean(value)} onChange={onChange} />
     </div>
   );
 }
@@ -6364,14 +6413,18 @@ function FormEditor({
             <b>Enable form</b>
             <p>Visitors can see and submit this form.</p>
           </div>
-          <Toggle value={enabled} onChange={setEnabled} />
+          <Toggle label="Enable form" value={enabled} onChange={setEnabled} />
         </div>
         <div className="setting-toggle">
           <div>
             <b>Progressive profiling</b>
             <p>Hide fields the visitor has already answered.</p>
           </div>
-          <Toggle value={progressive} onChange={setProgressive} />
+          <Toggle
+            label="Progressive profiling"
+            value={progressive}
+            onChange={setProgressive}
+          />
         </div>
         <h4>Form fields</h4>
         {fields.map((field, i) => (
@@ -6408,6 +6461,7 @@ function FormEditor({
             <div className="toggle-row">
               <input
                 type="checkbox"
+                aria-label={`${field.name || `Field ${i + 1}`} required`}
                 checked={Boolean(field.required)}
                 onChange={(e) => setField(i, { required: e.target.checked })}
               />
@@ -6456,6 +6510,7 @@ function WebhooksPage() {
               {item.enabled ? "Active" : "Disabled"}
             </Badge>
             <Toggle
+              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "webhook endpoint"}`}
               value={Boolean(item.enabled)}
               onChange={(enabled) => update(item.id, { enabled })}
             />
@@ -6568,7 +6623,7 @@ function WebhookEditor({
             <b>Enabled</b>
             <p>Accept inbound deliveries at this endpoint.</p>
           </div>
-          <Toggle value={enabled} onChange={setEnabled} />
+          <Toggle label="Enable webhook endpoint" value={enabled} onChange={setEnabled} />
         </div>
       </div>
     </Drawer>
