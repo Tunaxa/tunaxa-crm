@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { readDb, mutateDb } from "../store.js";
+import { mutateDb } from "../store.js";
 
 const id = (prefix) => `${prefix}_${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();

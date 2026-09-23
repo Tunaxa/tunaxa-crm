@@ -64,6 +64,33 @@ describe('Webhook endpoints (Automation)', () => {
     expect(ep.requestCount).toBeGreaterThanOrEqual(1);
   });
 
+  it('returns recent deliveries for a specific endpoint', async () => {
+    const res = await request(app).get(`/api/webhookEndpoints/${endpointId}/deliveries`).set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.every(d => d.endpointId === endpointId)).toBe(true);
+    expect(res.body.some(d => d.payload?.hello === 'world')).toBe(true);
+    expect(res.body[0].status).toBe('received');
+    expect(res.body[0].attemptNumber).toBeGreaterThanOrEqual(1);
+    expect(res.body[0].contentType).toContain('json');
+  });
+
+  it('numbers delivery attempts per endpoint in order', async () => {
+    const before = await request(app).get(`/api/webhookEndpoints/${endpointId}/deliveries`).set('Authorization', `Bearer ${token}`);
+    const count = before.body.length;
+    const hit = await request(app).post('/api/hooks/' + url.split('/api/hooks/')[1]).send({ hello: 'numbered' });
+    expect(hit.status).toBe(200);
+    const after = await request(app).get(`/api/webhookEndpoints/${endpointId}/deliveries`).set('Authorization', `Bearer ${token}`);
+    expect(after.body[0].attemptNumber).toBe(count + 1);
+  });
+
+  it('rejects deliveries listing without auth and for unknown endpoints', async () => {
+    const unauth = await request(app).get(`/api/webhookEndpoints/${endpointId}/deliveries`);
+    expect(unauth.status).toBe(401);
+    const missing = await request(app).get('/api/webhookEndpoints/whk_missing/deliveries').set('Authorization', `Bearer ${token}`);
+    expect(missing.status).toBe(404);
+  });
+
   it('registers webhook.received as a workflow trigger', async () => {
     const res = await request(app).get('/api/workflows/meta').set('Authorization', `Bearer ${token}`);
     expect(res.body.events.some(e => e.value === 'webhook.received')).toBe(true);
