@@ -31,6 +31,11 @@ import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { GoalProgress } from "./components/goals/GoalProgress";
+import {
+  invitationIsExpired,
+  normalizeInvitations,
+  type PendingInvitation,
+} from "./components/team/invitations";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -5396,8 +5401,18 @@ function AuditPage() {
 }
 
 function TeamPage() {
-  const { items, create, update, remove } = useResource<Row>("team");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const { toast } = useApp();
+  const { items, loading, update, remove } = useResource<Row>("team");
+  const [edit, setEdit] = useState<Row | undefined>();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteSent, setInviteSent] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(true);
+  const [invitationsError, setInvitationsError] = useState("");
+  const [resending, setResending] = useState("");
   const fields: FieldSpec[] = [
     { key: "avatar", label: "Photo", type: "photo" },
     { key: "name", label: "Name" },
@@ -5417,18 +5432,162 @@ function TeamPage() {
   ];
   const fieldsForForm = fields.filter((f) => f.key !== "avatar");
   const avatarField = fields.find((f) => f.key === "avatar")!;
+
+  async function loadInvitations() {
+    setInvitationsLoading(true);
+    setInvitationsError("");
+    try {
+      const response = await api<unknown>("/users/invites");
+      setInvitations(normalizeInvitations(response));
+    } catch (error) {
+      setInvitationsError((error as Error).message);
+    } finally {
+      setInvitationsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadInvitations();
+  }, []);
+
+  function openInvite() {
+    setInviteEmail("");
+    setInviteSent("");
+    setInviteError("");
+    setInviteOpen(true);
+  }
+
+  async function sendInvitation(event: FormEvent) {
+    event.preventDefault();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setInviteError("Enter a valid email address.");
+      return;
+    }
+
+    setInviteBusy(true);
+    setInviteError("");
+    try {
+      await api("/users/invite", json("POST", { email }));
+      setInviteSent(email);
+      toast("Invitation sent");
+      await loadInvitations();
+    } catch (error) {
+      setInviteError((error as Error).message);
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function resendInvitation(invitation: PendingInvitation) {
+    setResending(invitation.id);
+    setInvitationsError("");
+    try {
+      await api(
+        "/users/invite",
+        json("POST", { email: invitation.email }),
+      );
+      toast(`Invitation resent to ${invitation.email}`);
+      await loadInvitations();
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      setResending("");
+    }
+  }
+
   return (
     <div className="page">
       <PageHeader
         title="Team & Roles"
         description="Workspace members and role assignments."
       >
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add member
+        <button className="btn primary" onClick={openInvite}>
+          <Icon name="send" /> Invite member
         </button>
       </PageHeader>
+
+      <section className="surface team-invitations" aria-labelledby="pending-invitations-title">
+        <header className="team-invitations-head">
+          <div>
+            <h2 id="pending-invitations-title">Pending invitations</h2>
+            <p>Invitations that have not been accepted yet.</p>
+          </div>
+          <Badge tone="blue">{invitations.length} pending</Badge>
+        </header>
+
+        {invitationsLoading ? (
+          <div className="team-invitations-state" aria-live="polite">
+            Loading invitations…
+          </div>
+        ) : invitationsError ? (
+          <div className="team-invitations-error" role="alert">
+            <div>
+              <b>Could not load pending invitations</b>
+              <span>{invitationsError}</span>
+            </div>
+            <button
+              className="btn secondary compact"
+              type="button"
+              onClick={() => void loadInvitations()}
+            >
+              Try again
+            </button>
+          </div>
+        ) : invitations.length ? (
+          <div className="team-invitation-list">
+            {invitations.map((invitation) => {
+              const expired = invitationIsExpired(invitation.expiresAt);
+              const expiry = invitation.expiresAt
+                ? new Date(invitation.expiresAt)
+                : null;
+              const validExpiry = expiry && !Number.isNaN(expiry.getTime());
+              return (
+                <article className="team-invitation-row" key={invitation.id}>
+                  <span className="team-invitation-icon">
+                    <Icon name="mail" />
+                  </span>
+                  <div className="team-invitation-copy">
+                    <b>{invitation.email}</b>
+                    <span>
+                      <Icon name="clock" size={13} />
+                      {validExpiry ? (
+                        <time dateTime={invitation.expiresAt}>
+                          {expired ? "Expired " : "Expires "}
+                          {expiry.toLocaleString()}
+                        </time>
+                      ) : (
+                        "Expiry unavailable"
+                      )}
+                    </span>
+                  </div>
+                  <Badge tone={expired ? "amber" : "blue"}>
+                    {expired ? "Expired" : "Pending"}
+                  </Badge>
+                  <button
+                    className="btn secondary compact"
+                    type="button"
+                    disabled={resending === invitation.id}
+                    onClick={() => void resendInvitation(invitation)}
+                  >
+                    {resending === invitation.id ? "Sending…" : "Resend"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="team-invitations-state empty">
+            <Icon name="checkCircle" size={21} />
+            <span>No pending invitations</span>
+          </div>
+        )}
+      </section>
+
       <section className="surface table-surface">
-        {items.length ? (
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : items.length ? (
           <table>
             <thead>
               <tr>
@@ -5494,25 +5653,120 @@ function TeamPage() {
             action={
               <button
                 className="btn primary compact"
-                onClick={() => setEdit(null)}
+                onClick={openInvite}
               >
-                Add member
+                Invite member
               </button>
             }
           />
         )}
       </section>
+
       {edit !== undefined ? (
         <RecordForm
-          title={`${edit ? "Edit" : "Add"} team member`}
+          title="Edit team member"
           fields={[avatarField, ...fieldsForForm]}
-          initial={edit || { status: "Invited", role: "Sales rep" }}
+          initial={edit}
           onClose={() => setEdit(undefined)}
           onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
+            await update(edit.id, data);
             setEdit(undefined);
           }}
         />
+      ) : null}
+
+      {inviteOpen ? (
+        <Modal
+          title={inviteSent ? "Invitation sent" : "Invite a team member"}
+          onClose={() => !inviteBusy && setInviteOpen(false)}
+          footer={
+            inviteSent ? (
+              <>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={() => {
+                    setInviteEmail("");
+                    setInviteSent("");
+                    setInviteError("");
+                  }}
+                >
+                  Invite another
+                </button>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => setInviteOpen(false)}
+                >
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  disabled={inviteBusy}
+                  onClick={() => setInviteOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn primary"
+                  type="submit"
+                  form="team-invite-form"
+                  disabled={inviteBusy}
+                >
+                  <Icon name="send" />
+                  {inviteBusy ? "Sending…" : "Send invitation"}
+                </button>
+              </>
+            )
+          }
+        >
+          {inviteSent ? (
+            <div className="team-invite-success" role="status">
+              <span>
+                <Icon name="check" size={27} />
+              </span>
+              <h4>Invitation sent</h4>
+              <p>
+                An invitation was sent to <b>{inviteSent}</b>.
+              </p>
+            </div>
+          ) : (
+            <form id="team-invite-form" className="team-invite-form" onSubmit={sendInvitation}>
+              <div className="team-invite-intro">
+                <span>
+                  <Icon name="mail" size={22} />
+                </span>
+                <div>
+                  <b>Invite by email</b>
+                  <p>The new member will receive a link to join this workspace.</p>
+                </div>
+              </div>
+              <label className="field">
+                <span>Email address</span>
+                <input
+                  autoFocus
+                  type="email"
+                  value={inviteEmail}
+                  placeholder="teammate@company.com"
+                  autoComplete="email"
+                  onChange={(event) => {
+                    setInviteEmail(event.target.value);
+                    setInviteError("");
+                  }}
+                />
+              </label>
+              {inviteError ? (
+                <p className="inline-alert error" role="alert">
+                  <Icon name="warning" /> {inviteError}
+                </p>
+              ) : null}
+            </form>
+          )}
+        </Modal>
       ) : null}
     </div>
   );
