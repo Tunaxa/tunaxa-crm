@@ -31,6 +31,7 @@ import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { GoalProgress } from "./components/goals/GoalProgress";
+import { QuoteForm } from "./components/quotes/QuoteForm";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -1368,12 +1369,9 @@ const attendanceFields: FieldSpec[] = [
 const quoteFields: FieldSpec[] = [
   { key: "number", label: "Quote number", required: true },
   { key: "customer", label: "Customer / deal" },
-  {
-    key: "items",
-    label: 'Line items (one per line, e.g. "Product x3 = 150")',
-    type: "textarea",
-  },
-  { key: "discount", label: "Discount", type: "number" },
+  { key: "subtotal", label: "Subtotal", type: "number" },
+  { key: "discount", label: "Discount (%)", type: "number" },
+  { key: "tax", label: "Tax (%)", type: "number" },
   { key: "total", label: "Total", type: "number" },
   {
     key: "status",
@@ -1522,6 +1520,7 @@ function CrudTablePage({
   statusTone,
   moneyColumn,
   extraColumn,
+  renderEditor,
 }: {
   resource: string;
   title: string;
@@ -1536,6 +1535,12 @@ function CrudTablePage({
   statusTone?: (value?: string) => BadgeTone;
   moneyColumn?: string[];
   extraColumn?: { title: string; render: (row: Row) => ReactNode };
+  renderEditor?: (props: {
+    title: string;
+    initial: Row | Record<string, any>;
+    onClose: () => void;
+    onSave: (data: Record<string, any>) => Promise<void>;
+  }) => ReactNode;
 }) {
   const { items, loading, load, create, update, remove } =
     useResource<Row>(resource);
@@ -1762,16 +1767,28 @@ function CrudTablePage({
         )}
       </section>
       {edit !== undefined ? (
-        <RecordForm
-          title={`${edit ? "Edit" : "Add"} ${singular}`}
-          fields={fields}
-          initial={edit || {}}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
+        renderEditor ? (
+          renderEditor({
+            title: `${edit ? "Edit" : "Add"} ${singular}`,
+            initial: edit || {},
+            onClose: () => setEdit(undefined),
+            onSave: async (data) => {
+              edit ? await update(edit.id, data) : await create(data);
+              setEdit(undefined);
+            },
+          })
+        ) : (
+          <RecordForm
+            title={`${edit ? "Edit" : "Add"} ${singular}`}
+            fields={fields}
+            initial={edit || {}}
+            onClose={() => setEdit(undefined)}
+            onSave={async (data) => {
+              edit ? await update(edit.id, data) : await create(data);
+              setEdit(undefined);
+            }}
+          />
+        )
       ) : null}
     </div>
   );
@@ -4575,10 +4592,16 @@ function QuotesPage() {
       description="Generate and track quotes (estimate-to-contract)."
       icon="quote"
       fields={quoteFields}
+      columns={quoteFields.filter((field) =>
+        ["number", "customer", "total", "status", "expiryDate"].includes(
+          field.key,
+        ),
+      )}
       nameKey="number"
       statusField="status"
       synopsis={(r) => r.customer || r.deal || ""}
-      moneyColumn={["total", "discount"]}
+      moneyColumn={["total"]}
+      renderEditor={(props) => <QuoteForm {...props} />}
     />
   );
 }
