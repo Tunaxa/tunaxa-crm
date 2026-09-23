@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="100%" height="100%" fill="none">
+  <defs>
+    <!-- Contract Gradients -->
+    <linearGradient id="sign_sheet_grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#F8FAFC" />
+    </linearGradient>
+
+    <linearGradient id="sign_seal_grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+
+    <filter id="sign_iso_glow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#3B82F6" flood-opacity="0.18" />
+    </filter>
+  </defs>
+
+  <g filter="url(#sign_iso_glow)">
+    <!-- 1. ISOMETRIC CONTRACT SHEET -->
+    <!-- Base Contract Plane -->
+    <polygon points="300,80 480,185 300,290 120,185" fill="url(#sign_sheet_grad)" stroke="#CBD5E1" stroke-width="1.5" />
+    <polygon points="120,185 300,290 300,302 120,197" fill="#94A3B8" />
+    <polygon points="300,290 480,185 480,197 300,302" fill="#64748B" />
+
+    <!-- Contract Header Ribbon -->
+    <polygon points="300,80 440,162 400,185 260,103" fill="#EFF6FF" />
+    <text x="290" y="105" transform="rotate(30 290 105)" font-family="'Geist Mono', monospace" font-size="10" font-weight="700" fill="#2563EB">/ LEGAL AGREEMENT #8492</text>
+
+    <!-- Contract Clause Lines -->
+    <g stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round" opacity="0.6">
+      <line x1="220" y1="140" x2="340" y2="210" />
+      <line x1="200" y1="160" x2="310" y2="225" />
+      <line x1="180" y1="180" x2="280" y2="240" />
+    </g>
+
+    <!-- 2. AUDIT TRAIL HASH BLOCKS (Cryptographic Tamper-Proof Blocks) -->
+    <g transform="translate(140, 240)">
+      <polygon points="40,4 80,27 40,50 0,27" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5" />
+      <polygon points="0,27 40,50 40,56 0,33" fill="#BFDBFE" />
+      <polygon points="40,50 80,27 80,33 40,56" fill="#93C5FD" />
+      <text x="40" y="28" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="8" font-weight="700" fill="#1D4ED8">HASH: 0x9F4</text>
+    </g>
+
+    <g transform="translate(230, 290)">
+      <polygon points="40,4 80,27 40,50 0,27" fill="#EFF6FF" stroke="#10B981" stroke-width="1.5" />
+      <polygon points="0,27 40,50 40,56 0,33" fill="#A7F3D0" />
+      <polygon points="40,50 80,27 80,33 40,56" fill="#6EE7B7" />
+      <text x="40" y="28" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="8" font-weight="700" fill="#047857">VERIFIED</text>
+    </g>
+
+    <!-- 3. GOLD HOLOGRAPHIC SEAL (Isometric Stamp) -->
+    <ellipse cx="380" cy="220" rx="36" ry="20" fill="url(#sign_seal_grad)" stroke="#FFFFFF" stroke-width="2" />
+    <ellipse cx="380" cy="220" rx="28" ry="15" fill="#FBBF24" stroke="#D97706" stroke-width="1" stroke-dasharray="4 2" />
+    <text x="380" y="224" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="8" font-weight="800" fill="#78350F">LEGAL SEAL</text>
+
+    <!-- 4. FLOATING DIGITAL SIGNATURE SWEEP -->
+    <path d="M 240 230 C 270 200, 310 210, 330 190 C 350 170, 390 140, 420 120" stroke="#2563EB" stroke-width="4" stroke-linecap="round" fill="none" />
+    <polygon points="424,116 414,124 422,128" fill="#2563EB" />
+  </g>
+</svg>

@@ -4,43 +4,229 @@ import { requireRole } from '../middleware/rbac.js';
 import { now } from '../helpers.js';
 import { cacheFlush } from '../services/cache.js';
 import { createRateLimiter } from '../services/rateLimit.js';
+import Fuse from 'fuse.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
 const emailEquals = (record, email) => norm(record.customerEmail) === email || norm(record.email) === email || norm(record.contact) === email;
+const compact = value => norm(value).replace(/[^a-z0-9]/g, '');
+
+function similarity(left, right) {
+  const a = compact(left);
+  const b = compact(right);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length < 4 || b.length < 4) return 0;
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= a.length; row++) {
+    let diagonal = previous[0];
+    previous[0] = row;
+    for (let column = 1; column <= b.length; column++) {
+      const above = previous[column];
+      previous[column] = Math.min(
+        previous[column] + 1,
+        previous[column - 1] + 1,
+        diagonal + (a[row - 1] === b[column - 1] ? 0 : 1),
+      );
+      diagonal = above;
+    }
+  }
+  return 1 - previous[b.length] / Math.max(a.length, b.length);
+}
+
+function duplicateScore(left, right, resource) {
+  if (resource === 'contacts' && norm(left.email) && norm(left.email) === norm(right.email)) return 1;
+  const leftName = left.name;
+  const rightName = right.name;
+  return similarity(leftName, rightName);
+}
 
 export default function registerDataOpsRoutes(app) {
   app.get('/api/duplicates', auth, requireRole('admin', 'member'), async (req, res) => {
     const resource = req.query.resource === 'companies' ? 'companies' : 'contacts';
     const db = await readDb();
     const rows = db[resource] || [];
+    const groups = [];
+    const visited = new Set();
+    for (let index = 0; index < rows.length; index++) {
+      if (visited.has(index)) continue;
+      const group = [index];
+      visited.add(index);
+      for (let candidate = index + 1; candidate < rows.length; candidate++) {
+        if (duplicateScore(rows[index], rows[candidate], resource) >= 0.8) {
+          group.push(candidate);
+          visited.add(candidate);
+        }
+      }
+      if (group.length > 1) groups.push(group.map(position => rows[position]));
+    }
+    const duplicates = groups.map(group => {
+      const pairScores = [];
+      for (let left = 0; left < group.length; left++) {
+        for (let right = left + 1; right < group.length; right++) {
+          pairScores.push(duplicateScore(group[left], group[right], resource));
+        }
+      }
+      return {
+        ids: group.map(x => x.id),
+        names: group.map(x => resource === 'companies' ? x.name : (x.name || x.email)),
+        records: group,
+        confidence: Math.round((pairScores.reduce((total, score) => total + score, 0) / pairScores.length) * 100)
+      };
+    });
+    const keyOf = row => norm(resource === 'companies' ? row.name : (row.email || row.name));
+    const fuzzyKeyOf = row => {
+      if (resource !== 'companies' && row.email) return norm(String(row.email).split('@')[0]);
+      return keyOf(row);
+    };
+    const displayName = row => resource === 'companies' ? row.name : (row.name || row.email);
+
+    // Local parts shorter than this never fuzzy-match: they carry too little
+    // signal and cause short-string false positives (e.g. "ab" vs "abc").
+    const MIN_FUZZY_LOCAL_LEN = 4;
+
+    // Union-find over row indices (rows keep DB order so ids[0]/names[0] stays the primary record).
+    const parent = rows.map((_, i) => i);
+    const find = i => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+    const union = (a, b) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent[ra] = rb; };
+    const record = (a, b) => union(a, b);
+
+    // Exact normalized matches first (Fuse raw score 0 -> confidence 1.0).
     const byKey = new Map();
-    for (const row of rows) {
-      const key = norm(resource === 'companies' ? row.name : (row.email || row.name));
+    for (let i = 0; i < rows.length; i++) {
+      const key = keyOf(rows[i]);
       if (!key) continue;
       if (!byKey.has(key)) byKey.set(key, []);
-      byKey.get(key).push(row);
+      byKey.get(key).push(i);
     }
-    const duplicates = [...byKey.values()]
-      .filter(group => group.length > 1)
-      .map(group => ({ ids: group.map(x => x.id), names: group.map(x => resource === 'companies' ? x.name : (x.name || x.email)) }));
+    for (const group of byKey.values())
+      for (let i = 1; i < group.length; i++) record(group[0], group[i]);
+
+    // Levenshtein edit distance for length-normalized fuzzy scoring.
+    const editDistance = (a, b) => {
+      const m = a.length, n = b.length;
+      if (m === 0) return n;
+      if (n === 0) return m;
+      const prev = new Array(n + 1);
+      const curr = new Array(n + 1);
+      for (let j = 0; j <= n; j++) prev[j] = j;
+      for (let i = 1; i <= m; i++) {
+        curr[0] = i;
+        for (let j = 1; j <= n; j++) {
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+        }
+        for (let j = 0; j <= n; j++) prev[j] = curr[j];
+      }
+      return prev[n];
+    };
+
+    // Length-normalized raw distance in [0,1] (0 = identical). Unlike Fuse's
+    // bitap score, a substring/prefix match like "alice" vs "alice.miller"
+    // costs the full extra length (~0.58), so it stays above the 0.3 threshold
+    // instead of scoring ~0.001 like a near-identical match.
+    const fuzzyRaw = (a, b) => editDistance(a, b) / Math.max(a.length, b.length);
+
+    // Names still fuzzy-match via Fuse bitap (threshold 0.3, ignoreFieldNorm
+    // keeps the exposed score equal to Fuse's bitap score). Contact email local
+    // parts are compared with the length-normalized distance above.
+    const items = rows.map((row, i) => ({ i, key: fuzzyKeyOf(row) })).filter(x => x.key);
+    if (resource === 'companies') {
+      const fuse = new Fuse(items, { keys: ['key'], threshold: 0.3, includeScore: true, ignoreFieldNorm: true });
+      for (const { i } of items) {
+        const hits = fuse.search(fuzzyKeyOf(rows[i]));
+        for (const hit of hits) {
+          const j = hit.item.i;
+          if (i === j || hit.score === undefined || hit.score > 0.3) continue;
+          record(i, j);
+        }
+      }
+    } else {
+      for (let a = 0; a < items.length; a++) {
+        for (let b = a + 1; b < items.length; b++) {
+          const ka = items[a].key, kb = items[b].key;
+          if (ka.length < MIN_FUZZY_LOCAL_LEN || kb.length < MIN_FUZZY_LOCAL_LEN) continue;
+          // Edit distance is bounded below by the length difference, so pairs
+          // that can't possibly fall under the threshold are skipped cheaply.
+          if ((Math.abs(ka.length - kb.length) / Math.max(ka.length, kb.length)) > 0.3) continue;
+          const raw = fuzzyRaw(ka, kb);
+          if (raw > 0.3) continue;
+          record(items[a].i, items[b].i);
+        }
+      }
+    }
+
+    // Raw distance [0,1] between two rows for display, always measured against
+    // the primary (kept) record: exact keys short-circuit to 0; otherwise the
+    // same fuzzy comparison used to group them. Returns null when the pair
+    // isn't directly comparable (too short / above threshold).
+    const rawBetween = (rowA, rowB) => {
+      const keyA = keyOf(rowA), keyB = keyOf(rowB);
+      if (keyA && keyB && keyA === keyB) return 0;
+      const fa = fuzzyKeyOf(rowA), fb = fuzzyKeyOf(rowB);
+      if (!fa || !fb) return null;
+      if (resource === 'companies') {
+        const mini = new Fuse([{ key: fb }], { keys: ['key'], threshold: 0.3, includeScore: true, ignoreFieldNorm: true });
+        const hit = mini.search(fa)[0];
+        return hit && hit.score <= 0.3 ? hit.score : null;
+      }
+      if (fa.length < MIN_FUZZY_LOCAL_LEN || fb.length < MIN_FUZZY_LOCAL_LEN) return null;
+      const raw = fuzzyRaw(fa, fb);
+      return raw <= 0.3 ? raw : null;
+    };
+
+    const groups = new Map();
+    for (let i = 0; i < rows.length; i++) {
+      if (!keyOf(rows[i])) continue;
+      const root = find(i);
+      if (!groups.has(root)) groups.set(root, { ids: [], names: [], idxs: [] });
+      const g = groups.get(root);
+      g.ids.push(rows[i].id);
+      g.names.push(displayName(rows[i]));
+      g.idxs.push(i);
+    }
+    const duplicates = [...groups.values()]
+      .filter(group => group.ids.length > 1)
+      .map(group => {
+        const primary = rows[group.idxs[0]];
+        const matches = group.idxs.slice(1).map(idx => {
+          const row = rows[idx];
+          const raw = rawBetween(primary, row);
+          return {
+            id: row.id,
+            name: displayName(row),
+            rawScore: raw == null ? null : Math.round(raw * 10000) / 10000,
+            score: raw == null ? null : Math.round((1 - raw) * 100) / 100
+          };
+        });
+        // Group score is kept as a sort key only: the best direct match vs primary.
+        const score = Math.max(0, ...matches.map(m => m.score ?? 0));
+        return { ids: group.ids, names: group.names, score, matches };
+      })
+      .sort((a, b) => b.score - a.score);
     res.json({ resource, duplicates, total: duplicates.reduce((n, g) => n + g.ids.length, 0) });
   });
 
   app.post('/api/duplicates/merge', auth, requireRole('admin', 'member'), async (req, res) => {
     const { resource, keepId, mergeId } = req.body || {};
+    const mergeIds = Array.isArray(req.body?.mergeIds) ? req.body.mergeIds : (mergeId ? [mergeId] : []);
     if (!['contacts', 'companies'].includes(resource)) return res.status(400).json({ error: 'Invalid resource' });
-    if (!keepId || !mergeId || keepId === mergeId) return res.status(400).json({ error: 'keepId and mergeId are required and distinct' });
+    if (!keepId || !mergeIds.length) return res.status(400).json({ error: 'keepId and at least one mergeId are required' });
+    if (mergeIds.includes(keepId)) return res.status(400).json({ error: 'keepId and mergeIds must be distinct' });
+    if (new Set(mergeIds).size !== mergeIds.length) return res.status(400).json({ error: 'mergeIds must be unique' });
     const result = await mutateDb(db => {
       const rows = db[resource] || [];
       const keep = rows.find(r => r.id === keepId);
-      const merge = rows.find(r => r.id === mergeId);
-      if (!keep || !merge) return { error: 'One or both records not found' };
-      for (const key of Object.keys(merge)) {
-        if (key === 'id') continue;
-        if ((keep[key] === undefined || keep[key] === null || keep[key] === '') && merge[key] !== undefined && merge[key] !== '') keep[key] = merge[key];
+      if (!keep) return { error: 'One or both records not found' };
+      const merges = mergeIds.map(id => rows.find(r => r.id === id));
+      if (merges.some(r => !r)) return { error: 'One or both records not found' };
+      for (const merge of merges) {
+        for (const key of Object.keys(merge)) {
+          if (key === 'id') continue;
+          if ((keep[key] === undefined || keep[key] === null || keep[key] === '') && merge[key] !== undefined && merge[key] !== '') keep[key] = merge[key];
+        }
       }
       keep.updatedAt = now();
-      db[resource] = rows.filter(r => r.id !== mergeId);
+      db[resource] = rows.filter(r => !mergeIds.includes(r.id));
       return { keep };
     });
     if (result.error) return res.status(404).json({ error: result.error });
