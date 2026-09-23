@@ -31,6 +31,7 @@ import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { GoalProgress } from "./components/goals/GoalProgress";
+import { CustomReportBuilder } from "./components/reports/CustomReportBuilder";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -5250,6 +5251,7 @@ function ReportsPage() {
           <Icon name="download" /> Export CSV
         </button>
       </PageHeader>
+      <CustomReportBuilder />
       <div className="stats-grid">
         <article className="stat-card">
           <div className="stat-icon tone-blue">
