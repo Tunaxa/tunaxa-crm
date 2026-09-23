@@ -2713,6 +2713,17 @@ function CompaniesPage() {
 
 function PipelinePage() {
   const { items, create, update, remove } = useResource<Row>("deals");
+  const [pipelineStages, setPipelineStages] = useState<
+    { name: string; probability: number }[]
+  >([]);
+
+  useEffect(() => {
+    api<{
+      stages: { name: string; probability: number }[];
+    }>("/pipeline")
+      .then((data) => setPipelineStages(data.stages))
+      .catch(() => setPipelineStages([]));
+  }, []);
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -2739,6 +2750,24 @@ function PipelinePage() {
     await update(dragging, { stage });
     setDragging(null);
   }
+  const probabilityByStage = Object.fromEntries(
+    pipelineStages.map((stage) => [
+      stage.name.toLowerCase(),
+      stage.probability,
+    ]),
+  );
+
+  const totalPipelineValue = items.reduce(
+    (sum, row) => sum + Number(row.value || 0),
+    0,
+  );
+
+  const weightedPipelineValue = items.reduce((sum, row) => {
+    const probability =
+      probabilityByStage[String(row.stage || "new").toLowerCase()] ?? 0;
+
+    return sum + Number(row.value || 0) * (probability / 100);
+  }, 0);
   return (
     <div className="page pipeline-page">
       <PageHeader
@@ -2749,6 +2778,17 @@ function PipelinePage() {
           <Icon name="plus" /> Add deal
         </button>
       </PageHeader>
+      <div className="pipeline-summary">
+        <div className="summary-card">
+          <span>Total pipeline value</span>
+          <strong>{money(totalPipelineValue)}</strong>
+        </div>
+
+        <div className="summary-card">
+          <span>Weighted value</span>
+          <strong>{money(weightedPipelineValue)}</strong>
+        </div>
+      </div>
       {items.length ? (
         <div className="pipeline-board">
           {stages.map((stage) => {

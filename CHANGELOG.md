@@ -7,7 +7,7 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
-
+- Pipeline: added total and weighted pipeline value summary
 - CSV downloads for leads, contacts, and companies, backed by the authenticated `/api/:resource/export.csv` endpoint.
 - Goal progress bars and 50%, 75%, and 100% milestone badges on the Goals page, with red, amber, and green progress states.
 - Activity timeline type filters for contact and company details, with server-side filtering for All, Emails, Calls, Meetings, Notes, and System events.
