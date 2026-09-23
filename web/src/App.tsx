@@ -1025,10 +1025,10 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             <Empty
               icon="search"
               title="No matches"
-              text="Nothing in your JSON database matches this search."
+              text="No results found for your search."
             />
           )}
-        </div>
+        </div>git
       </div>
     </div>
   );
