@@ -3,6 +3,15 @@ import crypto from 'node:crypto';
 export const now = () => new Date().toISOString();
 export const id = prefix => `${prefix}_${crypto.randomUUID()}`;
 export const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role });
+export const auditEntry = ({ action, actor, createdAt = now(), req, resourceId = '' }) => ({
+  id: id('audit'),
+  action,
+  actor,
+  createdAt,
+  ip: req?.ip || '',
+  userAgent: req?.headers?.['user-agent'] || '',
+  resourceId,
+});
 
 export const hashPassword = password => {
   const salt = crypto.randomBytes(16).toString('hex');

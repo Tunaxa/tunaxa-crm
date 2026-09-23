@@ -3871,6 +3871,9 @@ tbody tr:hover {
 .audit-list {
   padding: 0 15px;
 }
+.table-scroll {
+  overflow-x: auto;
+}
 .audit-list article {
   height: 58px;
   display: grid;
@@ -7979,6 +7982,9 @@ html.dark .detail-section::after {
   font-size: 9px;
   color: var(--muted);
 }
+.dupe-member .row-actions {
+  margin-left: auto;
+}
 .portal-public-page {
   min-height: 100vh;
   background: var(--surface-2);
@@ -8100,4 +8106,56 @@ html.dark .detail-section::after {
   font-size: 12px;
   color: var(--brand-700);
   white-space: nowrap;
+}
+
+.goal-progress {
+  min-width: 220px;
+  white-space: normal;
+}
+.goal-progress-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+  color: var(--text);
+  font-size: 11px;
+}
+.goal-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+}
+.goal-progress-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+.goal-progress--red .goal-progress-track > span {
+  background: var(--red);
+}
+.goal-progress--amber .goal-progress-track > span {
+  background: var(--amber);
+}
+.goal-progress--green .goal-progress-track > span {
+  background: var(--green);
+}
+.goal-milestones {
+  display: flex;
+  gap: 5px;
+  margin-top: 7px;
+}
+.goal-milestones span {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 10px;
+}
+.goal-milestones span.reached {
+  border-color: var(--green);
+  background: var(--green-bg);
+  font-weight: 700;
 }

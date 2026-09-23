@@ -12,7 +12,13 @@ export default function registerAuditRoutes(app) {
     if (req.query.to) audit = audit.filter(a => a.createdAt <= req.query.to);
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const offset = parseInt(req.query.offset) || 0;
-    res.json({ items: audit.slice(offset, offset + limit), total: audit.length });
+    const items = audit.slice(offset, offset + limit).map((entry) => ({
+      ...entry,
+      ip: entry.ip || "",
+      userAgent: entry.userAgent || "",
+      resourceId: entry.resourceId || "",
+    }));
+    res.json({ items, total: audit.length });
   });
 
   app.get('/api/audit/stats', auth, async (req, res) => {
