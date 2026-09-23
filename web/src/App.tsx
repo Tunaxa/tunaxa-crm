@@ -31,6 +31,7 @@ import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { GoalProgress } from "./components/goals/GoalProgress";
+import { OnboardingGate } from "./components/onboarding/OnboardingWizard";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -6670,7 +6671,13 @@ function AppInner() {
         </section>
       </main>
     );
-  return user ? <Shell /> : <AuthScreen />;
+  return user ? (
+    <OnboardingGate userId={user.id}>
+      <Shell />
+    </OnboardingGate>
+  ) : (
+    <AuthScreen />
+  );
 }
 
 export default function App() {
