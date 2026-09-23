@@ -2,6 +2,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -30,7 +31,12 @@ import {
 import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { GoalProgress } from "./components/goals/GoalProgress";
+import {
+  GoalProgress,
+  getCrossedGoalMilestone,
+  getGoalProgress,
+  type GoalMilestone,
+} from "./components/goals/GoalProgress";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -4630,28 +4636,340 @@ function EventsPage() {
   );
 }
 function GoalsPage() {
+  const { items, loading, load, create, update, remove } =
+    useResource<Row>("goals");
+  const { toast } = useApp();
+  const navigate = useNavigate();
+  const importRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const [quickName, setQuickName] = useState("");
+  const [quickMetric, setQuickMetric] = useState("Revenue");
+  const [quickTarget, setQuickTarget] = useState("");
+  const [quickPeriod, setQuickPeriod] = useState("Monthly");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [celebration, setCelebration] = useState<{
+    goalName: string;
+    milestone: GoalMilestone;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!celebration) return;
+    const timer = window.setTimeout(() => setCelebration(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [celebration]);
+
+  async function quickAddGoal(event: FormEvent) {
+    event.preventDefault();
+    const target = Number(quickTarget);
+    if (!quickName.trim()) return toast("Goal name is required", "error");
+    if (!Number.isFinite(target) || target <= 0)
+      return toast("Target must be greater than zero", "error");
+
+    setQuickBusy(true);
+    try {
+      await create({
+        name: quickName.trim(),
+        metric: quickMetric,
+        period: quickPeriod,
+        target,
+        current: 0,
+      });
+      setQuickName("");
+      setQuickTarget("");
+      nameRef.current?.focus();
+    } catch {
+      // useResource displays the API error.
+    } finally {
+      setQuickBusy(false);
+    }
+  }
+
+  async function importCsv(file: File) {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return toast("CSV has no rows", "error");
+      const headers = lines[0]
+        .split(",")
+        .map((value) => value.trim().replace(/^"|"$/g, ""));
+      const records = lines.slice(1).map((line) => {
+        const values = line
+          .split(",")
+          .map((value) => value.trim().replace(/^"|"$/g, ""));
+        return Object.fromEntries(
+          headers.map((key, index) => [key, values[index] || ""]),
+        );
+      });
+      await api("/goals/batch", json("POST", records));
+      await load();
+      toast(`${records.length} goals imported`);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
+  }
+
+  async function exportGoals() {
+    try {
+      await downloadResourceCsv("goals");
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
+
+  async function saveGoal(data: Record<string, any>) {
+    const target = Number(data.target);
+    const current = Number(data.current);
+    if (!Number.isFinite(target) || target <= 0)
+      throw new Error("Target must be greater than zero");
+    if (!Number.isFinite(current) || current < 0)
+      throw new Error("Current value cannot be negative");
+
+    if (edit) {
+      const milestone = getCrossedGoalMilestone(
+        edit.current,
+        edit.target,
+        current,
+        target,
+      );
+      const saved = await update(edit.id, { ...data, current, target });
+      if (milestone) {
+        setCelebration({
+          goalName: String(saved.name || edit.name || "Goal"),
+          milestone,
+        });
+      }
+    } else {
+      const saved = await create({ ...data, current, target });
+      const milestone = getCrossedGoalMilestone(0, target, current, target);
+      if (milestone) {
+        setCelebration({
+          goalName: String(saved.name || data.name || "Goal"),
+          milestone,
+        });
+      }
+    }
+    setEdit(undefined);
+  }
+
   return (
-    <CrudTablePage
-      resource="goals"
-      title="Goals"
-      description="Time-bound targets and progress across teams."
-      icon="goal"
-      fields={goalFields}
-      columns={goalFields.slice(0, 4)}
-      nameKey="name"
-      statusField="period"
-      synopsis={(r) => `${r.metric || ""}${r.owner ? " · " + r.owner : ""}`}
-      extraColumn={{
-        title: "Progress",
-        render: (goal) => (
-          <GoalProgress
-            name={String(goal.name || "Goal")}
-            current={goal.current}
-            target={goal.target}
+    <div className="page goals-page">
+      <PageHeader
+        title="Goals"
+        description="Time-bound targets and progress across teams."
+      >
+        <input
+          ref={importRef}
+          hidden
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(event) =>
+            event.target.files?.[0] && importCsv(event.target.files[0])
+          }
+        />
+        <button
+          className="btn secondary"
+          onClick={() => importRef.current?.click()}
+        >
+          <Icon name="upload" /> Import
+        </button>
+        <button
+          className="btn secondary"
+          disabled={!items.length}
+          onClick={exportGoals}
+        >
+          <Icon name="download" /> Export CSV
+        </button>
+        <button className="btn secondary" onClick={() => setEdit(null)}>
+          <Icon name="plus" /> Full goal form
+        </button>
+      </PageHeader>
+
+      <form className="surface goal-quick-add" onSubmit={quickAddGoal}>
+        <div className="goal-quick-add-heading">
+          <span className="goal-quick-add-icon">
+            <Icon name="goal" />
+          </span>
+          <div>
+            <h2>Quick-add goal</h2>
+            <p>Create a goal now and fill in optional details later.</p>
+          </div>
+        </div>
+        <label className="field">
+          <span>Goal name</span>
+          <input
+            ref={nameRef}
+            value={quickName}
+            placeholder="e.g. Close 20 deals"
+            onChange={(event) => setQuickName(event.target.value)}
           />
-        ),
-      }}
-    />
+        </label>
+        <label className="field">
+          <span>Metric</span>
+          <select
+            value={quickMetric}
+            onChange={(event) => setQuickMetric(event.target.value)}
+          >
+            {goalFields[1].options?.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Target</span>
+          <input
+            type="number"
+            min="0.01"
+            step="any"
+            value={quickTarget}
+            placeholder="100"
+            onChange={(event) => setQuickTarget(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Period</span>
+          <select
+            value={quickPeriod}
+            onChange={(event) => setQuickPeriod(event.target.value)}
+          >
+            {goalFields[3].options?.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="btn primary goal-quick-add-submit"
+          disabled={quickBusy}
+          type="submit"
+        >
+          <Icon name="plus" /> {quickBusy ? "Adding…" : "Add goal"}
+        </button>
+      </form>
+
+      {loading ? (
+        <div className="table-loading">Loading goals…</div>
+      ) : items.length ? (
+        <div className="goal-card-grid">
+          {items.map((goal) => {
+            const progress = getGoalProgress(goal.current, goal.target);
+            return (
+              <article
+                className={`surface goal-card goal-card--${progress.tone}`}
+                key={goal.id}
+              >
+                <header>
+                  <button
+                    className="goal-card-title"
+                    onClick={() => navigate(`/goals/${goal.id}`)}
+                  >
+                    <span>{goal.metric || "Goal"}</span>
+                    <strong>{goal.name || "Untitled goal"}</strong>
+                  </button>
+                  <Badge tone={progress.tone}>{goal.period || "Monthly"}</Badge>
+                </header>
+                <GoalProgress
+                  name={String(goal.name || "Goal")}
+                  current={goal.current}
+                  target={goal.target}
+                />
+                <div className="goal-card-meta">
+                  <span>
+                    <b>Owner</b> {goal.owner || "Unassigned"}
+                  </span>
+                  <span>
+                    <b>Dates</b>{" "}
+                    {goal.startDate || goal.endDate
+                      ? `${goal.startDate || "Open"} – ${goal.endDate || "Open"}`
+                      : "No date range"}
+                  </span>
+                </div>
+                <footer>
+                  <button
+                    className="btn ghost compact"
+                    onClick={() => navigate(`/goals/${goal.id}`)}
+                  >
+                    View details
+                  </button>
+                  <div className="row-actions">
+                    <button
+                      className="icon-btn tiny"
+                      title="Edit goal"
+                      aria-label={`Edit ${goal.name || "goal"}`}
+                      onClick={() => setEdit(goal)}
+                    >
+                      <Icon name="edit" />
+                    </button>
+                    <button
+                      className="icon-btn tiny danger-link"
+                      title="Delete goal"
+                      aria-label={`Delete ${goal.name || "goal"}`}
+                      onClick={() =>
+                        confirm(`Delete ${goal.name || "goal"}?`) && remove(goal.id)
+                      }
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  </div>
+                </footer>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty
+          icon="goal"
+          title="No goals yet"
+          text="Use the quick-add form to create your first measurable goal."
+          action={
+            <button
+              className="btn primary compact"
+              onClick={() => nameRef.current?.focus()}
+            >
+              Add a goal
+            </button>
+          }
+        />
+      )}
+
+      {edit !== undefined ? (
+        <RecordForm
+          title={`${edit ? "Edit" : "Add"} goal`}
+          fields={goalFields}
+          initial={edit || {}}
+          onClose={() => setEdit(undefined)}
+          onSave={saveGoal}
+        />
+      ) : null}
+
+      {celebration ? (
+        <div className="goal-celebration" aria-live="polite">
+          <div className="goal-confetti" aria-hidden="true">
+            {Array.from({ length: 36 }, (_, index) => (
+              <i
+                key={index}
+                style={
+                  {
+                    left: `${(index * 37) % 100}%`,
+                    animationDelay: `${(index % 9) * 0.08}s`,
+                    animationDuration: `${1.8 + (index % 5) * 0.18}s`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+          <div className="goal-celebration-message">
+            <strong>{celebration.milestone}% milestone reached!</strong>
+            <span>{celebration.goalName}</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 function SurveysPage() {
