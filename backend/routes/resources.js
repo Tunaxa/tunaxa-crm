@@ -79,6 +79,27 @@ export default function registerResourceRoutes(app) {
     res.json(rows);
   });
 
+  app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
+    if (!resources.has(req.params.resource)) return next();
+    const db = req.db || (await readDb());
+    const rows = (db[req.params.resource] || []).map((item) =>
+      req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
+    );
+    const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+    const cell = (value) => {
+      const text = value == null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${req.params.resource}.csv"`);
+    res.write(`${columns.map(cell).join(",")}\r\n`);
+    for (const row of rows) {
+      res.write(`${columns.map((column) => cell(row[column])).join(",")}\r\n`);
+    }
+    res.end();
+  });
+
   app.get("/api/:resource/:id", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
     const db = req.db || (await readDb());
