@@ -1940,6 +1940,121 @@ tbody tr:hover {
   justify-content: flex-end;
   gap: 7px;
 }
+.signature-modal-content {
+  display: grid;
+  gap: 16px;
+}
+.signature-intro {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.signature-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.signature-mode-tabs button {
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.signature-mode-tabs button.active {
+  border-color: var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--brand-700);
+}
+.signature-mode-tabs button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.signature-draw-panel,
+.signature-type-panel {
+  display: grid;
+  gap: 9px;
+}
+.signature-canvas-wrap {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: #fff;
+}
+.signature-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: crosshair;
+  touch-action: none;
+}
+.signature-line {
+  position: absolute;
+  right: 12%;
+  bottom: 32px;
+  left: 12%;
+  border-bottom: 1px solid #d6dce5;
+  pointer-events: none;
+}
+.signature-draw-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.signature-type-panel .field {
+  margin: 0;
+}
+.signature-type-preview {
+  display: grid;
+  min-height: 130px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: #fff;
+  padding: 18px;
+  color: #172033;
+  font-family: "Brush Script MT", "Segoe Script", cursive;
+  font-size: clamp(32px, 8vw, 52px);
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+}
+.signature-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.signature-consent input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--brand);
+}
+.signature-error {
+  margin: -7px 0 0;
+  color: var(--red);
+  font-size: 11px;
+}
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
