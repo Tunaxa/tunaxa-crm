@@ -121,11 +121,13 @@ export async function syncInboxOnce() {
 
       newActivities.push({
         id: `act_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        title: parsed.subject || '(No Subject)',
         type: 'Email',
-        contactId: contact.id,
+        contact: contact.name || contact.email || senderEmail,
+        notes: parsed.text || parsed.html || '',
+        date: (parsed.date || new Date()).toISOString().slice(0, 10),
+        recordId: contact.id,
         dealId: null,
-        subject: parsed.subject || '(No Subject)',
-        body: parsed.text || parsed.html || '',
         direction: 'inbound',
         createdAt: (parsed.date || new Date()).toISOString(),
         metadata: {
