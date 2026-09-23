@@ -314,8 +314,7 @@ function AuthScreen() {
                 <input type="checkbox" /> Remember me
               </label>
             )}
-            <button className="btn login-submit" type="submit" disabled={busy}>
-              {busy
+            <button className="btn login-submit" type="submit" style={{ marginTop: 4 }} disabled={busy}>{busy
                 ? "Please wait…"
                 : mode === "setup"
                   ? "Create workspace"
