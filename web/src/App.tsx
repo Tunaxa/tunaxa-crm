@@ -1,3 +1,5 @@
+import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
+
 import {
   useEffect,
   useRef,
@@ -39,11 +41,9 @@ import { LayoutGrid, Sun, Moon } from "lucide-react";
 import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { CornerBrackets } from "./components/CornerBrackets";
 import { GoalProgress } from "./components/goals/GoalProgress";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
-
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
 type NavItem = { path: string; label: string; icon: string };
@@ -3651,12 +3651,17 @@ function WorkflowForm({
 function WorkflowsPage() {
   const { items, create, update, remove } = useResource<Row>("workflows");
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const [meta, setMeta] = useState<WorkflowMeta>({ events: [], actions: [] });
+  const [meta, setMeta] = useState<WorkflowMeta>({
+    events: [],
+    actions: [],
+  });
+
   useEffect(() => {
     api<WorkflowMeta>("/workflows/meta")
       .then(setMeta)
       .catch(() => {});
   }, []);
+
   return (
     <div className="page">
       <PageHeader
@@ -3671,63 +3676,88 @@ function WorkflowsPage() {
           <Icon name="plus" /> New workflow
         </button>
       </PageHeader>
+
       {items.length ? (
-        <div className="workflow-list">
-          {items.map((flow) => (
-            <article className="surface workflow-card" key={flow.id}>
-              <div className="workflow-top">
-                <span className="workflow-icon">
-                  <Icon name="workflow" />
-                </span>
-                <div className="workflow-copy">
-                  <h3>{flow.name || "Untitled workflow"}</h3>
-                  <p className="workflow-path">
-                    <span className="workflow-trigger">
-                      <Icon name="spark" />
-                      {flow.event
-                        ? meta.events.find((e) => e.value === flow.event)
-                            ?.label || flow.event
-                        : "Legacy (text)"}
-                    </span>
-                    <span className="workflow-arrow">
-                      <Icon name="arrowRight" />
-                    </span>
-                    <span className="workflow-action-note">
-                      {flow.actions?.length
-                        ? `${flow.actions.length} action${flow.actions.length > 1 ? "s" : ""}`
-                        : "No actions"}
-                    </span>
-                    {flow.filter?.field ? (
-                      <span className="workflow-filter">
-                        when {flow.filter.field} = {flow.filter.value}
+        <>
+          {/* Workflow visualisation avec React Flow */}
+          <WorkflowCanvas workflow={items[0]} />
+
+          {/* Liste des workflows existants */}
+          <div className="workflow-list">
+            {items.map((flow) => (
+              <article
+                className="surface workflow-card"
+                key={flow.id}
+              >
+                <div className="workflow-top">
+                  <span className="workflow-icon">
+                    <Icon name="workflow" />
+                  </span>
+
+                  <div className="workflow-copy">
+                    <h3>{flow.name || "Untitled workflow"}</h3>
+
+                    <p className="workflow-path">
+                      <span className="workflow-trigger">
+                        <Icon name="spark" />
+
+                        {flow.event
+                          ? meta.events.find(
+                              (e) => e.value === flow.event
+                            )?.label || flow.event
+                          : "Legacy (text)"}
                       </span>
-                    ) : null}
-                  </p>
+
+                      <span className="workflow-arrow">
+                        <Icon name="arrowRight" />
+                      </span>
+
+                      <span className="workflow-action-note">
+                        {flow.actions?.length
+                          ? `${flow.actions.length} action${
+                              flow.actions.length > 1 ? "s" : ""
+                            }`
+                          : "No actions"}
+                      </span>
+
+                      {flow.filter?.field ? (
+                        <span className="workflow-filter">
+                          when {flow.filter.field} = {flow.filter.value}
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+
+                  <div className="flow-actions">
+                    <Toggle
+                      value={Boolean(flow.enabled)}
+                      onChange={(enabled) =>
+                        update(flow.id, { enabled })
+                      }
+                    />
+
+                    <button
+                      className="icon-btn tiny"
+                      onClick={() => setEdit(flow)}
+                    >
+                      <Icon name="edit" />
+                    </button>
+
+                    <button
+                      className="icon-btn tiny danger-link"
+                      onClick={() =>
+                        confirm("Delete this workflow?") &&
+                        remove(flow.id)
+                      }
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flow-actions">
-                  <Toggle
-                    value={Boolean(flow.enabled)}
-                    onChange={(enabled) => update(flow.id, { enabled })}
-                  />
-                  <button
-                    className="icon-btn tiny"
-                    onClick={() => setEdit(flow)}
-                  >
-                    <Icon name="edit" />
-                  </button>
-                  <button
-                    className="icon-btn tiny danger-link"
-                    onClick={() =>
-                      confirm("Delete this workflow?") && remove(flow.id)
-                    }
-                  >
-                    <Icon name="trash" />
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
+              </article>
+            ))}
+          </div>
+        </>
       ) : (
         <Empty
           icon="workflow"
@@ -3743,6 +3773,7 @@ function WorkflowsPage() {
           }
         />
       )}
+
       {edit !== undefined ? (
         <WorkflowForm
           meta={meta}
@@ -3751,7 +3782,11 @@ function WorkflowsPage() {
           onSave={async (data) => {
             edit?.id
               ? await update(edit.id, data)
-              : await create({ ...data, enabled: true });
+              : await create({
+                  ...data,
+                  enabled: true,
+                });
+
             setEdit(undefined);
           }}
         />

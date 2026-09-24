@@ -8274,3 +8274,102 @@ html.dark .detail-section::after {
   background: var(--green-bg);
   font-weight: 700;
 }
+.workflow-node {
+  min-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.workflow-node-header {
+  padding: 10px 14px;
+  font-weight: 700;
+  color: white;
+}
+
+.workflow-node-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trigger-node .workflow-node-header {
+  background: #2563eb;
+}
+
+.condition-node .workflow-node-header {
+  background: #d97706;
+}
+
+.action-node .workflow-node-header {
+  background: #16a34a;
+}
+
+.condition-summary,
+.action-summary {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.action-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.action-summary span:first-child {
+  font-weight: 600;
+}
+
+.workflow-node .react-flow__handle {
+  width: 8px;
+  height: 8px;
+}
+.workflow-node {
+  min-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.workflow-node-header {
+  padding: 10px 14px;
+  color: white;
+  font-weight: 700;
+}
+
+.workflow-node-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trigger-node .workflow-node-header {
+  background: #2563eb;
+}
+
+.condition-node .workflow-node-header {
+  background: #d97706;
+}
+
+.action-node .workflow-node-header {
+  background: #16a34a;
+}
+
+.condition-summary,
+.action-summary {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.action-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
