@@ -39,7 +39,6 @@ import { LayoutGrid, Sun, Moon } from "lucide-react";
 import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { CornerBrackets } from "./components/CornerBrackets";
 import { GoalProgress } from "./components/goals/GoalProgress";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
@@ -1329,6 +1328,7 @@ const leadFields: FieldSpec[] = [
     options: ["New", "Contacted", "Qualified", "Nurture", "Lost"],
   },
   { key: "owner", label: "Owner" },
+  
   { key: "value", label: "Estimated value", type: "number" },
 ];
 const contactFields: FieldSpec[] = [
@@ -1830,8 +1830,26 @@ function CrudTablePage({
                             src={row.avatar || row.logo}
                           />
                           <div>
-                            <b>{nameOf(row)}</b>
-                            {synopsis ? <small>{synopsis(row)}</small> : null}
+                           <div className="lead-name-row">
+  <b>{nameOf(row)}</b>
+  {resource === "leads" &&
+  typeof row.leadScore === "number" ? (
+  <span title="AI Score — based on engagement signals">
+  <Badge
+    tone={
+      row.leadScore <= 40
+        ? "red"
+        : row.leadScore <= 70
+          ? "amber"
+          : "green"
+    }
+  >
+    {row.leadScore}
+  </Badge>
+</span>
+  ) : null}
+</div>
+{synopsis ? <small>{synopsis(row)}</small> : null}
                           </div>
                         </button>
                       </td>
@@ -2332,13 +2350,33 @@ function RecordDetailPage({
             src={record.avatar || record.logo}
             size={48}
           />
-          <div>
-            <h1>{recordName}</h1>
-            <p>
-              {record.company || record.role || record.industry || ""}
-              {record.email ? ` · ${record.email}` : ""}
-            </p>
-          </div>
+         <div>
+  <div className="lead-detail-name">
+    <h1>{recordName}</h1>
+
+    {resource === "leads" &&
+    typeof record.leadScore === "number" ? (
+      <span title="AI Score — based on engagement signals">
+        <Badge
+          tone={
+            record.leadScore <= 40
+              ? "red"
+              : record.leadScore <= 70
+                ? "amber"
+                : "green"
+          }
+        >
+          {record.leadScore}
+        </Badge>
+      </span>
+    ) : null}
+  </div>
+
+  <p>
+    {record.company || record.role || record.industry || ""}
+    {record.email ? ` · ${record.email}` : ""}
+  </p>
+</div>
           <div className="detail-actions">
             {record.status ? (
               <Badge
