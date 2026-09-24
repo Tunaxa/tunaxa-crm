@@ -1,3 +1,4 @@
+import { useForm } from "react-hook-form";
 import {
   useEffect,
   useRef,
@@ -39,7 +40,6 @@ import { LayoutGrid, Sun, Moon } from "lucide-react";
 import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { CornerBrackets } from "./components/CornerBrackets";
 import { GoalProgress } from "./components/goals/GoalProgress";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
@@ -2577,29 +2577,42 @@ function RecordForm({
   toolbar?: ReactNode;
 }) {
   const { toast } = useApp();
-  const [form, setForm] = useState<Record<string, any>>(
-    Object.fromEntries(
-      fields.map((field) => [
-        field.key,
-        initial[field.key] ??
-          (field.type === "select"
-            ? field.options?.[0] || ""
-            : field.type === "checkbox"
-              ? false
-              : ""),
-      ]),
-    ),
-  );
   const [busy, setBusy] = useState(false);
 
-  async function save() {
+  const defaultValues = Object.fromEntries(
+    fields.map((field) => [
+      field.key,
+      initial[field.key] ??
+        (field.type === "select"
+          ? field.options?.[0] || ""
+          : field.type === "checkbox"
+            ? false
+            : ""),
+    ]),
+  );
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+  } = useForm<Record<string, any>>({
+    defaultValues,
+  });
+
+  async function save(data: Record<string, any>) {
     const missing = fields.find(
-      (field) => field.required && !String(form[field.key] ?? "").trim(),
+      (field) => field.required && !String(data[field.key] ?? "").trim(),
     );
-    if (missing) return toast(`${missing.label} is required`, "error");
+
+    if (missing) {
+      return toast(`${missing.label} is required`, "error");
+    }
+
     setBusy(true);
+
     try {
-      await onSave(form);
+      await onSave(data);
     } catch (error) {
       toast((error as Error).message, "error");
     } finally {
@@ -2617,7 +2630,12 @@ function RecordForm({
           <button className="btn secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn primary" disabled={busy} onClick={save}>
+
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={handleSubmit(save)}
+          >
             {busy ? "Saving…" : "Save"}
           </button>
         </>
@@ -2625,47 +2643,32 @@ function RecordForm({
     >
       <div className="drawer-form">
         {toolbar}
+
         {fields.map((field) =>
           field.type === "photo" ? (
             <PhotoField
               key={field.key}
               label={field.label}
-              name={String(form.name || form.title || "")}
-              value={form[field.key]}
-              onChange={(url) =>
-                setForm((current) => ({ ...current, [field.key]: url }))
-              }
+              name={String(watch("name") || watch("title") || "")}
+              value={watch(field.key)}
+              onChange={(url: string) => setValue(field.key, url)}
             />
           ) : field.type === "checkbox" ? (
             <label className="toggle-row" key={field.key}>
-              <input
-                type="checkbox"
-                checked={Boolean(form[field.key])}
-                onChange={(e) =>
-                  setForm((current) => ({
-                    ...current,
-                    [field.key]: e.target.checked,
-                  }))
-                }
-              />
+              <input type="checkbox" {...register(field.key)} />
               <span>{field.label}</span>
             </label>
           ) : (
             <label className="field" key={field.key}>
               <span>
                 {field.label}
-                {field.required ? <em className="required-mark">*</em> : null}
+                {field.required ? (
+                  <em className="required-mark">*</em>
+                ) : null}
               </span>
+
               {field.type === "select" ? (
-                <select
-                  value={form[field.key]}
-                  onChange={(e) =>
-                    setForm((current) => ({
-                      ...current,
-                      [field.key]: e.target.value,
-                    }))
-                  }
-                >
+                <select {...register(field.key)}>
                   {field.options?.map((option) => (
                     <option key={option} value={option}>
                       {option}
@@ -2674,31 +2677,20 @@ function RecordForm({
                 </select>
               ) : field.type === "textarea" ? (
                 <textarea
-                  value={form[field.key]}
-                  onChange={(e) =>
-                    setForm((current) => ({
-                      ...current,
-                      [field.key]: e.target.value,
-                    }))
-                  }
+                  {...register(field.key)}
                   placeholder={field.placeholder}
                   rows={6}
                 />
               ) : (
                 <input
                   type={field.type || "text"}
-                  required={field.required}
-                  value={form[field.key]}
+                  {...register(field.key, {
+                    setValueAs: (value) =>
+                      field.type === "number"
+                        ? Number(value)
+                        : value,
+                  })}
                   placeholder={field.placeholder}
-                  onChange={(e) =>
-                    setForm((current) => ({
-                      ...current,
-                      [field.key]:
-                        field.type === "number"
-                          ? Number(e.target.value)
-                          : e.target.value,
-                    }))
-                  }
                 />
               )}
             </label>
@@ -2708,7 +2700,6 @@ function RecordForm({
     </Drawer>
   );
 }
-
 function CompaniesPage() {
   const fields: FieldSpec[] = [
     { key: "logo", label: "Logo", type: "photo" },
@@ -4121,6 +4112,25 @@ function InboxPage() {
   const [sending, setSending] = useState(false);
   const [templates, setTemplates] = useState<Row[]>([]);
   const [templateId, setTemplateId] = useState("");
+  const {
+  register,
+  handleSubmit,
+  reset,
+  watch,
+  setValue,
+} = useForm<{
+  channel: string;
+  to: string;
+  subject: string;
+  body: string;
+}>({
+  defaultValues: {
+    channel: "Email",
+    to: "",
+    subject: "",
+    body: "",
+  },
+});
 
   useEffect(() => {
     api<Row[]>("/templates")
@@ -4129,20 +4139,27 @@ function InboxPage() {
   }, []);
 
   function applyTemplate(id: string) {
-    setTemplateId(id);
-    const t = templates.find((x) => x.id === id);
-    if (!t) return;
-    setSelected((prev) =>
-      prev
-        ? {
-            ...prev,
-            subject: t.subject,
-            body: t.body,
-            channel: t.channel || "Email",
-          }
-        : prev,
-    );
-  }
+  setTemplateId(id);
+
+  const t = templates.find((x) => x.id === id);
+
+  if (!t) return;
+
+  setValue("subject", t.subject || "");
+  setValue("body", t.body || "");
+  setValue("channel", t.channel || "Email");
+}
+
+function openCompose() {
+  reset({
+    channel: "Email",
+    to: "",
+    subject: "",
+    body: "",
+  });
+  setTemplateId("");
+  setCompose(true);
+}
 
   async function send(message: Row) {
     setSending(true);
@@ -4188,7 +4205,7 @@ function InboxPage() {
         title="Email & SMS"
         description="Manage email and SMS conversations from one place."
       >
-        <button className="btn primary" onClick={() => setCompose(true)}>
+        <button className="btn primary" onClick={openCompose}>
           <Icon name="send" /> Compose
         </button>
       </PageHeader>
@@ -4250,7 +4267,7 @@ function InboxPage() {
             action={
               <button
                 className="btn primary compact"
-                onClick={() => setCompose(true)}
+                onClick={openCompose}
               >
                 Compose
               </button>
@@ -4334,166 +4351,125 @@ function InboxPage() {
           title="New message"
           subtitle="Compose an email or SMS."
           onClose={() => {
-            setCompose(false);
-            setTemplateId("");
-          }}
+  setCompose(false);
+  setTemplateId("");
+  reset();
+}}
           footer={
             <>
               <button
-                className="btn secondary"
-                onClick={() => {
-                  setCompose(false);
-                  setTemplateId("");
-                }}
-              >
-                Cancel
-              </button>
+  className="btn secondary"
+  onClick={() => {
+    setCompose(false);
+    setTemplateId("");
+    reset();
+  }}
+>
+  Cancel
+</button>
             </>
           }
         >
-          <div className="drawer-form">
-            {templates.length ? (
-              <label className="field">
-                <span>Template</span>
-                <select
-                  value={templateId}
-                  onChange={(e) => applyTemplate(e.target.value)}
-                >
-                  <option value="">No template</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <label className="field">
-              <span>Channel</span>
-              <select
-                value={selected?.channel || "Email"}
-                onChange={(e) =>
-                  setSelected((prev) =>
-                    prev
-                      ? { ...prev, channel: e.target.value }
-                      : {
-                          channel: e.target.value,
-                          to: "",
-                          subject: "",
-                          body: "",
-                          id: "",
-                        },
-                  )
-                }
-              >
-                <option value="Email">Email</option>
-                <option value="SMS">SMS</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Recipient *</span>
-              <input
-                type="email"
-                value={selected?.to || ""}
-                onChange={(e) =>
-                  setSelected((prev) =>
-                    prev
-                      ? { ...prev, to: e.target.value }
-                      : {
-                          channel: "Email",
-                          to: e.target.value,
-                          subject: "",
-                          body: "",
-                          id: "",
-                        },
-                  )
-                }
-                placeholder="recipient@example.com"
-              />
-            </label>
-            {selected?.channel !== "SMS" ? (
-              <label className="field">
-                <span>Subject</span>
-                <input
-                  type="text"
-                  value={selected?.subject || ""}
-                  onChange={(e) =>
-                    setSelected((prev) =>
-                      prev
-                        ? { ...prev, subject: e.target.value }
-                        : {
-                            channel: "Email",
-                            to: "",
-                            subject: e.target.value,
-                            body: "",
-                            id: "",
-                          },
-                    )
-                  }
-                  placeholder="Email subject"
-                />
-              </label>
-            ) : null}
-            <label className="field">
-              <span>Message *</span>
-              <textarea
-                value={selected?.body || ""}
-                onChange={(e) =>
-                  setSelected((prev) =>
-                    prev
-                      ? { ...prev, body: e.target.value }
-                      : {
-                          channel: "Email",
-                          to: "",
-                          subject: "",
-                          body: e.target.value,
-                          id: "",
-                        },
-                  )
-                }
-                placeholder="Write your message…"
-                rows={8}
-              />
-            </label>
-            <button
-              className="btn primary"
-              disabled={!selected?.to || !selected?.body || sending}
-              onClick={async () => {
-                if (!selected?.to || !selected?.body) return;
-                setSending(true);
-                try {
-                  const saved = await api<Row>(
-                    "/messages/send",
-                    json("POST", {
-                      id: selected.id,
-                      channel: selected.channel || "Email",
-                      to: selected.to,
-                      subject: selected.subject,
-                      body: selected.body,
-                      contact: selected.contact,
-                    }),
-                  );
-                  await load();
-                  setCompose(false);
-                  setSelected(saved);
-                  setTemplateId("");
-                  toast(
-                    saved.deliveredAt
-                      ? "Message sent"
-                      : saved.status === "Failed"
-                        ? "Delivery failed"
-                        : "Saved for later",
-                  );
-                } catch (error) {
-                  toast((error as Error).message, "error");
-                } finally {
-                  setSending(false);
-                }
-              }}
-            >
-              {sending ? "Sending…" : "Send"}
-            </button>
-          </div>
+         <div className="drawer-form">
+  {templates.length ? (
+    <label className="field">
+      <span>Template</span>
+      <select
+        value={templateId}
+        onChange={(e) => applyTemplate(e.target.value)}
+      >
+        <option value="">No template</option>
+        {templates.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  ) : null}
+
+  <label className="field">
+    <span>Channel</span>
+    <select {...register("channel")}>
+      <option value="Email">Email</option>
+      <option value="SMS">SMS</option>
+    </select>
+  </label>
+
+  <label className="field">
+    <span>Recipient *</span>
+    <input
+      type="email"
+      {...register("to", {
+        required: "Recipient is required",
+      })}
+      placeholder="recipient@example.com"
+    />
+  </label>
+
+  {watch("channel") !== "SMS" ? (
+    <label className="field">
+      <span>Subject</span>
+      <input
+        type="text"
+        {...register("subject")}
+        placeholder="Email subject"
+      />
+    </label>
+  ) : null}
+
+  <label className="field">
+    <span>Message *</span>
+    <textarea
+      {...register("body", {
+        required: "Message is required",
+      })}
+      placeholder="Write your message…"
+      rows={8}
+    />
+  </label>
+
+  <button
+    className="btn primary"
+    disabled={sending}
+    onClick={handleSubmit(async (data) => {
+      setSending(true);
+
+      try {
+        const saved = await api<Row>(
+          "/messages/send",
+          json("POST", {
+            id: selected?.id || "",
+            channel: data.channel,
+            to: data.to,
+            subject: data.subject,
+            body: data.body,
+            contact: selected?.contact,
+          }),
+        );
+
+        await load();
+        setCompose(false);
+        setSelected(saved);
+        setTemplateId("");
+
+        toast(
+          saved.deliveredAt
+            ? "Message sent"
+            : saved.status === "Failed"
+              ? "Delivery failed"
+              : "Saved for later",
+        );
+      } catch (error) {
+        toast((error as Error).message, "error");
+      } finally {
+        setSending(false);
+      }
+    })}
+  >
+    {sending ? "Sending…" : "Send"}
+  </button>
+</div>
         </Drawer>
       ) : null}
     </div>
@@ -5906,11 +5882,23 @@ function SettingsPage() {
   const { toast } = useApp();
   const [tab, setTab] = useState("Workspace");
   const [settings, setSettings] = useState<Record<string, any> | null>(null);
+  const {
+  register,
+  handleSubmit,
+  reset,
+  watch,
+  setValue,
+} = useForm<Record<string, any>>({
+  defaultValues: {},
+});
   useEffect(() => {
-    api<Record<string, any>>("/settings")
-      .then(setSettings)
-      .catch((error) => toast(error.message, "error"));
-  }, []);
+  api<Record<string, any>>("/settings")
+    .then((data) => {
+      setSettings(data);
+      reset(data);
+    })
+    .catch((error) => toast(error.message, "error"));
+}, [reset]);
   if (!settings)
     return (
       <div className="page">
@@ -5923,18 +5911,19 @@ function SettingsPage() {
       current ? { ...current, [key]: value } : current,
     );
   }
-  async function save() {
-    try {
-      const saved = await api<Record<string, any>>(
-        "/settings",
-        json("PUT", settings),
-      );
-      setSettings(saved);
-      toast("Settings saved");
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
+ async function save(data: Record<string, any>) {
+  try {
+    const saved = await api<Record<string, any>>(
+      "/settings",
+      json("PUT", data),
+    );
+    setSettings(saved);
+    reset(saved);
+    toast("Settings saved");
+  } catch (error) {
+    toast((error as Error).message, "error");
   }
+}
   const tabs = [
     "Workspace",
     "Calling",
@@ -5944,20 +5933,19 @@ function SettingsPage() {
     "Data & security",
   ];
   const input = (
-    key: string,
-    label: string,
-    options?: { type?: string; placeholder?: string; span2?: boolean },
-  ) => (
-    <label className={`field ${options?.span2 ? "span-2" : ""}`}>
-      <span>{label}</span>
-      <input
-        type={options?.type || "text"}
-        value={settings[key] || ""}
-        placeholder={options?.placeholder}
-        onChange={(e) => set(key, e.target.value)}
-      />
-    </label>
-  );
+  key: string,
+  label: string,
+  options?: { type?: string; placeholder?: string; span2?: boolean },
+) => (
+  <label className={`field ${options?.span2 ? "span-2" : ""}`}>
+    <span>{label}</span>
+    <input
+      type={options?.type || "text"}
+      {...register(key)}
+      placeholder={options?.placeholder}
+    />
+  </label>
+);
 
   return (
     <div className="page">
@@ -5965,9 +5953,9 @@ function SettingsPage() {
         title="Settings"
         description="Manage your workspace preferences and integrations."
       >
-        <button className="btn primary" onClick={save}>
-          Save changes
-        </button>
+        <button className="btn primary" onClick={handleSubmit(save)}>
+  Save changes
+</button>
       </PageHeader>
       <div className="settings-layout">
         <aside className="settings-nav">
@@ -6026,10 +6014,7 @@ function SettingsPage() {
                   </label>
                   <label className="field">
                     <span>Currency</span>
-                    <select
-                      value={settings.currency || "USD"}
-                      onChange={(e) => set("currency", e.target.value)}
-                    >
+                    <select {...register("currency")}>
                       <option>USD</option>
                       <option>EUR</option>
                       <option>TND</option>
@@ -6038,10 +6023,7 @@ function SettingsPage() {
                   {input("timezone", "Timezone")}
                   <label className="field">
                     <span>Week starts</span>
-                    <select
-                      value={settings.weekStarts || "Monday"}
-                      onChange={(e) => set("weekStarts", e.target.value)}
-                    >
+                    <select {...register("weekStarts")}>
                       <option>Monday</option>
                       <option>Sunday</option>
                     </select>
@@ -6052,23 +6034,23 @@ function SettingsPage() {
             {tab === "Calling" ? (
               <>
                 <Setting
-                  title="Automatic call recording"
-                  text="Default recording preference for new calls."
-                  value={settings.callRecording}
-                  onChange={(v) => set("callRecording", v)}
+                 title="Automatic call recording"
+                 text="Default recording preference for new calls."
+                 value={Boolean(watch("callRecording"))}
+                 onChange={(v) => setValue("callRecording", v)}
                 />
                 <Setting
-                  title="Local presence"
-                  text="Use a matching local outbound number when your provider supports it."
-                  value={settings.localPresence}
-                  onChange={(v) => set("localPresence", v)}
-                />
-                <Setting
-                  title="Voicemail detection"
-                  text="Enable voicemail detection for a connected provider."
-                  value={settings.voicemailDetection}
-                  onChange={(v) => set("voicemailDetection", v)}
-                />
+  title="Local presence"
+  text="Use a matching local outbound number when your provider supports it."
+  value={Boolean(watch("localPresence"))}
+  onChange={(v) => setValue("localPresence", v)}
+/>
+               <Setting
+  title="Voicemail detection"
+  text="Enable voicemail detection for a connected provider."
+  value={Boolean(watch("voicemailDetection"))}
+  onChange={(v) => setValue("voicemailDetection", v)}
+/>
                 <h3 className="settings-section">Twilio telephony</h3>
                 <div className="form-grid">
                   {input("twilioSid", "Account SID", { placeholder: "AC…" })}
@@ -6094,14 +6076,14 @@ function SettingsPage() {
                 <Setting
                   title="Email tracking"
                   text="Track opens and clicks when supported by your provider."
-                  value={settings.emailTracking}
-                  onChange={(v) => set("emailTracking", v)}
+                  value={Boolean(watch("emailTracking"))}
+                  onChange={(v) => setValue("emailTracking", v)}
                 />
                 <Setting
                   title="Two-way SMS"
                   text="Allow replies through a connected SMS provider."
-                  value={settings.twoWaySms}
-                  onChange={(v) => set("twoWaySms", v)}
+                 value={Boolean(watch("twoWaySms"))}
+                 onChange={(v) => setValue("twoWaySms", v)}
                 />
                 <h3 className="settings-section">SMTP server</h3>
                 <div className="form-grid">
@@ -6112,11 +6094,10 @@ function SettingsPage() {
                   <label className="field">
                     <span>Connection security</span>
                     <select
-                      value={String(settings.smtpSecure)}
-                      onChange={(e) =>
-                        set("smtpSecure", e.target.value === "true")
-                      }
-                    >
+                  {...register("smtpSecure", {
+                  setValueAs: (value) => value === "true",
+               })}
+                >
                       <option value="false">STARTTLS (port 587)</option>
                       <option value="true">Direct SSL (port 465)</option>
                     </select>
@@ -6127,36 +6108,36 @@ function SettingsPage() {
             ) : null}
             {tab === "AI & coaching" ? (
               <>
+               <Setting
+  title="AI transcription"
+  text="Enable transcription through a connected AI provider."
+  value={Boolean(watch("aiTranscription"))}
+  onChange={(v) => setValue("aiTranscription", v)}
+/>
                 <Setting
-                  title="AI transcription"
-                  text="Enable transcription through a connected AI provider."
-                  value={settings.aiTranscription}
-                  onChange={(v) => set("aiTranscription", v)}
-                />
+  title="Automatic summaries"
+  text="Generate call summaries with AI after transcription."
+  value={Boolean(watch("aiSummaries"))}
+  onChange={(v) => setValue("aiSummaries", v)}
+/>
                 <Setting
-                  title="Automatic summaries"
-                  text="Generate call summaries with AI after transcription."
-                  value={settings.aiSummaries}
-                  onChange={(v) => set("aiSummaries", v)}
-                />
-                <Setting
-                  title="Auto-transcribe Twilio recordings"
-                  text="Transcribe incoming call recordings automatically."
-                  value={settings.autoTranscribeRecordings}
-                  onChange={(v) => set("autoTranscribeRecordings", v)}
-                />
-                <Setting
-                  title="Deal risk"
-                  text="Enable deal-risk analysis."
-                  value={settings.dealRisk}
-                  onChange={(v) => set("dealRisk", v)}
-                />
-                <Setting
-                  title="Real-time coaching"
-                  text="Enable live coaching integrations."
-                  value={settings.realTimeCoaching}
-                  onChange={(v) => set("realTimeCoaching", v)}
-                />
+  title="Auto-transcribe Twilio recordings"
+  text="Transcribe incoming call recordings automatically."
+  value={Boolean(watch("autoTranscribeRecordings"))}
+  onChange={(v) => setValue("autoTranscribeRecordings", v)}
+/>
+               <Setting
+  title="Deal risk"
+  text="Enable deal-risk analysis."
+  value={Boolean(watch("dealRisk"))}
+  onChange={(v) => setValue("dealRisk", v)}
+/>
+               <Setting
+  title="Real-time coaching"
+  text="Enable live coaching integrations."
+  value={Boolean(watch("realTimeCoaching"))}
+  onChange={(v) => setValue("realTimeCoaching", v)}
+/>
                 <h3 className="settings-section">Ollama (local AI)</h3>
                 <div className="form-grid">
                   {input("ollamaBaseUrl", "Server URL", {
