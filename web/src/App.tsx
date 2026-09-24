@@ -1,4 +1,15 @@
 import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   useEffect,
   useRef,
   useState,
@@ -268,7 +279,8 @@ function AuthScreen({
           </h1>
 
           <p className="text-xs sm:text-sm text-[#52525b] dark:text-[#8b949e] font-mono leading-relaxed max-w-md">
-            Manage inbound leads, visual Kanban deals, multi-channel sequences, quotes, and billing from a single high-performance workspace.
+            Manage inbound leads, visual Kanban deals, multi-channel sequences,
+            quotes, and billing from a single high-performance workspace.
           </p>
         </div>
 
@@ -387,16 +399,12 @@ function AuthScreen({
             </div>
 
             <div className="pt-2">
-              <CutButton
-                variant="primary"
-                className="w-full"
-                disabled={busy}
-              >
+              <CutButton variant="primary" className="w-full" disabled={busy}>
                 {busy
                   ? "AUTHENTICATING TELEMETRY…"
                   : mode === "setup"
-                  ? "CREATE WORKSPACE →"
-                  : "OPEN WORKSPACE →"}
+                    ? "CREATE WORKSPACE →"
+                    : "OPEN WORKSPACE →"}
               </CutButton>
             </div>
 
@@ -404,7 +412,9 @@ function AuthScreen({
               <div className="pt-4 text-center border-t border-[#e4e4e7] dark:border-[#21262d]">
                 <button
                   type="button"
-                  onClick={() => setMode((m) => (m === "login" ? "setup" : "login"))}
+                  onClick={() =>
+                    setMode((m) => (m === "login" ? "setup" : "login"))
+                  }
                   className="text-[#71717a] dark:text-[#8b949e] hover:text-[#3b82f6] bg-transparent border-none cursor-pointer text-xs"
                 >
                   {mode === "login"
@@ -483,13 +493,17 @@ function Shell() {
       />
       <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
         <div className="sidebar-logo">
-          <button className="brand" onClick={() => navigate("/dashboard")} title="Tunaxa AXA CRM">
+          <button
+            className="brand"
+            onClick={() => navigate("/dashboard")}
+            title="Tunaxa AXA CRM"
+          >
             {collapsed ? (
               <div
                 className="w-7 h-7 bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-mono font-black shrink-0"
                 style={{
                   clipPath:
-                    'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+                    "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
                 }}
               >
                 <span className="text-xs">TX</span>
@@ -532,7 +546,7 @@ function Shell() {
               className="w-7 h-7 bg-[#3b82f6] text-white flex items-center justify-center font-mono font-bold text-xs shrink-0"
               style={{
                 clipPath:
-                  'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+                  "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
               }}
             >
               <span>TX</span>
@@ -591,8 +605,16 @@ function Shell() {
             >
               <LayoutGrid className="w-4 h-4 text-[#3b82f6]" />
             </button>
-            <button className="icon-btn" onClick={toggleTheme} title={theme ? "Light Blueprint" : "Dark Cyber"}>
-              {theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            <button
+              className="icon-btn"
+              onClick={toggleTheme}
+              title={theme ? "Light Blueprint" : "Dark Cyber"}
+            >
+              {theme ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
             </button>
             <button
               className="icon-btn notification-btn"
@@ -630,7 +652,11 @@ function Shell() {
                     {(i18n.language || "en") === "fr" ? "English" : "Français"}
                   </button>
                   <button onClick={toggleTheme}>
-                    {theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}{" "}
+                    {theme ? (
+                      <Sun className="w-4 h-4" />
+                    ) : (
+                      <Moon className="w-4 h-4" />
+                    )}{" "}
                     {theme ? "Light Blueprint" : "Dark Cyber"}
                   </button>
                   <hr />
@@ -879,7 +905,10 @@ function Shell() {
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/leave" element={<LeavePage />} />
               <Route path="/attendance" element={<AttendancePage />} />
-              <Route path="/marketing-emails" element={<MarketingEmailsPage />} />
+              <Route
+                path="/marketing-emails"
+                element={<MarketingEmailsPage />}
+              />
               <Route
                 path="/marketing-emails/:id"
                 element={
@@ -934,7 +963,10 @@ function Shell() {
                   />
                 }
               />
-              <Route path="/survey-responses" element={<SurveyResponsesPage />} />
+              <Route
+                path="/survey-responses"
+                element={<SurveyResponsesPage />}
+              />
               <Route
                 path="/survey-responses/:id"
                 element={
@@ -2022,10 +2054,7 @@ function PeoplePage({
         >
           <Icon name="upload" /> Import
         </button>
-        <button
-          className="btn secondary"
-          onClick={exportCsv}
-        >
+        <button className="btn secondary" onClick={exportCsv}>
           <Icon name="download" /> Export CSV
         </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
@@ -2162,7 +2191,14 @@ function PeoplePage({
 
 const detailTabList = ["Overview", "Activity", "Notes", "Emails"] as const;
 type DetailTab = (typeof detailTabList)[number];
-const activityFilters = ["All", "Emails", "Calls", "Meetings", "Notes", "System"] as const;
+const activityFilters = [
+  "All",
+  "Emails",
+  "Calls",
+  "Meetings",
+  "Notes",
+  "System",
+] as const;
 type ActivityFilter = (typeof activityFilters)[number];
 const activityFilterTypes: Partial<Record<ActivityFilter, string>> = {
   Emails: "Email",
@@ -2197,7 +2233,8 @@ function RecordDetailPage({
   const [noteBusy, setNoteBusy] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
-  const showActivityFilters = resource === "contacts" || resource === "companies";
+  const showActivityFilters =
+    resource === "contacts" || resource === "companies";
 
   const photoKey = resource === "companies" ? "logo" : "avatar";
   const photoField: FieldSpec = {
@@ -2226,9 +2263,12 @@ function RecordDetailPage({
     const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
     if (name) params.set("contact", name);
-    const type = tab === "Notes"
-      ? "Note"
-      : showActivityFilters ? activityFilterTypes[activityFilter] : undefined;
+    const type =
+      tab === "Notes"
+        ? "Note"
+        : showActivityFilters
+          ? activityFilterTypes[activityFilter]
+          : undefined;
     if (type) params.set("type", type);
     const controller = new AbortController();
     setActivities([]);
@@ -2412,7 +2452,11 @@ function RecordDetailPage({
         {tab === "Activity" && (
           <div className="detail-activity">
             {showActivityFilters && (
-              <div className="detail-tabs activity-filter-tabs" role="group" aria-label="Filter activities">
+              <div
+                className="detail-tabs activity-filter-tabs"
+                role="group"
+                aria-label="Filter activities"
+              >
                 {activityFilters.map((filter) => (
                   <button
                     key={filter}
@@ -2429,7 +2473,11 @@ function RecordDetailPage({
             {activityLoading ? (
               <div className="table-loading">Loading activities…</div>
             ) : activityError ? (
-              <Empty icon="activity" title="Could not load activities" text="Try another filter." />
+              <Empty
+                icon="activity"
+                title="Could not load activities"
+                text="Try another filter."
+              />
             ) : activities.length ? (
               activities.map((a) => (
                 <div className="activity-item" key={a.id}>
@@ -2478,23 +2526,28 @@ function RecordDetailPage({
                 {noteBusy ? "Saving…" : "Add note"}
               </button>
             </div>
-            {!activityLoading && activities
-              .filter((a) => a.type === "Note")
-              .map((n) => (
-                <div className="note-card" key={n.id}>
-                  <div className="note-card-head">
-                    <b>Note</b>
-                    <time>{n.date || n.createdAt || ""}</time>
+            {!activityLoading &&
+              activities
+                .filter((a) => a.type === "Note")
+                .map((n) => (
+                  <div className="note-card" key={n.id}>
+                    <div className="note-card-head">
+                      <b>Note</b>
+                      <time>{n.date || n.createdAt || ""}</time>
+                    </div>
+                    <p>{n.notes || n.title}</p>
                   </div>
-                  <p>{n.notes || n.title}</p>
-                </div>
-              ))}
+                ))}
             {activityLoading ? (
               <div className="table-loading">Loading notes…</div>
             ) : activityError ? (
-              <Empty icon="edit" title="Could not load notes" text="Try reopening this tab." />
+              <Empty
+                icon="edit"
+                title="Could not load notes"
+                text="Try reopening this tab."
+              />
             ) : !activities.filter((a) => a.type === "Note").length &&
-            !noteText ? (
+              !noteText ? (
               <Empty
                 icon="edit"
                 title="No notes yet"
@@ -4858,10 +4911,12 @@ function DuplicatesPage() {
   const groups = (data?.duplicates || [])
     .map((group: any) => ({
       ...group,
-      records: group.records || group.ids.map((id: string, index: number) => ({
-        id,
-        name: group.names[index],
-      })),
+      records:
+        group.records ||
+        group.ids.map((id: string, index: number) => ({
+          id,
+          name: group.names[index],
+        })),
     }))
     .flatMap((group: any) =>
       group.records.slice(1).map((merge: Row) => ({
@@ -4874,9 +4929,9 @@ function DuplicatesPage() {
     .filter((pair: any) => !skipped.includes(pair.key));
   const pair = groups[0];
   const comparisonKeys = pair
-    ? [...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)])].filter(
-        (key) => key !== "id",
-      )
+    ? [
+        ...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)]),
+      ].filter((key) => key !== "id")
     : [];
   const displayName = (record: Row) =>
     String(record.name || record.email || record.id || "Untitled");
@@ -4887,7 +4942,9 @@ function DuplicatesPage() {
     return String(value);
   };
   const labelFor = (key: string) =>
-    key.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
+    key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (value) => value.toUpperCase());
   return (
     <div className="page">
       <PageHeader
@@ -4929,25 +4986,53 @@ function DuplicatesPage() {
               <article className="duplicate-record keep">
                 <div className="duplicate-record-head">
                   <Avatar name={displayName(pair.keep)} />
-                  <div><small>Record to keep</small><h3>{displayName(pair.keep)}</h3></div>
+                  <div>
+                    <small>Record to keep</small>
+                    <h3>{displayName(pair.keep)}</h3>
+                  </div>
                 </div>
                 <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.keep[key])}</b></div>)}
+                  {comparisonKeys.map((key) => (
+                    <div className="duplicate-field" key={key}>
+                      <span>{labelFor(key)}</span>
+                      <b>{displayValue(pair.keep[key])}</b>
+                    </div>
+                  ))}
                 </div>
               </article>
               <article className="duplicate-record merge">
                 <div className="duplicate-record-head">
                   <Avatar name={displayName(pair.merge)} />
-                  <div><small>Record to merge and delete</small><h3>{displayName(pair.merge)}</h3></div>
+                  <div>
+                    <small>Record to merge and delete</small>
+                    <h3>{displayName(pair.merge)}</h3>
+                  </div>
                 </div>
                 <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.merge[key])}</b></div>)}
+                  {comparisonKeys.map((key) => (
+                    <div className="duplicate-field" key={key}>
+                      <span>{labelFor(key)}</span>
+                      <b>{displayValue(pair.merge[key])}</b>
+                    </div>
+                  ))}
                 </div>
               </article>
             </div>
             <div className="duplicate-actions">
-              <button className="btn secondary" disabled={busy} onClick={() => skipPair(pair.key)}><Icon name="close" /> Skip</button>
-              <button className="btn primary" disabled={busy} onClick={() => mergePair(pair.group, pair.keep, pair.merge)}><Icon name="check" /> Merge</button>
+              <button
+                className="btn secondary"
+                disabled={busy}
+                onClick={() => skipPair(pair.key)}
+              >
+                <Icon name="close" /> Skip
+              </button>
+              <button
+                className="btn primary"
+                disabled={busy}
+                onClick={() => mergePair(pair.group, pair.keep, pair.merge)}
+              >
+                <Icon name="check" /> Merge
+              </button>
             </div>
           </>
         ) : (
@@ -5259,93 +5344,338 @@ function FinancePage() {
 
 function ForecastPage() {
   const navigate = useNavigate();
-  const [finance, setFinance] = useState<any>(null);
+  const [deals, setDeals] = useState<Row[]>([]);
+  const [pipeline, setPipeline] = useState<any[]>([]);
+  const [range, setRange] = useState<"6" | "12" | "custom">("6");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
   useEffect(() => {
-    const load = () =>
-      api("/finance/summary")
-        .then(setFinance)
-        .catch(() => {});
-    load();
-    window.addEventListener("tunaxa:resource-changed", load);
-    return () => window.removeEventListener("tunaxa:resource-changed", load);
+    Promise.all([api<any>("/deals?limit=1000"), api<any>("/pipeline")])
+      .then(([dealResult, pipelineResult]) => {
+        const dealItems = Array.isArray(dealResult)
+          ? dealResult
+          : dealResult?.items || [];
+        setDeals(dealItems);
+
+        const pipelineItems = Array.isArray(pipelineResult)
+          ? pipelineResult
+          : pipelineResult?.stages || [];
+        setPipeline(pipelineItems);
+      })
+      .catch(() => {});
   }, []);
-  const max = Math.max(
-    1,
-    ...(finance?.monthly || []).flatMap((m: any) => [m.revenue, m.expenses]),
+
+  const stageProbability = new Map<string, number>();
+
+  pipeline.forEach((stage: any) => {
+    const name = String(stage.name || stage.id || "").toLowerCase();
+    const probability = Number(stage.probability);
+
+    if (name) {
+      stageProbability.set(
+        name,
+        Number.isFinite(probability) ? probability : 0,
+      );
+    }
+  });
+
+  const probabilityFor = (stage: string) => {
+    const normalized = String(stage || "").toLowerCase();
+
+    if (stageProbability.has(normalized)) {
+      return stageProbability.get(normalized) || 0;
+    }
+
+    if (normalized === "won") return 100;
+    if (normalized === "lost") return 0;
+
+    return 0;
+  };
+
+  const now = new Date();
+
+  function monthKey(date: Date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function monthLabel(key: string) {
+    const [year, month] = key.split("-").map(Number);
+
+    return new Intl.DateTimeFormat("en", {
+      month: "short",
+      year: "numeric",
+    }).format(new Date(year, month - 1, 1));
+  }
+
+  function addMonths(date: Date, amount: number) {
+    return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+  }
+
+  const defaultMonths = range === "12" ? 12 : 6;
+
+  let fromDate =
+    range === "custom" && customFrom
+      ? new Date(`${customFrom}T00:00:00`)
+      : addMonths(
+          new Date(now.getFullYear(), now.getMonth(), 1),
+          -defaultMonths + 1,
+        );
+
+  let toDate =
+    range === "custom" && customTo
+      ? new Date(`${customTo}T23:59:59`)
+      : new Date(
+          now.getFullYear(),
+          now.getMonth() + defaultMonths,
+          0,
+          23,
+          59,
+          59,
+        );
+
+  if (Number.isNaN(fromDate.getTime())) {
+    fromDate = addMonths(new Date(now.getFullYear(), now.getMonth(), 1), -5);
+  }
+
+  if (Number.isNaN(toDate.getTime())) {
+    toDate = new Date(now.getFullYear(), now.getMonth() + 6, 0, 23, 59, 59);
+  }
+
+  const months: string[] = [];
+  let cursor = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+  const end = new Date(toDate.getFullYear(), toDate.getMonth(), 1);
+
+  while (cursor <= end && months.length < 36) {
+    months.push(monthKey(cursor));
+    cursor = addMonths(cursor, 1);
+  }
+
+  const chartData = months.map((month) => {
+    const historicalWon = deals
+      .filter((deal) => {
+        if (String(deal.stage || "").toLowerCase() !== "won") {
+          return false;
+        }
+
+        const date = new Date(deal.updatedAt || deal.createdAt || "");
+        return !Number.isNaN(date.getTime()) && monthKey(date) === month;
+      })
+      .reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+
+    const pipelineDeals = deals.filter((deal) => {
+      const stage = String(deal.stage || "").toLowerCase();
+
+      if (stage === "won" || stage === "lost") {
+        return false;
+      }
+
+      if (!deal.closeDate) {
+        return false;
+      }
+
+      const date = new Date(`${String(deal.closeDate).slice(0, 10)}T00:00:00`);
+
+      return !Number.isNaN(date.getTime()) && monthKey(date) === month;
+    });
+
+    const pipelineValue = pipelineDeals.reduce(
+      (sum, deal) => sum + Number(deal.value || 0),
+      0,
+    );
+
+    const weightedPipeline = pipelineDeals.reduce((sum, deal) => {
+      const value = Number(deal.value || 0);
+      const probability = probabilityFor(deal.stage);
+
+      return sum + value * (probability / 100);
+    }, 0);
+
+    const averageProbability =
+      pipelineValue > 0 ? (weightedPipeline / pipelineValue) * 100 : 0;
+
+    return {
+      month,
+      label: monthLabel(month),
+      historical: historicalWon,
+      pipeline: weightedPipeline,
+      rawPipeline: pipelineValue,
+      probability: averageProbability,
+    };
+  });
+
+  const totalHistorical = chartData.reduce(
+    (sum, item) => sum + item.historical,
+    0,
   );
+
+  const totalForecast = chartData.reduce((sum, item) => sum + item.pipeline, 0);
+
   return (
     <div className="page">
       <PageHeader
         title="Revenue Forecast"
-        description="Projected revenue based on recent cash flow."
+        description="Historical won revenue and probability-weighted pipeline forecast."
       />
-      <section className="surface report-table">
-        <div className="section-head">
+
+      <section className="surface">
+        <div
+          className="section-head"
+          style={{
+            alignItems: "flex-start",
+            gap: "16px",
+            flexWrap: "wrap",
+          }}
+        >
           <div>
-            <h2>Monthly cash flow</h2>
-            <p>Revenue vs expenses</p>
+            <h2>Revenue forecast</h2>
+            <p>Won revenue vs probability-weighted pipeline by month.</p>
           </div>
-          <b className="section-kpi">
-            {money(finance?.avgMonthlyRevenue || 0)} <small>avg / month</small>
-          </b>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            {(["6", "12", "custom"] as const).map((value) => (
+              <button
+                key={value}
+                className={`btn ${range === value ? "primary" : "secondary"}`}
+                onClick={() => setRange(value)}
+              >
+                {value === "6"
+                  ? "Last 6 months"
+                  : value === "12"
+                    ? "Last 12 months"
+                    : "Custom"}
+              </button>
+            ))}
+          </div>
         </div>
-        {(finance?.monthly || []).map((m: any) =>
-          m.revenue + m.expenses > 0 ? (
-            <div className="report-row" key={m.month}>
-              <span>{m.label}</span>
-              <div className="bar-track dual">
-                <i
-                  className="rev"
-                  style={{ width: `${Math.max(2, (m.revenue / max) * 100)}%` }}
+
+        {range === "custom" ? (
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              flexWrap: "wrap",
+              marginBottom: "20px",
+            }}
+          >
+            <label>
+              <span>From</span>
+              <input
+                className="input"
+                type="date"
+                value={customFrom}
+                onChange={(event) => setCustomFrom(event.target.value)}
+              />
+            </label>
+
+            <label>
+              <span>To</span>
+              <input
+                className="input"
+                type="date"
+                value={customTo}
+                onChange={(event) => setCustomTo(event.target.value)}
+              />
+            </label>
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "12px",
+            marginBottom: "20px",
+          }}
+        >
+          <div className="surface">
+            <small>Historical won revenue</small>
+            <h3>{money(totalHistorical)}</h3>
+          </div>
+
+          <div className="surface">
+            <small>Weighted pipeline</small>
+            <h3>{money(totalForecast)}</h3>
+          </div>
+        </div>
+
+        {chartData.length > 0 ? (
+          <div style={{ width: "100%", height: 420 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={chartData}
+                margin={{
+                  top: 20,
+                  right: 20,
+                  left: 10,
+                  bottom: 10,
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+
+                <XAxis dataKey="label" />
+
+                <YAxis tickFormatter={(value) => money(value)} />
+
+                <Tooltip
+                  formatter={(value: any, name: any, item: any) => {
+                    if (name === "pipeline") {
+                      return [
+                        money(Number(value)),
+                        `Weighted pipeline (${Number(item?.payload?.probability || 0).toFixed(0)}%)`,
+                      ];
+                    }
+
+                    return [
+                      money(Number(value)),
+                      name === "historical" ? "Historical won revenue" : name,
+                    ];
+                  }}
                 />
-                <i
-                  className="exp"
-                  style={{ width: `${Math.max(2, (m.expenses / max) * 100)}%` }}
+
+                <Legend />
+
+                <Bar
+                  dataKey="pipeline"
+                  name="Pipeline forecast"
+                  fill="#8b5cf6"
+                  fillOpacity={0.65}
+                  radius={[4, 4, 0, 0]}
                 />
-              </div>
-              <b>{money(m.profit)}</b>
-              <strong>{money(m.revenue)}</strong>
-            </div>
-          ) : null,
-        )}
-        {!finance?.monthly?.length ||
-        finance.monthly.every((m: any) => m.revenue + m.expenses === 0) ? (
+
+                <Line
+                  type="monotone"
+                  dataKey="historical"
+                  name="Historical won revenue"
+                  stroke="#10b981"
+                  strokeWidth={3}
+                  dot={{ r: 4 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
           <Empty
             icon="trend"
-            title="No finance data"
-            text="Add paid invoices and expenses to see cash flow and forecast."
+            title="No forecast data"
+            text="Add deals with values and close dates to build the revenue forecast."
             action={
               <button
                 className="btn primary compact"
-                onClick={() => navigate("/invoices")}
+                onClick={() => navigate("/pipeline")}
               >
-                Add invoice
+                Open pipeline
               </button>
             }
           />
-        ) : null}
-      </section>
-      <section className="surface report-table">
-        <div className="section-head">
-          <div>
-            <h2>Next 3 months (projected)</h2>
-            <p>Based on rolling average revenue</p>
-          </div>
-        </div>
-        {(finance?.forecast || []).map((f: any) => (
-          <div className="report-row" key={f.month}>
-            <span>{f.label}</span>
-            <div className="bar-track">
-              <i
-                style={{
-                  width: `${Math.min(100, (f.projected / Math.max(1, finance?.avgMonthlyRevenue || 1) / 4) * 100)}%`,
-                }}
-              />
-            </div>
-            <b>projected</b>
-            <strong>{money(f.projected)}</strong>
-          </div>
-        ))}
+        )}
       </section>
     </div>
   );
@@ -6811,11 +7141,18 @@ function AppInner() {
     const hash = window.location.hash.toLowerCase();
     if (hash.includes("pricing")) return "pricing";
     if (hash.includes("demo") || hash.includes("lab")) return "demo";
-    if (hash.includes("login") || hash.includes("signin") || hash.includes("setup")) return "login";
+    if (
+      hash.includes("login") ||
+      hash.includes("signin") ||
+      hash.includes("setup")
+    )
+      return "login";
     return "home";
   };
 
-  const [unauthView, setUnauthView] = useState<"home" | "pricing" | "demo" | "login">(getInitialUnauthView);
+  const [unauthView, setUnauthView] = useState<
+    "home" | "pricing" | "demo" | "login"
+  >(getInitialUnauthView);
 
   useEffect(() => {
     const onHashChange = () => {
