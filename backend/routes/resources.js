@@ -152,7 +152,7 @@ export default function registerResourceRoutes(app) {
       });
       const event = createdEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.created", { resource, item });
+      broadcast("record.created", { resource, item }, req.user.workspaceId || "default");
       cacheFlush(resource);
       res.status(201).json(item);
     },
@@ -186,7 +186,7 @@ export default function registerResourceRoutes(app) {
         }));
         return rows;
       });
-      broadcast("records.batch", { resource, count: saved.length });
+      broadcast("records.batch", { resource, count: saved.length }, req.user.workspaceId || "default");
       cacheFlush(resource);
       res.status(201).json(saved);
     },
@@ -232,7 +232,7 @@ export default function registerResourceRoutes(app) {
       const event =
         eventFor(resource, previous, item) || updatedEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.updated", { resource, item, revisionId });
+      broadcast("record.updated", { resource, item, revisionId }, req.user.workspaceId || "default");
       cacheFlush(resource);
       res.json(revisionId ? { ...item, revisionId } : item);
     },
@@ -294,7 +294,7 @@ export default function registerResourceRoutes(app) {
           }
         }),
       );
-      broadcast("record.deleted", { resource, id: req.params.id });
+      broadcast("record.deleted", { resource, id: req.params.id }, req.user.workspaceId || "default");
       cacheFlush(resource);
       res.json({ ok: true });
     },
