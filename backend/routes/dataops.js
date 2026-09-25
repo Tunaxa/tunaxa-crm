@@ -5,6 +5,9 @@ import { now } from '../helpers.js';
 import { cacheFlush } from '../services/cache.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import Fuse from 'fuse.js';
+import * as contactsRepo from '../db/repositories/contacts.js';
+import * as leadsRepo from '../db/repositories/leads.js';
+import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
 const emailEquals = (record, email) => norm(record.customerEmail) === email || norm(record.email) === email || norm(record.contact) === email;
@@ -40,39 +43,32 @@ function duplicateScore(left, right, resource) {
   return similarity(leftName, rightName);
 }
 
+// Contacts and leads are served from Postgres rather than the JSON store (see
+// migrations/004_contacts_leads.sql), so duplicate detection has to read them
+// from the same repositories the write path uses. Reading them from readDb()
+// would consult an empty JSON store and silently report zero duplicates
+// while the records plainly exist in the database.
+async function loadDuplicateRows(resource) {
+  if (!PG_RESOURCES.has(resource)) {
+    const db = await readDb();
+    return db[resource] || [];
+  }
+  const repo = resource === 'contacts' ? contactsRepo : leadsRepo;
+  const rows = [];
+  // findAll() caps a single page at 100 rows, so page through the whole result
+  // set. Stopping after one page would quietly drop duplicates beyond it.
+  for (let page = 1; ; page++) {
+    const result = await repo.findAll({ page, limit: 100 });
+    rows.push(...result.data.map(pgToLegacy));
+    if (result.data.length === 0 || rows.length >= result.total) break;
+  }
+  return rows;
+}
+
 export default function registerDataOpsRoutes(app) {
   app.get('/api/duplicates', auth, requireRole('admin', 'member'), async (req, res) => {
     const resource = req.query.resource === 'companies' ? 'companies' : 'contacts';
-    const db = await readDb();
-    const rows = db[resource] || [];
-    const groups = [];
-    const visited = new Set();
-    for (let index = 0; index < rows.length; index++) {
-      if (visited.has(index)) continue;
-      const group = [index];
-      visited.add(index);
-      for (let candidate = index + 1; candidate < rows.length; candidate++) {
-        if (duplicateScore(rows[index], rows[candidate], resource) >= 0.8) {
-          group.push(candidate);
-          visited.add(candidate);
-        }
-      }
-      if (group.length > 1) groups.push(group.map(position => rows[position]));
-    }
-    const duplicates = groups.map(group => {
-      const pairScores = [];
-      for (let left = 0; left < group.length; left++) {
-        for (let right = left + 1; right < group.length; right++) {
-          pairScores.push(duplicateScore(group[left], group[right], resource));
-        }
-      }
-      return {
-        ids: group.map(x => x.id),
-        names: group.map(x => resource === 'companies' ? x.name : (x.name || x.email)),
-        records: group,
-        confidence: Math.round((pairScores.reduce((total, score) => total + score, 0) / pairScores.length) * 100)
-      };
-    });
+    const rows = await loadDuplicateRows(resource);
     const keyOf = row => norm(resource === 'companies' ? row.name : (row.email || row.name));
     const fuzzyKeyOf = row => {
       if (resource !== 'companies' && row.email) return norm(String(row.email).split('@')[0]);

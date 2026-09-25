@@ -23,6 +23,39 @@ import { cacheFlush } from "../services/cache.js";
 import { recordRevision } from "../services/revisions.js";
 import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
 import { fileURLToPath } from "node:url";
+import * as contactsRepo from "../db/repositories/contacts.js";
+import * as leadsRepo from "../db/repositories/leads.js";
+import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
+
+/**
+ * Build the CSV representation of a single row, quoting every cell.
+ */
+function buildCsvRow(columns, row) {
+  const cell = (value) => {
+    const text =
+      value == null
+        ? ""
+        : typeof value === "object"
+          ? JSON.stringify(value)
+          : String(value);
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+  return columns.map((col) => cell(row[col])).join(",");
+}
+
+/**
+ * Fetch all rows from a PG resource (contacts or leads) as a plain legacy
+ * array, passing `q` for server-side search.
+ */
+async function pgFindAll(resource, query = {}) {
+  const repo = resource === "contacts" ? contactsRepo : leadsRepo;
+  const page = Number(query.page) || 1;
+  const limit = Number(query.limit) || 1000; // large default → return "all"
+  const q = query.q || "";
+  const sortBy = query.sortBy || "created_at:desc";
+  const result = await repo.findAll({ page, limit, q, sortBy });
+  return result.data.map(pgToLegacy);
+}
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
@@ -41,6 +74,18 @@ export default function registerResourceRoutes(app) {
 
   app.get("/api/:resource", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
+
+    // ── PG path: contacts / leads ──────────────────────────────────────────
+    if (PG_RESOURCES.has(req.params.resource)) {
+      try {
+        const rows = await pgFindAll(req.params.resource, req.query);
+        return res.json(rows);
+      } catch (err) {
+        return next(err);
+      }
+    }
+
+    // ── Legacy JSON path: all other resources ──────────────────────────────
     const db = req.db || (await readDb());
     let rows = db[req.params.resource] || [];
     const q = String(req.query.q || "")
@@ -79,18 +124,29 @@ export default function registerResourceRoutes(app) {
     res.json(rows);
   });
 
+
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
-    const db = req.db || (await readDb());
-    const rows = (db[req.params.resource] || []).map((item) =>
-      req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
-    );
-    const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+
+    let rows;
+    if (PG_RESOURCES.has(req.params.resource)) {
+      try {
+        rows = await pgFindAll(req.params.resource, {});
+      } catch (err) {
+        return next(err);
+      }
+    } else {
+      const db = req.db || (await readDb());
+      rows = (db[req.params.resource] || []).map((item) =>
+        req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
+      );
+    }
+
     const cell = (value) => {
       const text = value == null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
       return `"${text.replace(/"/g, '""')}"`;
     };
-
+    const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${req.params.resource}.csv"`);
     res.write(`${columns.map(cell).join(",")}\r\n`);
@@ -102,6 +158,20 @@ export default function registerResourceRoutes(app) {
 
   app.get("/api/:resource/:id", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
+
+    // ── PG path ───────────────────────────────────────────────────────────
+    if (PG_RESOURCES.has(req.params.resource)) {
+      const repo = req.params.resource === "contacts" ? contactsRepo : leadsRepo;
+      try {
+        const row = await repo.findById(req.params.id);
+        if (!row) return res.status(404).json({ error: "Record not found" });
+        return res.json(pgToLegacy(row));
+      } catch (err) {
+        return next(err);
+      }
+    }
+
+    // ── Legacy JSON path ──────────────────────────────────────────────────
     const db = req.db || (await readDb());
     const rows = db[req.params.resource] || [];
     const item = rows.find((x) => x.id === req.params.id);
@@ -117,6 +187,27 @@ export default function registerResourceRoutes(app) {
     async (req, res, next) => {
       const resource = req.params.resource;
       if (!resources.has(resource)) return next();
+
+      // ── PG path: contacts / leads ────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = resource === "contacts" ? contactsRepo : leadsRepo;
+        try {
+          const pgData = legacyToPg({ ...req.body });
+          // Coerce numeric built-ins (e.g. value)
+          coerceBuiltIns(resource, pgData);
+          const row = await repo.create(pgData);
+          const item = pgToLegacy(row);
+          const event = createdEvent(resource);
+          if (event) triggerWorkflows(resource, event, item);
+          broadcast("record.created", { resource, item });
+          cacheFlush(resource);
+          return res.status(201).json(item);
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
       const item = await mutateDb((db) => {
         const createdAt = now();
         const data = { ...req.body };
@@ -166,6 +257,28 @@ export default function registerResourceRoutes(app) {
     async (req, res, next) => {
       const resource = req.params.resource;
       if (!resources.has(resource)) return next();
+
+      // ── PG path: contacts / leads ────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = resource === "contacts" ? contactsRepo : leadsRepo;
+        try {
+          const saved = await Promise.all(
+            req.body.map(async (data) => {
+              const pgData = legacyToPg({ ...data });
+              coerceBuiltIns(resource, pgData);
+              const row = await repo.create(pgData);
+              return pgToLegacy(row);
+            }),
+          );
+          broadcast("records.batch", { resource, count: saved.length });
+          cacheFlush(resource);
+          return res.status(201).json(saved);
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
       const incoming = req.body;
       const saved = await mutateDb((db) => {
         const rows = incoming.map((data) => ({
@@ -200,6 +313,27 @@ export default function registerResourceRoutes(app) {
     async (req, res, next) => {
       const resource = req.params.resource;
       if (!resources.has(resource)) return next();
+
+      // ── PG path: contacts / leads ────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = resource === "contacts" ? contactsRepo : leadsRepo;
+        try {
+          const pgData = legacyToPg({ ...req.body });
+          coerceBuiltIns(resource, pgData);
+          const row = await repo.update(req.params.id, pgData);
+          if (!row) return res.status(404).json({ error: "Record not found" });
+          const item = pgToLegacy(row);
+          const event = updatedEvent(resource);
+          if (event) triggerWorkflows(resource, event, item);
+          broadcast("record.updated", { resource, item });
+          cacheFlush(resource);
+          return res.json(item);
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
       let previous = null;
       let revisionId = null;
       const item = await mutateDb((db) => {
@@ -245,6 +379,22 @@ export default function registerResourceRoutes(app) {
     async (req, res, next) => {
       const resource = req.params.resource;
       if (!resources.has(resource)) return next();
+
+      // ── PG path: contacts / leads ────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = resource === "contacts" ? contactsRepo : leadsRepo;
+        try {
+          const deleted = await repo.delete(req.params.id);
+          if (!deleted) return res.status(404).json({ error: "Record not found" });
+          broadcast("record.deleted", { resource, id: req.params.id });
+          cacheFlush(resource);
+          return res.json({ ok: true });
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
       const result = await mutateDb((db) => {
         const index = db[resource].findIndex((x) => x.id === req.params.id);
         if (index < 0) return null;

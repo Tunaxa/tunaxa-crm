@@ -106,6 +106,9 @@ describe('CSV export', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
     expect(res.text).toContain('"North, ""Division"""');
+  });
+});
+
 describe('Activity timeline filters', () => {
   it('filters by record and selected activity type', async () => {
     const contact = 'AXA-97 Filter Target';
