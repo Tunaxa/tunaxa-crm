@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -40,7 +41,21 @@ import { LayoutGrid, Sun, Moon } from "lucide-react";
 import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { GoalProgress } from "./components/goals/GoalProgress";
+import { CustomReportBuilder } from "./components/reports/CustomReportBuilder";
+import {
+  invitationIsExpired,
+  normalizeInvitations,
+  type PendingInvitation,
+} from "./components/team/invitations";
+import { OnboardingGate } from "./components/onboarding/OnboardingWizard";
+import {
+  GoalProgress,
+  getCrossedGoalMilestone,
+  getGoalProgress,
+  type GoalMilestone,
+} from "./components/goals/GoalProgress";
+import { CornerBrackets } from "./components/CornerBrackets";
+import { QuoteForm } from "./components/quotes/QuoteForm";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -370,7 +385,8 @@ function AuthScreen({
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShow((v) => !v)}
+                  aria-label={show ? "Hide password" : "Show password"}
+                  onClick={() => setShow((value) => !value)}
                   className="text-[#71717a] dark:text-[#8b949e] hover:text-[#18181b] dark:hover:text-white bg-transparent border-none cursor-pointer text-[11px]"
                 >
                   {show ? "HIDE" : "SHOW"}
@@ -413,8 +429,15 @@ function AuthScreen({
                 </button>
               </div>
             )}
-          </form>
-        </div>
+            <button className="btn login-submit" type="submit" style={{ marginTop: 4 }} disabled={busy}>{busy
+                ? "Please wait…"
+                : mode === "setup"
+                  ? "Create workspace"
+                  : "Sign in"}{" "}
+              <Icon name="arrowRight" />
+            </button>
+          </div>
+        </form>
       </section>
     </main>
   );
@@ -500,6 +523,8 @@ function Shell() {
           </button>
           <button
             className="collapse-btn"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
             onClick={() => setCollapsed((value) => !value)}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -549,6 +574,7 @@ function Shell() {
           <div className="topbar-left">
             <button
               className="icon-btn mobile-menu"
+              aria-label="Open navigation menu"
               onClick={() => setMobile(true)}
               title="Open Navigation"
             >
@@ -591,11 +617,16 @@ function Shell() {
             >
               <LayoutGrid className="w-4 h-4 text-[#3b82f6]" />
             </button>
-            <button className="icon-btn" onClick={toggleTheme} title={theme ? "Light Blueprint" : "Dark Cyber"}>
-              {theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            <button
+              className="icon-btn"
+              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
+              onClick={toggleTheme}
+            >
+              <Icon name={theme ? "sun" : "moon"} />
             </button>
             <button
               className="icon-btn notification-btn"
+              aria-label="Notifications"
               onClick={() => toast("No new notifications")}
               title="Notifications"
             >
@@ -1104,11 +1135,16 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           <Icon name="search" />
           <input
             autoFocus
+            aria-label="Search workspace"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search leads, contacts, deals, tasks..."
           />
-          <button className="icon-btn tiny" onClick={onClose}>
+          <button
+            className="icon-btn tiny"
+            aria-label="Close search"
+            onClick={onClose}
+          >
             <Icon name="close" />
           </button>
         </div>
@@ -1159,10 +1195,10 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             <Empty
               icon="search"
               title="No matches"
-              text="Nothing in your JSON database matches this search."
+              text="No results found for your search."
             />
           )}
-        </div>
+        </div>git
       </div>
     </div>
   );
@@ -1503,12 +1539,9 @@ const attendanceFields: FieldSpec[] = [
 const quoteFields: FieldSpec[] = [
   { key: "number", label: "Quote number", required: true },
   { key: "customer", label: "Customer / deal" },
-  {
-    key: "items",
-    label: 'Line items (one per line, e.g. "Product x3 = 150")',
-    type: "textarea",
-  },
-  { key: "discount", label: "Discount", type: "number" },
+  { key: "subtotal", label: "Subtotal", type: "number" },
+  { key: "discount", label: "Discount (%)", type: "number" },
+  { key: "tax", label: "Tax (%)", type: "number" },
   { key: "total", label: "Total", type: "number" },
   {
     key: "status",
@@ -1657,6 +1690,7 @@ function CrudTablePage({
   statusTone,
   moneyColumn,
   extraColumn,
+  renderEditor,
 }: {
   resource: string;
   title: string;
@@ -1671,6 +1705,12 @@ function CrudTablePage({
   statusTone?: (value?: string) => BadgeTone;
   moneyColumn?: string[];
   extraColumn?: { title: string; render: (row: Row) => ReactNode };
+  renderEditor?: (props: {
+    title: string;
+    initial: Row | Record<string, any>;
+    onClose: () => void;
+    onSave: (data: Record<string, any>) => Promise<void>;
+  }) => ReactNode;
 }) {
   const { items, loading, load, create, update, remove } =
     useResource<Row>(resource);
@@ -1794,6 +1834,7 @@ function CrudTablePage({
           <div className="header-search">
             <Icon name="search" />
             <input
+              aria-label={`Search ${title.toLowerCase()}`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
@@ -1897,16 +1938,28 @@ function CrudTablePage({
         )}
       </section>
       {edit !== undefined ? (
-        <RecordForm
-          title={`${edit ? "Edit" : "Add"} ${singular}`}
-          fields={fields}
-          initial={edit || {}}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
+        renderEditor ? (
+          renderEditor({
+            title: `${edit ? "Edit" : "Add"} ${singular}`,
+            initial: edit || {},
+            onClose: () => setEdit(undefined),
+            onSave: async (data) => {
+              edit ? await update(edit.id, data) : await create(data);
+              setEdit(undefined);
+            },
+          })
+        ) : (
+          <RecordForm
+            title={`${edit ? "Edit" : "Add"} ${singular}`}
+            fields={fields}
+            initial={edit || {}}
+            onClose={() => setEdit(undefined)}
+            onSave={async (data) => {
+              edit ? await update(edit.id, data) : await create(data);
+              setEdit(undefined);
+            }}
+          />
+        )
       ) : null}
     </div>
   );
@@ -2037,6 +2090,7 @@ function PeoplePage({
           <div className="header-search">
             <Icon name="search" />
             <input
+              aria-label={`Search ${title.toLowerCase()}`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
@@ -2361,6 +2415,7 @@ function RecordDetailPage({
             </button>
             <button
               className="btn ghost compact danger-link"
+              aria-label={`Delete ${record.name || record.title || "record"}`}
               onClick={deleteRecord}
             >
               <Icon name="trash" />
@@ -2465,6 +2520,7 @@ function RecordDetailPage({
           <div className="detail-notes">
             <div className="note-compose">
               <textarea
+                aria-label="Add a note"
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 placeholder="Write a note…"
@@ -2770,12 +2826,14 @@ function CompaniesPage() {
                 >
                   <button
                     className="icon-btn tiny"
+                    aria-label={`Edit ${company.name || "company"}`}
                     onClick={() => setEdit(company)}
                   >
                     <Icon name="edit" />
                   </button>
                   <button
                     className="icon-btn tiny danger-link"
+                    aria-label={`Delete ${company.name || "company"}`}
                     onClick={() =>
                       confirm("Delete this company?") && remove(company.id)
                     }
@@ -2839,6 +2897,17 @@ function CompaniesPage() {
 
 function PipelinePage() {
   const { items, create, update, remove } = useResource<Row>("deals");
+  const [pipelineStages, setPipelineStages] = useState<
+    { name: string; probability: number }[]
+  >([]);
+
+  useEffect(() => {
+    api<{
+      stages: { name: string; probability: number }[];
+    }>("/pipeline")
+      .then((data) => setPipelineStages(data.stages))
+      .catch(() => setPipelineStages([]));
+  }, []);
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -2865,6 +2934,24 @@ function PipelinePage() {
     await update(dragging, { stage });
     setDragging(null);
   }
+  const probabilityByStage = Object.fromEntries(
+    pipelineStages.map((stage) => [
+      stage.name.toLowerCase(),
+      stage.probability,
+    ]),
+  );
+
+  const totalPipelineValue = items.reduce(
+    (sum, row) => sum + Number(row.value || 0),
+    0,
+  );
+
+  const weightedPipelineValue = items.reduce((sum, row) => {
+    const probability =
+      probabilityByStage[String(row.stage || "new").toLowerCase()] ?? 0;
+
+    return sum + Number(row.value || 0) * (probability / 100);
+  }, 0);
   return (
     <div className="page pipeline-page">
       <PageHeader
@@ -2875,6 +2962,17 @@ function PipelinePage() {
           <Icon name="plus" /> Add deal
         </button>
       </PageHeader>
+      <div className="pipeline-summary">
+        <div className="summary-card">
+          <span>Total pipeline value</span>
+          <strong>{money(totalPipelineValue)}</strong>
+        </div>
+
+        <div className="summary-card">
+          <span>Weighted value</span>
+          <strong>{money(weightedPipelineValue)}</strong>
+        </div>
+      </div>
       {items.length ? (
         <div className="pipeline-board">
           {stages.map((stage) => {
@@ -2918,12 +3016,14 @@ function PipelinePage() {
                         <div className="row-actions">
                           <button
                             className="icon-btn tiny"
+                            aria-label={`Edit ${row.title || "deal"}`}
                             onClick={() => setEdit(row)}
                           >
                             <Icon name="edit" />
                           </button>
                           <button
                             className="icon-btn tiny danger-link"
+                            aria-label={`Delete ${row.title || "deal"}`}
                             onClick={() =>
                               confirm("Delete this deal?") && remove(row.id)
                             }
@@ -3089,6 +3189,11 @@ function TasksPage() {
                     <div>
                       <button
                         className={`task-check ${status === "Completed" ? "checked" : ""}`}
+                        aria-label={
+                          status === "Completed"
+                            ? `Mark ${task.title || "task"} as open`
+                            : `Mark ${task.title || "task"} as completed`
+                        }
                         onClick={() =>
                           update(task.id, {
                             status:
@@ -3119,12 +3224,14 @@ function TasksPage() {
                       <div className="row-actions">
                         <button
                           className="icon-btn tiny"
+                          aria-label={`Edit ${task.title || "task"}`}
                           onClick={() => setEdit(task)}
                         >
                           <Icon name="edit" />
                         </button>
                         <button
                           className="icon-btn tiny danger-link"
+                          aria-label={`Delete ${task.title || "task"}`}
                           onClick={() =>
                             confirm("Delete this task?") && remove(task.id)
                           }
@@ -3275,6 +3382,7 @@ function CalendarPage() {
         <div className="calendar-top">
           <button
             className="icon-btn"
+            aria-label="Previous month"
             onClick={() =>
               setCursor((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))
             }
@@ -3284,6 +3392,7 @@ function CalendarPage() {
           <h2>{monthLabel}</h2>
           <button
             className="icon-btn"
+            aria-label="Next month"
             onClick={() =>
               setCursor((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))
             }
@@ -3569,6 +3678,7 @@ function WorkflowForm({
           <div className="workflow-action" key={index}>
             <div className="workflow-action-head">
               <select
+                aria-label={`Action ${index + 1} type`}
                 value={action.type}
                 onChange={(e) => setAction(index, { type: e.target.value })}
               >
@@ -3697,17 +3807,20 @@ function WorkflowsPage() {
                 </div>
                 <div className="flow-actions">
                   <Toggle
+                    label={`${flow.enabled ? "Disable" : "Enable"} ${flow.name || "workflow"}`}
                     value={Boolean(flow.enabled)}
                     onChange={(enabled) => update(flow.id, { enabled })}
                   />
                   <button
                     className="icon-btn tiny"
+                    aria-label={`Edit ${flow.name || "workflow"}`}
                     onClick={() => setEdit(flow)}
                   >
                     <Icon name="edit" />
                   </button>
                   <button
                     className="icon-btn tiny danger-link"
+                    aria-label={`Delete ${flow.name || "workflow"}`}
                     onClick={() =>
                       confirm("Delete this workflow?") && remove(flow.id)
                     }
@@ -3856,6 +3969,7 @@ function CallsPage() {
           </div>
           <input
             className="dial-input"
+            aria-label="Phone number"
             value={number}
             onChange={(e) => setNumber(e.target.value)}
             placeholder="Enter a number"
@@ -4315,6 +4429,7 @@ function openCompose() {
                 </button>
                 <button
                   className="icon-btn danger-link"
+                  aria-label="Delete message"
                   onClick={() => {
                     confirm("Delete this message?") && remove(selected.id);
                     setSelected(null);
@@ -4500,6 +4615,7 @@ function SequencesPage() {
               {item.enabled ? "Active" : "Paused"}
             </Badge>
             <Toggle
+              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "sequence"}`}
               value={Boolean(item.enabled)}
               onChange={(enabled) => update(item.id, { enabled })}
             />
@@ -4686,10 +4802,16 @@ function QuotesPage() {
       description="Generate and track quotes (estimate-to-contract)."
       icon="quote"
       fields={quoteFields}
+      columns={quoteFields.filter((field) =>
+        ["number", "customer", "total", "status", "expiryDate"].includes(
+          field.key,
+        ),
+      )}
       nameKey="number"
       statusField="status"
       synopsis={(r) => r.customer || r.deal || ""}
-      moneyColumn={["total", "discount"]}
+      moneyColumn={["total"]}
+      renderEditor={(props) => <QuoteForm {...props} />}
     />
   );
 }
@@ -4741,28 +4863,340 @@ function EventsPage() {
   );
 }
 function GoalsPage() {
+  const { items, loading, load, create, update, remove } =
+    useResource<Row>("goals");
+  const { toast } = useApp();
+  const navigate = useNavigate();
+  const importRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const [quickName, setQuickName] = useState("");
+  const [quickMetric, setQuickMetric] = useState("Revenue");
+  const [quickTarget, setQuickTarget] = useState("");
+  const [quickPeriod, setQuickPeriod] = useState("Monthly");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [celebration, setCelebration] = useState<{
+    goalName: string;
+    milestone: GoalMilestone;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!celebration) return;
+    const timer = window.setTimeout(() => setCelebration(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [celebration]);
+
+  async function quickAddGoal(event: FormEvent) {
+    event.preventDefault();
+    const target = Number(quickTarget);
+    if (!quickName.trim()) return toast("Goal name is required", "error");
+    if (!Number.isFinite(target) || target <= 0)
+      return toast("Target must be greater than zero", "error");
+
+    setQuickBusy(true);
+    try {
+      await create({
+        name: quickName.trim(),
+        metric: quickMetric,
+        period: quickPeriod,
+        target,
+        current: 0,
+      });
+      setQuickName("");
+      setQuickTarget("");
+      nameRef.current?.focus();
+    } catch {
+      // useResource displays the API error.
+    } finally {
+      setQuickBusy(false);
+    }
+  }
+
+  async function importCsv(file: File) {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return toast("CSV has no rows", "error");
+      const headers = lines[0]
+        .split(",")
+        .map((value) => value.trim().replace(/^"|"$/g, ""));
+      const records = lines.slice(1).map((line) => {
+        const values = line
+          .split(",")
+          .map((value) => value.trim().replace(/^"|"$/g, ""));
+        return Object.fromEntries(
+          headers.map((key, index) => [key, values[index] || ""]),
+        );
+      });
+      await api("/goals/batch", json("POST", records));
+      await load();
+      toast(`${records.length} goals imported`);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
+  }
+
+  async function exportGoals() {
+    try {
+      await downloadResourceCsv("goals");
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
+
+  async function saveGoal(data: Record<string, any>) {
+    const target = Number(data.target);
+    const current = Number(data.current);
+    if (!Number.isFinite(target) || target <= 0)
+      throw new Error("Target must be greater than zero");
+    if (!Number.isFinite(current) || current < 0)
+      throw new Error("Current value cannot be negative");
+
+    if (edit) {
+      const milestone = getCrossedGoalMilestone(
+        edit.current,
+        edit.target,
+        current,
+        target,
+      );
+      const saved = await update(edit.id, { ...data, current, target });
+      if (milestone) {
+        setCelebration({
+          goalName: String(saved.name || edit.name || "Goal"),
+          milestone,
+        });
+      }
+    } else {
+      const saved = await create({ ...data, current, target });
+      const milestone = getCrossedGoalMilestone(0, target, current, target);
+      if (milestone) {
+        setCelebration({
+          goalName: String(saved.name || data.name || "Goal"),
+          milestone,
+        });
+      }
+    }
+    setEdit(undefined);
+  }
+
   return (
-    <CrudTablePage
-      resource="goals"
-      title="Goals"
-      description="Time-bound targets and progress across teams."
-      icon="goal"
-      fields={goalFields}
-      columns={goalFields.slice(0, 4)}
-      nameKey="name"
-      statusField="period"
-      synopsis={(r) => `${r.metric || ""}${r.owner ? " · " + r.owner : ""}`}
-      extraColumn={{
-        title: "Progress",
-        render: (goal) => (
-          <GoalProgress
-            name={String(goal.name || "Goal")}
-            current={goal.current}
-            target={goal.target}
+    <div className="page goals-page">
+      <PageHeader
+        title="Goals"
+        description="Time-bound targets and progress across teams."
+      >
+        <input
+          ref={importRef}
+          hidden
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(event) =>
+            event.target.files?.[0] && importCsv(event.target.files[0])
+          }
+        />
+        <button
+          className="btn secondary"
+          onClick={() => importRef.current?.click()}
+        >
+          <Icon name="upload" /> Import
+        </button>
+        <button
+          className="btn secondary"
+          disabled={!items.length}
+          onClick={exportGoals}
+        >
+          <Icon name="download" /> Export CSV
+        </button>
+        <button className="btn secondary" onClick={() => setEdit(null)}>
+          <Icon name="plus" /> Full goal form
+        </button>
+      </PageHeader>
+
+      <form className="surface goal-quick-add" onSubmit={quickAddGoal}>
+        <div className="goal-quick-add-heading">
+          <span className="goal-quick-add-icon">
+            <Icon name="goal" />
+          </span>
+          <div>
+            <h2>Quick-add goal</h2>
+            <p>Create a goal now and fill in optional details later.</p>
+          </div>
+        </div>
+        <label className="field">
+          <span>Goal name</span>
+          <input
+            ref={nameRef}
+            value={quickName}
+            placeholder="e.g. Close 20 deals"
+            onChange={(event) => setQuickName(event.target.value)}
           />
-        ),
-      }}
-    />
+        </label>
+        <label className="field">
+          <span>Metric</span>
+          <select
+            value={quickMetric}
+            onChange={(event) => setQuickMetric(event.target.value)}
+          >
+            {goalFields[1].options?.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Target</span>
+          <input
+            type="number"
+            min="0.01"
+            step="any"
+            value={quickTarget}
+            placeholder="100"
+            onChange={(event) => setQuickTarget(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Period</span>
+          <select
+            value={quickPeriod}
+            onChange={(event) => setQuickPeriod(event.target.value)}
+          >
+            {goalFields[3].options?.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="btn primary goal-quick-add-submit"
+          disabled={quickBusy}
+          type="submit"
+        >
+          <Icon name="plus" /> {quickBusy ? "Adding…" : "Add goal"}
+        </button>
+      </form>
+
+      {loading ? (
+        <div className="table-loading">Loading goals…</div>
+      ) : items.length ? (
+        <div className="goal-card-grid">
+          {items.map((goal) => {
+            const progress = getGoalProgress(goal.current, goal.target);
+            return (
+              <article
+                className={`surface goal-card goal-card--${progress.tone}`}
+                key={goal.id}
+              >
+                <header>
+                  <button
+                    className="goal-card-title"
+                    onClick={() => navigate(`/goals/${goal.id}`)}
+                  >
+                    <span>{goal.metric || "Goal"}</span>
+                    <strong>{goal.name || "Untitled goal"}</strong>
+                  </button>
+                  <Badge tone={progress.tone}>{goal.period || "Monthly"}</Badge>
+                </header>
+                <GoalProgress
+                  name={String(goal.name || "Goal")}
+                  current={goal.current}
+                  target={goal.target}
+                />
+                <div className="goal-card-meta">
+                  <span>
+                    <b>Owner</b> {goal.owner || "Unassigned"}
+                  </span>
+                  <span>
+                    <b>Dates</b>{" "}
+                    {goal.startDate || goal.endDate
+                      ? `${goal.startDate || "Open"} – ${goal.endDate || "Open"}`
+                      : "No date range"}
+                  </span>
+                </div>
+                <footer>
+                  <button
+                    className="btn ghost compact"
+                    onClick={() => navigate(`/goals/${goal.id}`)}
+                  >
+                    View details
+                  </button>
+                  <div className="row-actions">
+                    <button
+                      className="icon-btn tiny"
+                      title="Edit goal"
+                      aria-label={`Edit ${goal.name || "goal"}`}
+                      onClick={() => setEdit(goal)}
+                    >
+                      <Icon name="edit" />
+                    </button>
+                    <button
+                      className="icon-btn tiny danger-link"
+                      title="Delete goal"
+                      aria-label={`Delete ${goal.name || "goal"}`}
+                      onClick={() =>
+                        confirm(`Delete ${goal.name || "goal"}?`) && remove(goal.id)
+                      }
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  </div>
+                </footer>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty
+          icon="goal"
+          title="No goals yet"
+          text="Use the quick-add form to create your first measurable goal."
+          action={
+            <button
+              className="btn primary compact"
+              onClick={() => nameRef.current?.focus()}
+            >
+              Add a goal
+            </button>
+          }
+        />
+      )}
+
+      {edit !== undefined ? (
+        <RecordForm
+          title={`${edit ? "Edit" : "Add"} goal`}
+          fields={goalFields}
+          initial={edit || {}}
+          onClose={() => setEdit(undefined)}
+          onSave={saveGoal}
+        />
+      ) : null}
+
+      {celebration ? (
+        <div className="goal-celebration" aria-live="polite">
+          <div className="goal-confetti" aria-hidden="true">
+            {Array.from({ length: 36 }, (_, index) => (
+              <i
+                key={index}
+                style={
+                  {
+                    left: `${(index * 37) % 100}%`,
+                    animationDelay: `${(index % 9) * 0.08}s`,
+                    animationDuration: `${1.8 + (index % 5) * 0.18}s`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+          <div className="goal-celebration-message">
+            <strong>{celebration.milestone}% milestone reached!</strong>
+            <span>{celebration.goalName}</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 function SurveysPage() {
@@ -5035,6 +5469,7 @@ function PortalView({
             <div className="portal-access-form">
               <input
                 type="email"
+                aria-label="Account email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
@@ -5377,6 +5812,7 @@ function ReportsPage() {
           <Icon name="download" /> Export CSV
         </button>
       </PageHeader>
+      <CustomReportBuilder />
       <div className="stats-grid">
         <div className="stat-card hover-crm-card relative">
           <CornerBrackets stroke="#3b82f6" size="sm" />
@@ -5527,8 +5963,18 @@ function AuditPage() {
 }
 
 function TeamPage() {
-  const { items, create, update, remove } = useResource<Row>("team");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const { toast } = useApp();
+  const { items, loading, update, remove } = useResource<Row>("team");
+  const [edit, setEdit] = useState<Row | undefined>();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteSent, setInviteSent] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(true);
+  const [invitationsError, setInvitationsError] = useState("");
+  const [resending, setResending] = useState("");
   const fields: FieldSpec[] = [
     { key: "avatar", label: "Photo", type: "photo" },
     { key: "name", label: "Name" },
@@ -5548,18 +5994,162 @@ function TeamPage() {
   ];
   const fieldsForForm = fields.filter((f) => f.key !== "avatar");
   const avatarField = fields.find((f) => f.key === "avatar")!;
+
+  async function loadInvitations() {
+    setInvitationsLoading(true);
+    setInvitationsError("");
+    try {
+      const response = await api<unknown>("/users/invites");
+      setInvitations(normalizeInvitations(response));
+    } catch (error) {
+      setInvitationsError((error as Error).message);
+    } finally {
+      setInvitationsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadInvitations();
+  }, []);
+
+  function openInvite() {
+    setInviteEmail("");
+    setInviteSent("");
+    setInviteError("");
+    setInviteOpen(true);
+  }
+
+  async function sendInvitation(event: FormEvent) {
+    event.preventDefault();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setInviteError("Enter a valid email address.");
+      return;
+    }
+
+    setInviteBusy(true);
+    setInviteError("");
+    try {
+      await api("/users/invite", json("POST", { email }));
+      setInviteSent(email);
+      toast("Invitation sent");
+      await loadInvitations();
+    } catch (error) {
+      setInviteError((error as Error).message);
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function resendInvitation(invitation: PendingInvitation) {
+    setResending(invitation.id);
+    setInvitationsError("");
+    try {
+      await api(
+        "/users/invite",
+        json("POST", { email: invitation.email }),
+      );
+      toast(`Invitation resent to ${invitation.email}`);
+      await loadInvitations();
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      setResending("");
+    }
+  }
+
   return (
     <div className="page">
       <PageHeader
         title="Team & Roles"
         description="Workspace members and role assignments."
       >
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add member
+        <button className="btn primary" onClick={openInvite}>
+          <Icon name="send" /> Invite member
         </button>
       </PageHeader>
+
+      <section className="surface team-invitations" aria-labelledby="pending-invitations-title">
+        <header className="team-invitations-head">
+          <div>
+            <h2 id="pending-invitations-title">Pending invitations</h2>
+            <p>Invitations that have not been accepted yet.</p>
+          </div>
+          <Badge tone="blue">{invitations.length} pending</Badge>
+        </header>
+
+        {invitationsLoading ? (
+          <div className="team-invitations-state" aria-live="polite">
+            Loading invitations…
+          </div>
+        ) : invitationsError ? (
+          <div className="team-invitations-error" role="alert">
+            <div>
+              <b>Could not load pending invitations</b>
+              <span>{invitationsError}</span>
+            </div>
+            <button
+              className="btn secondary compact"
+              type="button"
+              onClick={() => void loadInvitations()}
+            >
+              Try again
+            </button>
+          </div>
+        ) : invitations.length ? (
+          <div className="team-invitation-list">
+            {invitations.map((invitation) => {
+              const expired = invitationIsExpired(invitation.expiresAt);
+              const expiry = invitation.expiresAt
+                ? new Date(invitation.expiresAt)
+                : null;
+              const validExpiry = expiry && !Number.isNaN(expiry.getTime());
+              return (
+                <article className="team-invitation-row" key={invitation.id}>
+                  <span className="team-invitation-icon">
+                    <Icon name="mail" />
+                  </span>
+                  <div className="team-invitation-copy">
+                    <b>{invitation.email}</b>
+                    <span>
+                      <Icon name="clock" size={13} />
+                      {validExpiry ? (
+                        <time dateTime={invitation.expiresAt}>
+                          {expired ? "Expired " : "Expires "}
+                          {expiry.toLocaleString()}
+                        </time>
+                      ) : (
+                        "Expiry unavailable"
+                      )}
+                    </span>
+                  </div>
+                  <Badge tone={expired ? "amber" : "blue"}>
+                    {expired ? "Expired" : "Pending"}
+                  </Badge>
+                  <button
+                    className="btn secondary compact"
+                    type="button"
+                    disabled={resending === invitation.id}
+                    onClick={() => void resendInvitation(invitation)}
+                  >
+                    {resending === invitation.id ? "Sending…" : "Resend"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="team-invitations-state empty">
+            <Icon name="checkCircle" size={21} />
+            <span>No pending invitations</span>
+          </div>
+        )}
+      </section>
+
       <section className="surface table-surface">
-        {items.length ? (
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : items.length ? (
           <table>
             <thead>
               <tr>
@@ -5597,6 +6187,7 @@ function TeamPage() {
                     <div className="row-actions">
                       <button
                         className="icon-btn tiny"
+                        aria-label={`Edit ${member.name || member.email || "team member"}`}
                         onClick={() => setEdit(member)}
                       >
                         <Icon name="edit" />
@@ -5604,6 +6195,7 @@ function TeamPage() {
                       {member.role !== "Owner" ? (
                         <button
                           className="icon-btn tiny danger-link"
+                          aria-label={`Remove ${member.name || member.email || "team member"}`}
                           onClick={() =>
                             confirm("Remove this member?") && remove(member.id)
                           }
@@ -5625,25 +6217,120 @@ function TeamPage() {
             action={
               <button
                 className="btn primary compact"
-                onClick={() => setEdit(null)}
+                onClick={openInvite}
               >
-                Add member
+                Invite member
               </button>
             }
           />
         )}
       </section>
+
       {edit !== undefined ? (
         <RecordForm
-          title={`${edit ? "Edit" : "Add"} team member`}
+          title="Edit team member"
           fields={[avatarField, ...fieldsForForm]}
-          initial={edit || { status: "Invited", role: "Sales rep" }}
+          initial={edit}
           onClose={() => setEdit(undefined)}
           onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
+            await update(edit.id, data);
             setEdit(undefined);
           }}
         />
+      ) : null}
+
+      {inviteOpen ? (
+        <Modal
+          title={inviteSent ? "Invitation sent" : "Invite a team member"}
+          onClose={() => !inviteBusy && setInviteOpen(false)}
+          footer={
+            inviteSent ? (
+              <>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={() => {
+                    setInviteEmail("");
+                    setInviteSent("");
+                    setInviteError("");
+                  }}
+                >
+                  Invite another
+                </button>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => setInviteOpen(false)}
+                >
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  disabled={inviteBusy}
+                  onClick={() => setInviteOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn primary"
+                  type="submit"
+                  form="team-invite-form"
+                  disabled={inviteBusy}
+                >
+                  <Icon name="send" />
+                  {inviteBusy ? "Sending…" : "Send invitation"}
+                </button>
+              </>
+            )
+          }
+        >
+          {inviteSent ? (
+            <div className="team-invite-success" role="status">
+              <span>
+                <Icon name="check" size={27} />
+              </span>
+              <h4>Invitation sent</h4>
+              <p>
+                An invitation was sent to <b>{inviteSent}</b>.
+              </p>
+            </div>
+          ) : (
+            <form id="team-invite-form" className="team-invite-form" onSubmit={sendInvitation}>
+              <div className="team-invite-intro">
+                <span>
+                  <Icon name="mail" size={22} />
+                </span>
+                <div>
+                  <b>Invite by email</b>
+                  <p>The new member will receive a link to join this workspace.</p>
+                </div>
+              </div>
+              <label className="field">
+                <span>Email address</span>
+                <input
+                  autoFocus
+                  type="email"
+                  value={inviteEmail}
+                  placeholder="teammate@company.com"
+                  autoComplete="email"
+                  onChange={(event) => {
+                    setInviteEmail(event.target.value);
+                    setInviteError("");
+                  }}
+                />
+              </label>
+              {inviteError ? (
+                <p className="inline-alert error" role="alert">
+                  <Icon name="warning" /> {inviteError}
+                </p>
+              ) : null}
+            </form>
+          )}
+        </Modal>
       ) : null}
     </div>
   );
@@ -5712,6 +6399,7 @@ function FieldsPage() {
                   <td>{item.type}</td>
                   <td>
                     <Toggle
+                      label={`Make ${item.name || "field"} ${item.required ? "optional" : "required"}`}
                       value={Boolean(item.required)}
                       onChange={(required) => update(item.id, { required })}
                     />
@@ -5720,12 +6408,14 @@ function FieldsPage() {
                     <div className="row-actions">
                       <button
                         className="icon-btn tiny"
+                        aria-label={`Edit ${item.name || "custom field"}`}
                         onClick={() => setEdit(item)}
                       >
                         <Icon name="edit" />
                       </button>
                       <button
                         className="icon-btn tiny danger-link"
+                        aria-label={`Delete ${item.name || "custom field"}`}
                         onClick={() =>
                           confirm("Delete this custom field?") &&
                           remove(item.id)
@@ -5834,11 +6524,16 @@ function TemplatesManager() {
                 <small>{t.subject}</small>
               </div>
               <div className="row-actions">
-                <button className="icon-btn tiny" onClick={() => setEdit(t)}>
+                <button
+                  className="icon-btn tiny"
+                  aria-label={`Edit ${t.name || "template"}`}
+                  onClick={() => setEdit(t)}
+                >
                   <Icon name="edit" />
                 </button>
                 <button
                   className="icon-btn tiny danger-link"
+                  aria-label={`Delete ${t.name || "template"}`}
                   onClick={() => removeTemplate(t)}
                 >
                   <Icon name="trash" />
@@ -6263,7 +6958,7 @@ function Setting({
         <b>{title}</b>
         <p>{text}</p>
       </div>
-      <Toggle value={Boolean(value)} onChange={onChange} />
+      <Toggle label={title} value={Boolean(value)} onChange={onChange} />
     </div>
   );
 }
@@ -6500,14 +7195,18 @@ function FormEditor({
             <b>Enable form</b>
             <p>Visitors can see and submit this form.</p>
           </div>
-          <Toggle value={enabled} onChange={setEnabled} />
+          <Toggle label="Enable form" value={enabled} onChange={setEnabled} />
         </div>
         <div className="setting-toggle">
           <div>
             <b>Progressive profiling</b>
             <p>Hide fields the visitor has already answered.</p>
           </div>
-          <Toggle value={progressive} onChange={setProgressive} />
+          <Toggle
+            label="Progressive profiling"
+            value={progressive}
+            onChange={setProgressive}
+          />
         </div>
         <h4>Form fields</h4>
         {fields.map((field, i) => (
@@ -6544,6 +7243,7 @@ function FormEditor({
             <div className="toggle-row">
               <input
                 type="checkbox"
+                aria-label={`${field.name || `Field ${i + 1}`} required`}
                 checked={Boolean(field.required)}
                 onChange={(e) => setField(i, { required: e.target.checked })}
               />
@@ -6592,6 +7292,7 @@ function WebhooksPage() {
               {item.enabled ? "Active" : "Disabled"}
             </Badge>
             <Toggle
+              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "webhook endpoint"}`}
               value={Boolean(item.enabled)}
               onChange={(enabled) => update(item.id, { enabled })}
             />
@@ -6704,7 +7405,7 @@ function WebhookEditor({
             <b>Enabled</b>
             <p>Accept inbound deliveries at this endpoint.</p>
           </div>
-          <Toggle value={enabled} onChange={setEnabled} />
+          <Toggle label="Enable webhook endpoint" value={enabled} onChange={setEnabled} />
         </div>
       </div>
     </Drawer>
@@ -6851,6 +7552,11 @@ function AppInner() {
         </div>
       </main>
     );
+  return user ? (
+    <OnboardingGate userId={user.id}>
+      <Shell />
+    </OnboardingGate>
+  ) : (
 
   if (user) return <Shell />;
 
@@ -6883,7 +7589,7 @@ function AppInner() {
       onNavigateToSetup={navigateToLogin}
     />
   );
-}
+});
 
 export default function App() {
   return (

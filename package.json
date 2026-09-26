@@ -6,13 +6,14 @@
   "scripts": {
     "dev": "vite --config web/vite.config.ts --host 127.0.0.1 --port 5173 --open",
     "server": "node backend/server.js",
+    "migrate": "node backend/db/migrate.js",
     "seed": "node backend/db/seed.js",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "build": "vite build --config web/vite.config.ts",
     "preview": "vite preview --config web/vite.config.ts --host 127.0.0.1 --port 4173 --open",
     "start": "node start.js",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run --fileParallelism=false",
+    "test:watch": "vitest --fileParallelism=false"
   },
   "dependencies": {
     "@sentry/node": "^10.71.0",
@@ -36,6 +37,7 @@
     "react-hook-form": "^7.88.0",
     "react-i18next": "^17.0.12",
     "react-router-dom": "^7.18.2",
+    "react-signature-canvas": "^1.1.0-alpha.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
