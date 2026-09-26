@@ -11,6 +11,7 @@ import {
 } from "../services/twilio.js";
 import { transcribeAudio } from "../services/ai.js";
 import { isAiConfigured } from "../services/config.js";
+import { queueTranscriptionJob } from "../services/transcriptionQueue.js";
 import { triggerWorkflows } from "../services/workflows.js";
 import {
   validate,
@@ -273,29 +274,15 @@ export default function registerCallRoutes(app) {
       isAiConfigured(settings) &&
       recording.fileUrl
     ) {
-      setTimeout(async () => {
-        try {
-          const buffer = await downloadTwilioRecording(
-            settings,
-            recording.fileUrl,
-          );
-          const transcript = await transcribeAudio(settings, {
-            buffer,
-            filename: `recording-${recording.id}.mp3`,
-            mimeType: "audio/mpeg",
-          });
-          await mutateDb((db) => {
-            const index = db.recordings.findIndex((x) => x.id === recording.id);
-            if (index >= 0) {
-              db.recordings[index].transcript = transcript;
-              db.recordings[index].mediaStatus = "Transcribed";
-              db.recordings[index].updatedAt = now();
-            }
-          });
-        } catch (error) {
-          console.error("[twilio] auto-transcription failed:", error.message);
-        }
-      }, 0);
+      queueTranscriptionJob({
+        recordingId: recording.id,
+        fileUrl: recording.fileUrl,
+        fileName: `recording-${recording.id}.mp3`,
+        mimeType: "audio/mpeg",
+        workspaceId: "default",
+      }).catch((error) => {
+        console.error("[twilio] auto-transcription queue failed:", error.message);
+      });
     }
     res.send("<Response/>");
   });
