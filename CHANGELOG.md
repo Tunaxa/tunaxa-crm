@@ -8,6 +8,17 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **AI Lead Scoring Worker (`backend/workers/leadScoring.js`):**
+  - Implemented multi-dimensional lead scoring algorithm calculating normalized scores from 0 to 100 based on email interactions (0–25 pts), activity recency (0–25 pts), lifecycle stage velocity (0–25 pts), and form fills (0–25 pts).
+  - Configured BullMQ repeatable scheduler executing nightly at 02:00 UTC (`pattern: '0 2 * * *'`) with an automatic in-memory queue fallback for offline/test environments.
+  - Implemented batched lead scoring with PostgreSQL persistence updating `score`, `score_factors`, and `last_scored_at`.
+  - Dispatches `lead.scored` workflow event to the workflow engine whenever a lead's score meets or exceeds the configured threshold.
+- **Workflow Event Registration (`backend/services/workflows.js`):**
+  - Registered `lead.scored` event in `EVENT_META` with description and resource association.
+- **Leads Repository Score Integration (`backend/db/repositories/leads.js`):**
+  - Enhanced `create`, `update`, `findById`, and `findAll` to unpack and map `score` and `last_scored_at` transparently.
+- **Lead Scoring Test Suite (`backend/__tests__/lead-scoring.test.js`):**
+  - Added 9 unit and integration tests covering scoring component formulas, point caps, recency decay, velocity bonuses, PostgreSQL score updates, threshold-based workflow triggers, cron scheduler registration, and in-memory fallback.
 - **Quote Signing Automations (`backend/routes/quotes.js`):**
   - Dispatches `quote.signed` workflow events to the workflow execution engine upon successful quote signature, passing quote details, contract ID, signer metadata, and workspace context.
   - Added deal owner resolution to identify the sales representative associated with the quote's deal (or creator fallback) and dispatches an email notification with signing metadata, contract reference, and financial totals.
