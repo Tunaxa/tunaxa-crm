@@ -7,6 +7,21 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Async Audio Transcription Queue (`backend/services/transcriptionQueue.js`):**
+  - Implemented BullMQ queue (`transcription-queue`) and background worker for asynchronous audio transcription with automatic in-memory queue fallback (`InMemoryTranscriptionQueue`).
+  - Processes transcription jobs in the background using `transcribeAudio` from `backend/services/ai.js`, generates summaries when enabled, persists transcripts and media status, and broadcasts `recording.transcribed` (or `recording.failed`) Server-Sent Events via `backend/routes/sse.js`.
+  - Added worker lifecycle methods (`startTranscriptionWorker`, `stopTranscriptionWorker`, `closeTranscriptionQueue`) integrated into server startup and teardown.
+- **Transcription Queue Test Suite (`backend/__tests__/transcription-queue.test.js`):**
+  - Added 11 unit and integration tests covering queue fallback, immediate 201 response on upload, worker background processing, transcript persistence, SSE event delivery, failure handling, and async route modes.
+
+### Changed
+- **Recording Upload Route (`backend/routes/recordings.js`):**
+  - Decoupled synchronous transcription from `POST /api/recordings/upload`; returns immediately with HTTP 201 Created and `status: 'queued'` with job metadata.
+  - Added support for asynchronous background transcription on `POST /api/recordings/:id/transcribe` via `?async=true` returning HTTP 202 Accepted.
+- **Call Webhook Processing (`backend/routes/calls.js`):**
+  - Routed Twilio recording auto-transcription through `queueTranscriptionJob` rather than unmanaged ad-hoc timeouts.
+- **Server Initialization (`backend/server.js`):**
+  - Initialized background transcription worker on server boot alongside webhook and email workers with clean shutdown handling.
 
 - **AI Lead Scoring Worker (`backend/workers/leadScoring.js`):**
   - Implemented multi-dimensional lead scoring algorithm calculating normalized scores from 0 to 100 based on email interactions (0–25 pts), activity recency (0–25 pts), lifecycle stage velocity (0–25 pts), and form fills (0–25 pts).
