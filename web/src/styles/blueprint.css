@@ -1,0 +1,370 @@
+/* ══ Tunaxa Blueprint Geometry Tokens ══ */
+:root {
+  --corner-cut: 6px;           /* Chamfer size — matches CutButton clip-path */
+  --bracket-thickness: 1.5px;  /* Corner bracket arm thickness */
+  --grid-pitch: 24px;          /* Blueprint dot matrix spacing */
+  --grid-dot-color: #d1d1d1;   /* Light mode dot color */
+}
+html.dark {
+  --grid-dot-color: #1e293b;   /* Dark mode dot color */
+}
+
+@tailwind utilities;
+
+/* Tunaxa Engineering Blueprint Grid Texture */
+.tunaxa-grid-texture {
+  background-image: 
+    radial-gradient(#d1d1d1 1px, transparent 1px),
+    linear-gradient(to right, rgba(0, 0, 0, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.02) 1px, transparent 1px);
+  background-size: 24px 24px, 120px 120px, 120px 120px;
+  background-image: radial-gradient(#d1d1d1 1.2px, transparent 1.2px);
+  background-size: 24px 24px;
+}
+
+html.dark .tunaxa-grid-texture {
+  background-image: 
+    radial-gradient(#263140 1px, transparent 1px),
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 24px 24px, 120px 120px, 120px 120px;
+  background-image: radial-gradient(#263140 1.2px, transparent 1.2px);
+  background-size: 24px 24px;
+}
+
+/* CRM Card Hover & Micro-interactions */
+.hover-crm-card {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.hover-crm-card:hover {
+  transform: translateY(-3px);
+  border-color: #3b82f6 !important;
+  box-shadow: 0 16px 36px -8px rgba(59, 130, 246, 0.16), 0 4px 12px -2px rgba(59, 130, 246, 0.08);
+  transform: translateY(-2px);
+  border-color: #000000 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
+}
+
+html.dark .hover-crm-card:hover {
+  box-shadow: 0 16px 40px -8px rgba(59, 130, 246, 0.28), 0 0 20px rgba(59, 130, 246, 0.18);
+  border-color: #ffffff !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+
+
+/* Blueprint Glass Component */
+.blueprint-glass {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(209, 209, 209, 0.8);
+}
+
+html.dark .blueprint-glass {
+  background: rgba(15, 20, 28, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(38, 49, 64, 0.85);
+}
+
+/* High-Impact Gradient Headers */
+.text-blueprint-gradient {
+  background: linear-gradient(135deg, #18181b 0%, #3b82f6 50%, #18181b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.dark .text-blueprint-gradient {
+  background: linear-gradient(135deg, #ffffff 0%, #60a5fa 50%, #ffffff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Continuous Subtle Scanline */
+@keyframes scanline {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(1000%);
+  }
+}
+
+/* Scanline deactivated for modern Swiss-minimalist clarity */
+.animate-scanline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, rgba(59, 130, 246, 0.5) 50%, transparent 100%);
+  pointer-events: none;
+  animation: scanline 6s linear infinite;
+  z-index: 10;
+  display: none;
+}
+
+
+/* Pipeline Deal Velocity Pulse */
+@keyframes velocityPulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+.animate-velocity-pulse {
+  animation: velocityPulse 2.5s ease-in-out infinite;
+}
+
+/* Stage Connecting Beam */
+@keyframes dealBeam {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-deal-beam {
+  background: linear-gradient(90deg, #3b82f6 0%, #10b981 50%, #3b82f6 100%);
+  background-size: 200% 100%;
+  animation: dealBeam 2.5s linear infinite;
+}
+
+/* Celebratory Win Flash */
+@keyframes winFlash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 16px rgba(16, 185, 129, 0);
+    transform: scale(1.03);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    transform: scale(1);
+  }
+}
+
+.animate-win-flash {
+  animation: winFlash 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Slow Spin */
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 14s linear infinite;
+}
+
+/* Subtle Technical Scrollbars */
+.blueprint-scrollbar::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.blueprint-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+html.dark .blueprint-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+.blueprint-scrollbar::-webkit-scrollbar-thumb {
+  background: #3b82f6;
+  border-radius: 0px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   TUNAXA ENGINEERING BLUEPRINT — SIGNATURE GEOMETRY & TOKENS
+   ══════════════════════════════════════════════════════════ */
+
+/* 1. Global Zero-Radius Enforcement (Preserving Circular Avatars & Toggle Pills) */
+.surface,
+.card,
+.stat-card,
+.stat-icon,
+.revenue-card,
+.record-count,
+.company-card,
+.deal-card,
+.task-card,
+.task-column,
+.pipeline-column,
+.global-search,
+.search-button,
+.search-results button,
+.search-results button > span,
+.profile-menu,
+.profile-menu button,
+.profile-trigger,
+.modal,
+.side-drawer,
+.btn,
+.icon-btn,
+.field input,
+.field select,
+.field textarea,
+.control,
+.badge,
+.table-count,
+.summary-strip,
+.summary-icon,
+.detail-section,
+.detail-props > div,
+.activity-item,
+.activity-icon,
+.note-compose,
+.note-compose textarea,
+.note-card,
+.email-item,
+.autolog-card,
+.win-meter,
+.win-meter-fill,
+.win-factor,
+.win-recommendation,
+.add-deal,
+.add-task,
+.workspace-mini,
+.workspace-mark,
+.nav-link,
+.collapse-btn,
+.login-card,
+.login-submit,
+.search-button kbd,
+.global-search kbd {
+  border-radius: 0px !important;
+}
+
+/* 2. Cyber Tooltips for Collapsed Sidebar Items */
+.sidebar-collapsed .nav-link {
+  position: relative;
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar-collapsed .nav-link:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #ffffff;
+  color: #09090b;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 5px 9px;
+  border: 1px solid #d1d1d1;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 999;
+  pointer-events: none;
+  animation: cyberTooltipIn 0.12s ease-out;
+}
+
+html.dark .sidebar-collapsed .nav-link:hover::after {
+  background: #0f1217;
+  color: #f3f4f6;
+  border: 1px solid #263140;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes cyberTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+}
+
+/* 3. Topbar Monospace Breadcrumb Polish */
+.crumb {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.crumb span {
+  color: var(--ink-muted);
+}
+
+.crumb b {
+  color: var(--ink-primary);
+  font-weight: 700;
+}
+
+/* 4. Sidebar Active Item Accent */
+.nav-link.active {
+  position: relative;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
+  border-left: 2px solid #3b82f6;
+  font-weight: 600;
+}
+
+html.dark .nav-link.active {
+  background: rgba(59, 130, 246, 0.14);
+  color: #60a5fa;
+  border-left: 2px solid #3b82f6;
+}
+
+/* 5. Keycap Styling */
+kbd {
+  font-family: var(--mono) !important;
+  font-size: 9px !important;
+  border-radius: 0px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--ink-muted) !important;
+}
+
+/* ══ Global Blueprint Dot Grid — App Shell Overlay ══ */
+.blueprint-grid-global {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.35;
+  background-image: radial-gradient(var(--grid-dot-color) 1.2px, transparent 1.2px);
+  background-size: var(--grid-pitch) var(--grid-pitch);
+  transition: opacity 0.3s ease;
+}
+html.dark .blueprint-grid-global {
+  opacity: 0.20;
+}
+/* Hide grid inside data-dense zones (tables) */
+.no-grid .blueprint-grid-global {
+  opacity: 0;
+}
+
+/* ══ Topbar Glass Treatment ══ */
+.topbar-glass {
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+html.dark .topbar-glass {
+  background: rgba(9, 13, 20, 0.90) !important;
+}
+
