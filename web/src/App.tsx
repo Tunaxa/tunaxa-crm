@@ -2,6 +2,17 @@ import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
 
 import { useForm } from "react-hook-form";
 import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   useEffect,
   useRef,
   useState,
@@ -6252,93 +6263,338 @@ function FinancePage() {
 
 function ForecastPage() {
   const navigate = useNavigate();
-  const [finance, setFinance] = useState<any>(null);
+  const [deals, setDeals] = useState<Row[]>([]);
+  const [pipeline, setPipeline] = useState<any[]>([]);
+  const [range, setRange] = useState<"6" | "12" | "custom">("6");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
   useEffect(() => {
-    const load = () =>
-      api("/finance/summary")
-        .then(setFinance)
-        .catch(() => {});
-    load();
-    window.addEventListener("tunaxa:resource-changed", load);
-    return () => window.removeEventListener("tunaxa:resource-changed", load);
+    Promise.all([api<any>("/deals?limit=1000"), api<any>("/pipeline")])
+      .then(([dealResult, pipelineResult]) => {
+        const dealItems = Array.isArray(dealResult)
+          ? dealResult
+          : dealResult?.items || [];
+        setDeals(dealItems);
+
+        const pipelineItems = Array.isArray(pipelineResult)
+          ? pipelineResult
+          : pipelineResult?.stages || [];
+        setPipeline(pipelineItems);
+      })
+      .catch(() => {});
   }, []);
-  const max = Math.max(
-    1,
-    ...(finance?.monthly || []).flatMap((m: any) => [m.revenue, m.expenses]),
+
+  const stageProbability = new Map<string, number>();
+
+  pipeline.forEach((stage: any) => {
+    const name = String(stage.name || stage.id || "").toLowerCase();
+    const probability = Number(stage.probability);
+
+    if (name) {
+      stageProbability.set(
+        name,
+        Number.isFinite(probability) ? probability : 0,
+      );
+    }
+  });
+
+  const probabilityFor = (stage: string) => {
+    const normalized = String(stage || "").toLowerCase();
+
+    if (stageProbability.has(normalized)) {
+      return stageProbability.get(normalized) || 0;
+    }
+
+    if (normalized === "won") return 100;
+    if (normalized === "lost") return 0;
+
+    return 0;
+  };
+
+  const now = new Date();
+
+  function monthKey(date: Date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function monthLabel(key: string) {
+    const [year, month] = key.split("-").map(Number);
+
+    return new Intl.DateTimeFormat("en", {
+      month: "short",
+      year: "numeric",
+    }).format(new Date(year, month - 1, 1));
+  }
+
+  function addMonths(date: Date, amount: number) {
+    return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+  }
+
+  const defaultMonths = range === "12" ? 12 : 6;
+
+  let fromDate =
+    range === "custom" && customFrom
+      ? new Date(`${customFrom}T00:00:00`)
+      : addMonths(
+          new Date(now.getFullYear(), now.getMonth(), 1),
+          -defaultMonths + 1,
+        );
+
+  let toDate =
+    range === "custom" && customTo
+      ? new Date(`${customTo}T23:59:59`)
+      : new Date(
+          now.getFullYear(),
+          now.getMonth() + defaultMonths,
+          0,
+          23,
+          59,
+          59,
+        );
+
+  if (Number.isNaN(fromDate.getTime())) {
+    fromDate = addMonths(new Date(now.getFullYear(), now.getMonth(), 1), -5);
+  }
+
+  if (Number.isNaN(toDate.getTime())) {
+    toDate = new Date(now.getFullYear(), now.getMonth() + 6, 0, 23, 59, 59);
+  }
+
+  const months: string[] = [];
+  let cursor = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+  const end = new Date(toDate.getFullYear(), toDate.getMonth(), 1);
+
+  while (cursor <= end && months.length < 36) {
+    months.push(monthKey(cursor));
+    cursor = addMonths(cursor, 1);
+  }
+
+  const chartData = months.map((month) => {
+    const historicalWon = deals
+      .filter((deal) => {
+        if (String(deal.stage || "").toLowerCase() !== "won") {
+          return false;
+        }
+
+        const date = new Date(deal.updatedAt || deal.createdAt || "");
+        return !Number.isNaN(date.getTime()) && monthKey(date) === month;
+      })
+      .reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+
+    const pipelineDeals = deals.filter((deal) => {
+      const stage = String(deal.stage || "").toLowerCase();
+
+      if (stage === "won" || stage === "lost") {
+        return false;
+      }
+
+      if (!deal.closeDate) {
+        return false;
+      }
+
+      const date = new Date(`${String(deal.closeDate).slice(0, 10)}T00:00:00`);
+
+      return !Number.isNaN(date.getTime()) && monthKey(date) === month;
+    });
+
+    const pipelineValue = pipelineDeals.reduce(
+      (sum, deal) => sum + Number(deal.value || 0),
+      0,
+    );
+
+    const weightedPipeline = pipelineDeals.reduce((sum, deal) => {
+      const value = Number(deal.value || 0);
+      const probability = probabilityFor(deal.stage);
+
+      return sum + value * (probability / 100);
+    }, 0);
+
+    const averageProbability =
+      pipelineValue > 0 ? (weightedPipeline / pipelineValue) * 100 : 0;
+
+    return {
+      month,
+      label: monthLabel(month),
+      historical: historicalWon,
+      pipeline: weightedPipeline,
+      rawPipeline: pipelineValue,
+      probability: averageProbability,
+    };
+  });
+
+  const totalHistorical = chartData.reduce(
+    (sum, item) => sum + item.historical,
+    0,
   );
+
+  const totalForecast = chartData.reduce((sum, item) => sum + item.pipeline, 0);
+
   return (
     <div className="page">
       <PageHeader
         title="Revenue Forecast"
-        description="Projected revenue based on recent cash flow."
+        description="Historical won revenue and probability-weighted pipeline forecast."
       />
-      <section className="surface report-table">
-        <div className="section-head">
+
+      <section className="surface">
+        <div
+          className="section-head"
+          style={{
+            alignItems: "flex-start",
+            gap: "16px",
+            flexWrap: "wrap",
+          }}
+        >
           <div>
-            <h2>Monthly cash flow</h2>
-            <p>Revenue vs expenses</p>
+            <h2>Revenue forecast</h2>
+            <p>Won revenue vs probability-weighted pipeline by month.</p>
           </div>
-          <b className="section-kpi">
-            {money(finance?.avgMonthlyRevenue || 0)} <small>avg / month</small>
-          </b>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            {(["6", "12", "custom"] as const).map((value) => (
+              <button
+                key={value}
+                className={`btn ${range === value ? "primary" : "secondary"}`}
+                onClick={() => setRange(value)}
+              >
+                {value === "6"
+                  ? "Last 6 months"
+                  : value === "12"
+                    ? "Last 12 months"
+                    : "Custom"}
+              </button>
+            ))}
+          </div>
         </div>
-        {(finance?.monthly || []).map((m: any) =>
-          m.revenue + m.expenses > 0 ? (
-            <div className="report-row" key={m.month}>
-              <span>{m.label}</span>
-              <div className="bar-track dual">
-                <i
-                  className="rev"
-                  style={{ width: `${Math.max(2, (m.revenue / max) * 100)}%` }}
+
+        {range === "custom" ? (
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              flexWrap: "wrap",
+              marginBottom: "20px",
+            }}
+          >
+            <label>
+              <span>From</span>
+              <input
+                className="input"
+                type="date"
+                value={customFrom}
+                onChange={(event) => setCustomFrom(event.target.value)}
+              />
+            </label>
+
+            <label>
+              <span>To</span>
+              <input
+                className="input"
+                type="date"
+                value={customTo}
+                onChange={(event) => setCustomTo(event.target.value)}
+              />
+            </label>
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "12px",
+            marginBottom: "20px",
+          }}
+        >
+          <div className="surface">
+            <small>Historical won revenue</small>
+            <h3>{money(totalHistorical)}</h3>
+          </div>
+
+          <div className="surface">
+            <small>Weighted pipeline</small>
+            <h3>{money(totalForecast)}</h3>
+          </div>
+        </div>
+
+        {chartData.length > 0 ? (
+          <div style={{ width: "100%", height: 420 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={chartData}
+                margin={{
+                  top: 20,
+                  right: 20,
+                  left: 10,
+                  bottom: 10,
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+
+                <XAxis dataKey="label" />
+
+                <YAxis tickFormatter={(value) => money(value)} />
+
+                <Tooltip
+                  formatter={(value: any, name: any, item: any) => {
+                    if (name === "pipeline") {
+                      return [
+                        money(Number(value)),
+                        `Weighted pipeline (${Number(item?.payload?.probability || 0).toFixed(0)}%)`,
+                      ];
+                    }
+
+                    return [
+                      money(Number(value)),
+                      name === "historical" ? "Historical won revenue" : name,
+                    ];
+                  }}
                 />
-                <i
-                  className="exp"
-                  style={{ width: `${Math.max(2, (m.expenses / max) * 100)}%` }}
+
+                <Legend />
+
+                <Bar
+                  dataKey="pipeline"
+                  name="Pipeline forecast"
+                  fill="#8b5cf6"
+                  fillOpacity={0.65}
+                  radius={[4, 4, 0, 0]}
                 />
-              </div>
-              <b>{money(m.profit)}</b>
-              <strong>{money(m.revenue)}</strong>
-            </div>
-          ) : null,
-        )}
-        {!finance?.monthly?.length ||
-        finance.monthly.every((m: any) => m.revenue + m.expenses === 0) ? (
+
+                <Line
+                  type="monotone"
+                  dataKey="historical"
+                  name="Historical won revenue"
+                  stroke="#10b981"
+                  strokeWidth={3}
+                  dot={{ r: 4 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
           <Empty
             icon="trend"
-            title="No finance data"
-            text="Add paid invoices and expenses to see cash flow and forecast."
+            title="No forecast data"
+            text="Add deals with values and close dates to build the revenue forecast."
             action={
               <button
                 className="btn primary compact"
-                onClick={() => navigate("/invoices")}
+                onClick={() => navigate("/pipeline")}
               >
-                Add invoice
+                Open pipeline
               </button>
             }
           />
-        ) : null}
-      </section>
-      <section className="surface report-table">
-        <div className="section-head">
-          <div>
-            <h2>Next 3 months (projected)</h2>
-            <p>Based on rolling average revenue</p>
-          </div>
-        </div>
-        {(finance?.forecast || []).map((f: any) => (
-          <div className="report-row" key={f.month}>
-            <span>{f.label}</span>
-            <div className="bar-track">
-              <i
-                style={{
-                  width: `${Math.min(100, (f.projected / Math.max(1, finance?.avgMonthlyRevenue || 1) / 4) * 100)}%`,
-                }}
-              />
-            </div>
-            <b>projected</b>
-            <strong>{money(f.projected)}</strong>
-          </div>
-        ))}
+        )}
       </section>
     </div>
   );
