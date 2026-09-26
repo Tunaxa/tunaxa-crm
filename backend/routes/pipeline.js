@@ -69,7 +69,7 @@ export default function registerPipelineRoutes(app) {
         });
         return db.stageGates;
       });
-      broadcast("pipeline.gates_updated");
+      broadcast("pipeline.gates_updated", null, req.user.workspaceId || "default");
       res.json(saved);
     },
   );
@@ -164,7 +164,7 @@ export default function registerPipelineRoutes(app) {
             missing: gated.missing,
             fields: gated.fields,
           });
-      broadcast("pipeline.deal_moved", { dealId, toStage: saved.stage });
+      broadcast("pipeline.deal_moved", { dealId, toStage: saved.stage }, req.user.workspaceId || "default");
       res.json(saved);
     },
   );

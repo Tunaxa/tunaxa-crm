@@ -125,7 +125,7 @@ export default function registerWorkflowBuilderRoutes(app) {
       return true;
     });
     if (!result) return res.status(404).json({ error: 'Workflow not found' });
-    broadcast('workflow.deleted', { id: req.params.id });
+    broadcast('workflow.deleted', { id: req.params.id }, req.user.workspaceId || 'default');
     res.json({ ok: true });
   });
 
@@ -146,7 +146,7 @@ export default function registerWorkflowBuilderRoutes(app) {
       return flow;
     });
     if (!saved) return res.status(404).json({ error: 'Workflow not found' });
-    broadcast('workflow.graph_saved', { id: saved.id });
+    broadcast('workflow.graph_saved', { id: saved.id }, req.user.workspaceId || 'default');
     res.json(saved);
   });
 

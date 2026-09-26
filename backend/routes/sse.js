@@ -4,10 +4,10 @@ const sseAuth = createAuth({ allowQueryToken: true });
 
 const clients = new Map();
 
-export function broadcast(event, data, userId) {
+export function broadcast(event, data, workspaceId) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const [, client] of clients) {
-    if (userId && client.userId !== userId) continue;
+    if (!workspaceId || client.workspaceId !== workspaceId) continue;
     client.res.write(payload);
   }
 }
@@ -25,7 +25,11 @@ export default function registerSseRoutes(app) {
     );
 
     const clientId = `${req.user.id}-${Date.now()}`;
-    clients.set(clientId, { res, userId: req.user.id });
+    clients.set(clientId, {
+      res,
+      userId: req.user.id,
+      workspaceId: req.user.workspaceId || "default",
+    });
 
     const heartbeat = setInterval(() => {
       res.write(`: heartbeat\n\n`);
