@@ -58,4 +58,23 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   } finally {
     await closePool();
   }
+import { query, closePool } from "./pg.js";
+
+const directory = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "migrations",
+);
+
+const migrationFiles = (await fs.readdir(directory))
+  .filter((file) => file.endsWith(".sql"))
+  .sort();
+
+try {
+  for (const file of migrationFiles) {
+    const sql = await fs.readFile(path.join(directory, file), "utf8");
+    await query(sql);
+    console.log(`Applied ${file}`);
+  }
+} finally {
+  await closePool();
 }
