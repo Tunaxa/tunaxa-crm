@@ -2,6 +2,81 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
 
+const focusableSelector = [
+  'a[href]',
+  'area[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([hidden]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'iframe',
+  'object',
+  'embed',
+  '[contenteditable="true"]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+const initialFormFieldSelector = [
+  'input:not([disabled]):not([hidden]):not([type="hidden"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"])',
+  'select:not([disabled]):not([hidden])',
+  'textarea:not([disabled]):not([hidden])',
+].join(',');
+
+function useFocusTrap() {
+  const containerRef = useRef<HTMLElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(
+    typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null),
+  );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const previousFocus = previousFocusRef.current;
+    const getFocusableElements = () =>
+      Array.from(container.querySelectorAll<HTMLElement>(focusableSelector));
+    const focusFirst = () => {
+      const focusableElements = getFocusableElements();
+      const autofocusElement = container.querySelector<HTMLElement>('[autofocus]');
+      const firstFormField = container.querySelector<HTMLElement>(initialFormFieldSelector);
+      (autofocusElement || firstFormField || focusableElements[0] || container).focus();
+    };
+
+    focusFirst();
+
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (!focusableElements.length) {
+        event.preventDefault();
+        container.focus();
+        return;
+      }
+
+      const firstFocusable = focusableElements[0];
+      const lastFocusable = focusableElements[focusableElements.length - 1];
+      if (!container.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? lastFocusable : firstFocusable).focus();
+      } else if (event.shiftKey && document.activeElement === firstFocusable) {
+        event.preventDefault();
+        lastFocusable.focus();
+      } else if (!event.shiftKey && document.activeElement === lastFocusable) {
+        event.preventDefault();
+        firstFocusable.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handler);
+    return () => {
+      document.removeEventListener('keydown', handler);
+      previousFocus?.focus();
+    };
+  }, []);
+
+  return containerRef;
+}
 export { CornerBrackets } from './ui/CornerBrackets';
 export { PixelIndicator } from './ui/PixelIndicator';
 export { CutButton } from './ui/CutButton';
@@ -13,6 +88,8 @@ export { SectionHeader } from './ui/SectionHeader';
 export type { SectionHeaderProps } from './ui/SectionHeader';
 
 export function Modal({ title, children, onClose, footer }: { title: string; children: ReactNode; onClose: () => void; footer?: ReactNode }) {
+  const modalRef = useFocusTrap();
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
     window.addEventListener('keydown', handler);
@@ -20,7 +97,7 @@ export function Modal({ title, children, onClose, footer }: { title: string; chi
   }, [onClose]);
 
   return <div className="modal-backdrop" onMouseDown={onClose}>
-    <section className="modal" onMouseDown={event => event.stopPropagation()}>
+    <section ref={modalRef} className="modal" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onMouseDown={event => event.stopPropagation()}>
       <header><h3>{title}</h3><button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button></header>
       <div className="modal-body">{children}</div>
       {footer ? <footer>{footer}</footer> : null}
@@ -29,6 +106,8 @@ export function Modal({ title, children, onClose, footer }: { title: string; chi
 }
 
 export function Drawer({ title, subtitle, children, onClose, footer, width = 520 }: { title: string; subtitle?: string; children: ReactNode; onClose: () => void; footer?: ReactNode; width?: number }) {
+  const drawerRef = useFocusTrap();
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
     window.addEventListener('keydown', handler);
@@ -40,7 +119,7 @@ export function Drawer({ title, subtitle, children, onClose, footer, width = 520
   }, [onClose]);
 
   return <div className="drawer-backdrop" onMouseDown={onClose}>
-    <aside className="side-drawer" style={{ width }} onMouseDown={event => event.stopPropagation()}>
+    <aside ref={drawerRef} className="side-drawer" role="dialog" aria-modal="true" tabIndex={-1} style={{ width }} onMouseDown={event => event.stopPropagation()}>
       <header className="side-drawer-head">
         <div><h2>{title}</h2>{subtitle ? <p>{subtitle}</p> : null}</div>
         <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
@@ -97,8 +176,8 @@ export function Badge({ children, variant, tone, className = '' }: BadgeProps) {
   return <span className={`badge badge-${tone || 'neutral'} ${className}`}>{children}</span>;
 }
 
-export function Toggle({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {
-  return <button type="button" className={`toggle ${value ? 'on' : ''}`} onClick={() => onChange(!value)} aria-pressed={value}><span /></button>;
+export function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
+  return <button type="button" className={`toggle ${value ? 'on' : ''}`} aria-label={label} onClick={() => onChange(!value)} aria-pressed={value}><span /></button>;
 }
 
 export const money = (value: number, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(value || 0));

@@ -94,7 +94,7 @@ export default function registerSequenceRoutes(app) {
       return { seq, enrolled };
     });
     if (!result) return res.status(404).json({ error: 'Sequence not found' });
-    broadcast('sequence.enrolled', { sequenceId: req.params.id, count: result.enrolled });
+    broadcast('sequence.enrolled', { sequenceId: req.params.id, count: result.enrolled }, req.user.workspaceId || 'default');
     res.status(201).json(result);
   });
 
@@ -160,7 +160,7 @@ export default function registerSequenceRoutes(app) {
       return { sent, skipped, exited };
     });
     if (!summary) return res.status(404).json({ error: 'Sequence not found or disabled' });
-    broadcast('sequence.ran', { sequenceId: req.params.id, ...summary });
+    broadcast('sequence.ran', { sequenceId: req.params.id, ...summary }, req.user.workspaceId || 'default');
     res.json(summary);
   });
 }
