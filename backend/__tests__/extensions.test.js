@@ -75,6 +75,8 @@ describe('Duplicate management', () => {
     const group = find.body.duplicates.find(g => g.names.includes('Jane Doe'));
     expect(group).toBeTruthy();
     expect(group.ids.length).toBe(2);
+    expect(group.records).toHaveLength(2);
+    expect(group.confidence).toBe(100);
     expect(group.score).toBe(1);
     expect(group.matches).toHaveLength(1);
     expect(group.matches[0].score).toBe(1);
@@ -88,6 +90,15 @@ describe('Duplicate management', () => {
     expect(list.body.filter(c => c.email === 'jane@test.com').length).toBe(1);
   });
 
+  it('returns confidence for fuzzy company name matches', async () => {
+    await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Acme Corporation' });
+    await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Acme Corporaton' });
+
+    const find = await request(app).get('/api/duplicates?resource=companies').set('Authorization', `Bearer ${token}`);
+    const group = find.body.duplicates.find(g => g.names.includes('Acme Corporation'));
+    expect(group).toBeTruthy();
+    expect(group.confidence).toBeGreaterThan(80);
+    expect(group.confidence).toBeLessThan(100);
   it('detects fuzzy-near-match duplicates for companies and scores them below 1', async () => {
     await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Phil Schmitz' });
     await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Philip Schmitz' });

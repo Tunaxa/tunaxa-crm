@@ -140,8 +140,7 @@ describe("RBAC end-to-end verification", () => {
   it.each(writeRequests)(
     "%s — viewer blocked",
     async (_name, url, method, body) => {
-      const res = await request(app)
-        [method](url)
+      const res = await request(app)[method](url)
         .set("Authorization", `Bearer ${viewerToken}`)
         .send(body);
       expect(res.status).toBe(403);
@@ -152,8 +151,7 @@ describe("RBAC end-to-end verification", () => {
     "%s — member and owner allowed to reach handler (not 403)",
     async (_name, url, method, body) => {
       for (const token of [memberToken, ownerToken]) {
-        const res = await request(app)
-          [method](url)
+        const res = await request(app)[method](url)
           .set("Authorization", `Bearer ${token}`)
           .send(body);
         expect(res.status, `token ${url}`).not.toBe(403);
