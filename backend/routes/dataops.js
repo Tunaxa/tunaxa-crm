@@ -11,13 +11,14 @@ import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
 const norm = value => String(value || '').trim().toLowerCase();
 const emailEquals = (record, email) => norm(record.customerEmail) === email || norm(record.email) === email || norm(record.contact) === email;
 
-// Contacts, leads, companies, deals, tasks and activities are served from
-// Postgres rather than the JSON store (see migrations/004_contacts_leads.sql
-// and 005_core_entities.sql), so duplicate detection has to read them from the
-// same repositories the write path uses. Reading them from readDb() would
-// consult an empty JSON store and silently report zero duplicates while the
-// records plainly exist in the database.
-async function loadDuplicateRows(resource) {
+// Contacts, leads, companies, deals, tasks, activities and the six revenue
+// resources are served from Postgres rather than the JSON store (see
+// migrations/004_contacts_leads.sql, 005_core_entities.sql and
+// 006_revenue_tables.sql), so anything that reads a whole resource has to go
+// through the same repositories the write path uses. Reading them from
+// readDb() would consult an empty JSON store and silently report zero rows
+// while the records plainly exist in the database.
+async function loadRows(resource) {
   if (!PG_RESOURCES.has(resource)) {
     const db = await readDb();
     return db[resource] || [];
@@ -37,7 +38,7 @@ async function loadDuplicateRows(resource) {
 export default function registerDataOpsRoutes(app) {
   app.get('/api/duplicates', auth, requireRole('admin', 'member'), async (req, res) => {
     const resource = req.query.resource === 'companies' ? 'companies' : 'contacts';
-    const rows = await loadDuplicateRows(resource);
+    const rows = await loadRows(resource);
     const keyOf = row => norm(resource === 'companies' ? row.name : (row.email || row.name));
     const fuzzyKeyOf = row => {
       if (resource !== 'companies' && row.email) return norm(String(row.email).split('@')[0]);
@@ -199,18 +200,35 @@ export default function registerDataOpsRoutes(app) {
     res.json(result.keep);
   });
 
-  app.post('/api/portal/access', createRateLimiter({ windowMs: 60_000, max: 25, prefix: 'portal' }), async (req, res) => {
+  app.post('/api/portal/access', createRateLimiter({ windowMs: 60_000, max: 25, prefix: 'portal' }), async (req, res, next) => {
     const email = norm(req.body?.email);
     if (!email) return res.status(400).json({ error: 'Email is required' });
-    const db = await readDb();
-    const contact = (db.contacts || []).find(c => norm(c.email) === email) || null;
-    const pick = rows => (rows || []).filter(r => emailEquals(r, email));
-    res.json({
-      customer: { email, name: contact?.name || email },
-      quotes: pick(db.quotes),
-      contracts: pick(db.contracts),
-      invoices: pick(db.invoices),
-      tickets: pick(db.tickets)
-    });
+    try {
+      // Every read goes through loadRows so the portal reflects the same
+      // source of truth as the write path. Reading these arrays out of db.json
+      // would return empty lists for contacts, quotes, contracts and invoices
+      // as soon as records are created, because those resources are written to
+      // Postgres. `tickets` has no repository yet, so loadRows transparently
+      // falls back to the JSON store for it and will pick up Postgres for free
+      // once one lands.
+      const [contactRows, quoteRows, contractRows, invoiceRows, ticketRows] = await Promise.all([
+        loadRows('contacts'),
+        loadRows('quotes'),
+        loadRows('contracts'),
+        loadRows('invoices'),
+        loadRows('tickets'),
+      ]);
+      const pick = rows => rows.filter(r => emailEquals(r, email));
+      const contact = contactRows.find(c => norm(c.email) === email) || null;
+      res.json({
+        customer: { email, name: contact?.name || email },
+        quotes: pick(quoteRows),
+        contracts: pick(contractRows),
+        invoices: pick(invoiceRows),
+        tickets: pick(ticketRows)
+      });
+    } catch (err) {
+      return next(err);
+    }
   });
 }
