@@ -176,8 +176,8 @@ export function Badge({ children, variant, tone, className = '' }: BadgeProps) {
   return <span className={`badge badge-${tone || 'neutral'} ${className}`}>{children}</span>;
 }
 
-export function Toggle({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {
-  return <button type="button" className={`toggle ${value ? 'on' : ''}`} onClick={() => onChange(!value)} aria-pressed={value}><span /></button>;
+export function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
+  return <button type="button" className={`toggle ${value ? 'on' : ''}`} aria-label={label} onClick={() => onChange(!value)} aria-pressed={value}><span /></button>;
 }
 
 export const money = (value: number, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 0 }).format(Number(value || 0));
