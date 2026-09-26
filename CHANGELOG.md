@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- A first-login onboarding gate for empty workspaces with a resumable four-step wizard for company profile, contact CSV import, pipeline stages, and team invitations. Progress and completion are stored per user, and every step or the full setup can be skipped.
 - Added a reusable electronic-signature modal with draw and typed-name modes, live typed preview, explicit consent, PNG/SVG output, validation, and accessible controls.
 - Replaced the Goals table with a responsive progress-card dashboard, added an inline quick-add form, and added reduced-motion-aware confetti when a goal newly reaches 50%, 75%, or 100%.
 - Replaced the quote line-item text area with a dynamic quote builder that supports adding and removing products, quantity and unit-price inputs, live line totals, subtotal, discount, tax, and grand-total calculations.
@@ -34,6 +35,8 @@ and this project adheres to Semantic Versioning.
 
 ### Testing
 
+- Production build, TypeScript type-check, targeted ESLint, and onboarding preference tests pass (3/3).
+- Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
 - Added focused tests for draw/type readiness, required consent, typed-signature data URLs, and XML escaping; production build and targeted lint/type checks pass.
 - Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
 - Added focused tests for progress colors, capped progress-bar width, and newly crossed milestone detection; production build and targeted lint/type checks pass.

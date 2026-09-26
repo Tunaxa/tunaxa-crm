@@ -40,6 +40,7 @@ import { LayoutGrid, Sun, Moon } from "lucide-react";
 import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { OnboardingGate } from "./components/onboarding/OnboardingWizard";
 import {
   GoalProgress,
   getCrossedGoalMilestone,
@@ -7211,6 +7212,11 @@ function AppInner() {
         </div>
       </main>
     );
+  return user ? (
+    <OnboardingGate userId={user.id}>
+      <Shell />
+    </OnboardingGate>
+  ) : (
 
   if (user) return <Shell />;
 
@@ -7243,7 +7249,7 @@ function AppInner() {
       onNavigateToSetup={navigateToLogin}
     />
   );
-}
+});
 
 export default function App() {
   return (
