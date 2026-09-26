@@ -66,6 +66,22 @@ describe('Generic CRUD - leads', () => {
     expect(res.text).toContain('Acme Corp');
   });
 
+  it('GET /api/leads/export.csv downloads all leads as CSV', async () => {
+    const res = await request(app)
+      .get('/api/leads/export.csv')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('leads.csv');
+    expect(res.text).toContain('"name"');
+    expect(res.text).toContain('"Acme Corp"');
+  });
+
+  it('GET /api/leads/export.csv requires authentication', async () => {
+    const res = await request(app).get('/api/leads/export.csv');
+    expect(res.status).toBe(401);
+  });
+
   it('PUT /api/leads/:id updates lead', async () => {
     const res = await request(app)
       .put(`/api/leads/${leadId}`)
@@ -95,6 +111,62 @@ describe('Generic CRUD - leads', () => {
   it('DELETE /api/leads/:id returns 404 for missing', async () => {
     const res = await request(app).delete('/api/leads/lead_nonexistent').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(404);
+  });
+});
+
+describe('CSV export', () => {
+  it.each(['contacts', 'companies'])('exports %s with quoted CSV values', async (resource) => {
+    const name = 'North, "Division"';
+    const created = await request(app)
+      .post(`/api/${resource}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name });
+    expect(created.status).toBe(201);
+
+    const res = await request(app)
+      .get(`/api/${resource}/export.csv`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('"North, ""Division"""');
+  });
+});
+
+describe('Activity timeline filters', () => {
+  it('filters by record and selected activity type', async () => {
+    const contact = 'AXA-97 Filter Target';
+    for (const type of ['Email', 'Call', 'Meeting', 'Note', 'Lifecycle']) {
+      const created = await request(app)
+        .post('/api/activities')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ title: `${type} event`, type, contact });
+      expect(created.status).toBe(201);
+    }
+    const unrelated = await request(app)
+      .post('/api/activities')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: 'Other email', type: 'Email', contact: 'Someone Else' });
+    expect(unrelated.status).toBe(201);
+
+    const email = await request(app)
+      .get('/api/activities')
+      .query({ contact, type: 'Email' })
+      .set('Authorization', `Bearer ${token}`);
+    expect(email.status).toBe(200);
+    expect(email.body.map((item) => item.title)).toEqual(['Email event']);
+
+    const system = await request(app)
+      .get('/api/activities')
+      .query({ contact, type: 'System' })
+      .set('Authorization', `Bearer ${token}`);
+    expect(system.status).toBe(200);
+    expect(system.body.map((item) => item.title)).toEqual(['Lifecycle event']);
+
+    const all = await request(app)
+      .get('/api/activities')
+      .query({ contact })
+      .set('Authorization', `Bearer ${token}`);
+    expect(all.status).toBe(200);
+    expect(all.body).toHaveLength(5);
   });
 });
 

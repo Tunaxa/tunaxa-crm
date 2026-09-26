@@ -6,6 +6,7 @@ import { requireRole } from "../middleware/rbac.js";
 import {
   id,
   now,
+  auditEntry,
   coerceBuiltIns,
   coerceCustomFields,
   resources,
@@ -42,38 +43,59 @@ export default function registerResourceRoutes(app) {
     if (!resources.has(req.params.resource)) return next();
     const db = req.db || (await readDb());
     let rows = db[req.params.resource] || [];
-    const q = String(req.query.q || '').toLowerCase().trim();
-    if (q) rows = rows.filter(item => JSON.stringify(item).toLowerCase().includes(q));
-    const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit || '25'), 10) || 25));
-    const sortBy = String(req.query.sortBy || 'createdAt');
-    const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
-    rows = [...rows].sort((a, b) => {
-      const left = a[sortBy] ?? '';
-      const right = b[sortBy] ?? '';
-      return String(left).localeCompare(String(right), undefined, { numeric: true }) * sortDir;
-    });
-    const total = rows.length;
-    rows = rows.slice((page - 1) * limit, page * limit);
-    if (req.fieldPerms) rows = rows.map(item => applyFieldMasking(item, req.fieldPerms));
-    res.json({ data: rows, total, page, limit });
+    const q = String(req.query.q || "")
+      .toLowerCase()
+      .trim();
+    if (q)
+      rows = rows.filter((item) =>
+        JSON.stringify(item).toLowerCase().includes(q),
+      );
+    if (req.params.resource === "activities") {
+      const type = String(req.query.type || "").toLowerCase();
+      if (type) {
+        const directTypes = ["email", "call", "meeting", "note"];
+        rows = rows.filter((item) => {
+          const itemType = String(item.type || "").toLowerCase();
+          return type === "system"
+            ? !directTypes.includes(itemType)
+            : itemType === type;
+        });
+      }
+      const recordId = String(req.query.recordId || "");
+      const contact = String(req.query.contact || "").trim().toLowerCase();
+      if (recordId || contact) {
+        rows = rows.filter((item) =>
+          (recordId && item.recordId === recordId) ||
+          (contact && (
+            String(item.contact || "").toLowerCase() === contact ||
+            String(item.company || "").toLowerCase() === contact ||
+            String(item.title || "").toLowerCase().includes(contact)
+          )),
+        );
+      }
+    }
+    if (req.fieldPerms)
+      rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
+    res.json(rows);
   });
 
-  app.get('/api/:resource/export.csv', auth, async (req, res, next) => {
+  app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
-    const db = req.db || await readDb();
-    const rows = db[req.params.resource] || [];
-    const visibleRows = req.fieldPerms
-      ? rows.map(item => applyFieldMasking(item, req.fieldPerms))
-      : rows;
-    const keys = [...new Set(visibleRows.flatMap(row => Object.keys(row)))];
-    const escape = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    res.status(200);
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${req.params.resource}.csv"`);
-    res.write(`${keys.map(escape).join(',')}\n`);
-    for (const row of visibleRows) {
-      res.write(`${keys.map(key => escape(row[key])).join(',')}\n`);
+    const db = req.db || (await readDb());
+    const rows = (db[req.params.resource] || []).map((item) =>
+      req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
+    );
+    const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+    const cell = (value) => {
+      const text = value == null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${req.params.resource}.csv"`);
+    res.write(`${columns.map(cell).join(",")}\r\n`);
+    for (const row of rows) {
+      res.write(`${columns.map((column) => cell(row[column])).join(",")}\r\n`);
     }
     res.end();
   });
@@ -119,12 +141,13 @@ export default function registerResourceRoutes(app) {
           });
         }
         if (resource !== "audit")
-          db.audit.unshift({
-            id: id("audit"),
+          db.audit.unshift(auditEntry({
             action: `Created ${resource.slice(0, -1)}`,
             actor: req.user.name,
             createdAt,
-          });
+            req,
+            resourceId: record.id,
+          }));
         return record;
       });
       const event = createdEvent(resource);
@@ -155,12 +178,12 @@ export default function registerResourceRoutes(app) {
           updatedAt: now(),
         }));
         db[resource].unshift(...rows);
-        db.audit.unshift({
-          id: id("audit"),
+        db.audit.unshift(auditEntry({
           action: `Imported ${rows.length} ${resource}`,
           actor: req.user.name,
-          createdAt: now(),
-        });
+          req,
+          resourceId: rows.map((row) => row.id).join(","),
+        }));
         return rows;
       });
       broadcast("records.batch", { resource, count: saved.length });
@@ -197,12 +220,12 @@ export default function registerResourceRoutes(app) {
           db[resource][index],
           req.user,
         );
-        db.audit.unshift({
-          id: id("audit"),
+        db.audit.unshift(auditEntry({
           action: `Updated ${resource.slice(0, -1)}`,
           actor: req.user.name,
-          createdAt: now(),
-        });
+          req,
+          resourceId: req.params.id,
+        }));
         return db[resource][index];
       });
       if (!item) return res.status(404).json({ error: "Record not found" });
@@ -250,12 +273,12 @@ export default function registerResourceRoutes(app) {
           db.activities = db.activities.filter(
             (item) => item.messageId !== record.id,
           );
-        db.audit.unshift({
-          id: id("audit"),
+        db.audit.unshift(auditEntry({
           action: `Deleted ${resource.slice(0, -1)}`,
           actor: req.user.name,
-          createdAt: now(),
-        });
+          req,
+          resourceId: record.id,
+        }));
         return { files };
       });
       if (!result) return res.status(404).json({ error: "Record not found" });

@@ -36,8 +36,12 @@ import { AxacrmLogo } from "./components/common/AxacrmLogo";
 import { HomePage } from "./pages/HomePage";
 import { PricingPage } from "./pages/PricingPage";
 import { AppProvider, useApp } from "./context/AppContext";
+import { LayoutGrid, Sun, Moon } from "lucide-react";
+import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { CornerBrackets } from "./components/CornerBrackets";
+import { GoalProgress } from "./components/goals/GoalProgress";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
@@ -58,6 +62,115 @@ const PipelinePage = lazy(() =>
 
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
+type NavItem = { path: string; label: string; icon: string };
+type NavGroup = { label: string; items: NavItem[] };
+
+const navGroups: NavGroup[] = [
+  {
+    label: "nav.overview",
+    items: [{ path: "/dashboard", label: "nav.dashboard", icon: "dashboard" }],
+  },
+  {
+    label: "nav.sales",
+    items: [
+      { path: "/leads", label: "nav.leads", icon: "lead" },
+      { path: "/contacts", label: "nav.contacts", icon: "contacts" },
+      { path: "/companies", label: "nav.companies", icon: "companies" },
+      { path: "/pipeline", label: "nav.pipeline", icon: "pipeline" },
+    ],
+  },
+  {
+    label: "nav.marketing",
+    items: [
+      { path: "/campaigns", label: "nav.campaigns", icon: "campaign" },
+      { path: "/marketing-emails", label: "nav.marketingEmails", icon: "mail" },
+      { path: "/events", label: "nav.events", icon: "event" },
+      { path: "/email-lists", label: "nav.emailLists", icon: "inbox" },
+      { path: "/landing-pages", label: "nav.landingPages", icon: "landing" },
+      { path: "/forms", label: "nav.forms", icon: "form" },
+    ],
+  },
+  {
+    label: "nav.revenue",
+    items: [
+      { path: "/quotes", label: "nav.quotes", icon: "quote" },
+      { path: "/contracts", label: "nav.contracts", icon: "contract" },
+      { path: "/products", label: "nav.products", icon: "cart" },
+      { path: "/orders", label: "nav.orders", icon: "send" },
+    ],
+  },
+  {
+    label: "nav.financial",
+    items: [
+      { path: "/finance", label: "nav.finance", icon: "money" },
+      { path: "/invoices", label: "nav.invoices", icon: "invoice" },
+      { path: "/expenses", label: "nav.expenses", icon: "reports" },
+      { path: "/forecast", label: "nav.forecast", icon: "trend" },
+    ],
+  },
+  {
+    label: "nav.service",
+    items: [
+      { path: "/surveys", label: "nav.surveys", icon: "survey" },
+      {
+        path: "/survey-responses",
+        label: "nav.surveyResponses",
+        icon: "response",
+      },
+      { path: "/portal", label: "nav.portal", icon: "portal" },
+    ],
+  },
+  {
+    label: "nav.hr",
+    items: [
+      { path: "/employees", label: "nav.employees", icon: "employee" },
+      { path: "/leave", label: "nav.leave", icon: "leave" },
+      { path: "/attendance", label: "nav.attendance", icon: "clockIn" },
+    ],
+  },
+  {
+    label: "nav.work",
+    items: [
+      { path: "/activities", label: "nav.activities", icon: "activity" },
+      { path: "/tasks", label: "nav.tasks", icon: "tasks" },
+      { path: "/calendar", label: "nav.calendar", icon: "calendar" },
+      { path: "/calls", label: "nav.calls", icon: "phone" },
+      { path: "/recordings", label: "nav.recordings", icon: "recording" },
+      { path: "/inbox", label: "nav.inbox", icon: "inbox" },
+    ],
+  },
+  {
+    label: "nav.automation",
+    items: [
+      { path: "/workflows", label: "nav.workflows", icon: "workflow" },
+      { path: "/webhooks", label: "nav.webhooks", icon: "webhook" },
+      { path: "/sequences", label: "nav.sequences", icon: "sequence" },
+    ],
+  },
+  {
+    label: "nav.analytics",
+    items: [
+      { path: "/reports", label: "nav.reports", icon: "reports" },
+      { path: "/goals", label: "nav.goals", icon: "goal" },
+      { path: "/duplicates", label: "nav.duplicates", icon: "duplicate" },
+      { path: "/audit", label: "nav.audit", icon: "shield" },
+    ],
+  },
+  {
+    label: "nav.workspace",
+    items: [
+      { path: "/team", label: "nav.team", icon: "team" },
+      { path: "/fields", label: "nav.fields", icon: "fields" },
+      { path: "/settings", label: "nav.settings", icon: "settings" },
+    ],
+  },
+];
+
+const titles = Object.fromEntries(
+  navGroups.flatMap((group) =>
+    group.items.map((item) => [item.path, item.label]),
+  ),
+);
 const stages = [
   { id: "new", label: "New" },
   { id: "qualified", label: "Qualified" },
@@ -228,15 +341,9 @@ function AuthScreen({
                   : "Access your CRM revenue command"}
               </p>
             </div>
-            <button
-              className="login-theme-toggle"
-              type="button"
-              onClick={toggleTheme}
-              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
-              title={theme ? "Light mode" : "Dark mode"}
-            >
-              <Icon name={theme ? "sun" : "moon"} />
-            </button>
+            <div className="w-9 h-9 border border-[#3b82f6]/40 bg-[#3b82f6]/10 text-[#3b82f6] font-mono font-bold text-xs flex items-center justify-center">
+              CRM
+            </div>
           </div>
 
           <form onSubmit={submit} className="space-y-4 font-mono text-xs">
@@ -902,6 +1009,7 @@ function AppRoutes() {
               <Route path="/duplicates" element={<DuplicatesPage />} />
               <Route path="/portal" element={<PortalPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/audit" element={<AuditPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
@@ -1156,7 +1264,8 @@ function DashboardPage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -1165,7 +1274,7 @@ function DashboardPage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -1596,6 +1705,7 @@ function CrudTablePage({
   primary,
   statusTone,
   moneyColumn,
+  extraColumn,
 }: {
   resource: string;
   title: string;
@@ -1609,6 +1719,7 @@ function CrudTablePage({
   primary?: (row: Row) => string;
   statusTone?: (value?: string) => BadgeTone;
   moneyColumn?: string[];
+  extraColumn?: { title: string; render: (row: Row) => ReactNode };
 }) {
   const { items, loading, load, create, update, remove } =
     useResource<Row>(resource);
@@ -1749,6 +1860,259 @@ function CrudTablePage({
                 {cols.slice(1).map((c) => (
                   <th key={c.key}>{c.label}</th>
                 ))}
+                {extraColumn ? <th>{extraColumn.title}</th> : null}
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  {cols.map((c, i) =>
+                    i === 0 ? (
+                      <td key={c.key}>
+                        <button
+                          className="person-cell person-link"
+                          onClick={() => navigate(`/${resource}/${row.id}`)}
+                        >
+                          <Avatar
+                            name={nameOf(row)}
+                            src={row.avatar || row.logo}
+                          />
+                          <div>
+                            <b>{nameOf(row)}</b>
+                            {synopsis ? <small>{synopsis(row)}</small> : null}
+                          </div>
+                        </button>
+                      </td>
+                    ) : c.key === statusField ? (
+                      <td key={c.key}>
+                        <Badge tone={toneOf(row[statusField!])}>
+                          {row[statusField!] || "—"}
+                        </Badge>
+                      </td>
+                    ) : (
+                      <td key={c.key}>{cell(row, c)}</td>
+                    ),
+                  )}
+                  {extraColumn ? <td>{extraColumn.render(row)}</td> : null}
+                  <td>
+                    <div className="row-actions">
+                      <button
+                        className="icon-btn tiny"
+                        onClick={() => setEdit(row)}
+                        title="Edit"
+                      >
+                        <Icon name="edit" />
+                      </button>
+                      <button
+                        className="icon-btn tiny danger-link"
+                        onClick={() =>
+                          confirm(`Delete ${nameOf(row)}?`) && remove(row.id)
+                        }
+                        title="Delete"
+                      >
+                        <Icon name="trash" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <Empty
+            icon={icon}
+            title={
+              query
+                ? `No ${title.toLowerCase()} found`
+                : `No ${title.toLowerCase()} yet`
+            }
+            text={
+              query
+                ? "Try another search term."
+                : `Add your first ${singular} or import a CSV file.`
+            }
+            action={
+              !query ? (
+                <button
+                  className="btn primary compact"
+                  onClick={() => setEdit(null)}
+                >
+                  Add {singular}
+                </button>
+              ) : undefined
+            }
+          />
+        )}
+      </section>
+      {edit !== undefined ? (
+        <RecordForm
+          title={`${edit ? "Edit" : "Add"} ${singular}`}
+          fields={fields}
+          initial={edit || {}}
+          onClose={() => setEdit(undefined)}
+          onSave={async (data) => {
+            edit ? await update(edit.id, data) : await create(data);
+            setEdit(undefined);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function useSchema(object: string): FieldSpec[] {
+  const [custom, setCustom] = useState<FieldSpec[]>([]);
+  useEffect(() => {
+    api<{ fields: FieldSpec[] }>(`/schema/${object}`)
+      .then((schema) => setCustom(schema.fields))
+      .catch(() => {});
+  }, [object]);
+  return custom;
+}
+
+async function downloadResourceCsv(resource: string) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`/api/${resource}/export.csv`, { headers });
+  if (!response.ok) throw new Error(`Export failed (${response.status})`);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${resource}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function PeoplePage({
+  resource,
+  title,
+  description,
+  icon,
+  fields,
+}: {
+  resource: string;
+  title: string;
+  description: string;
+  icon: string;
+  fields: FieldSpec[];
+}) {
+  const { items, loading, load, create, update, remove } =
+    useResource<Row>(resource);
+  const { toast } = useApp();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const custom = useSchema(resource);
+  const allFields = [
+    ...fields,
+    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
+  ];
+  const peopleFields: FieldSpec[] = [
+    { key: "avatar", label: "Photo", type: "photo" },
+    ...allFields,
+  ];
+  const rows = items.filter(
+    (row) =>
+      !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
+  );
+
+  async function importCsv(file: File) {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return toast("CSV has no rows", "error");
+      const headers = lines[0]
+        .split(",")
+        .map((x) => x.trim().replace(/^"|"$/g, ""));
+      const records = lines.slice(1).map((line) => {
+        const values = line
+          .split(",")
+          .map((x) => x.trim().replace(/^"|"$/g, ""));
+        return Object.fromEntries(
+          headers.map((key, index) => [key, values[index] || ""]),
+        );
+      });
+      await api(`/${resource}/batch`, json("POST", records));
+      await load();
+      toast(`${records.length} rows imported`);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  async function exportCsv() {
+    try {
+      await downloadResourceCsv(resource);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
+
+  function cell(row: Row, field: FieldSpec) {
+    const value = row[field.key];
+    if (value === undefined || value === null || value === "") return "—";
+    if (showMoney(field.key) && mCols.has(field.key))
+      return money(Number(value));
+    if (field.type === "date") return String(value).slice(0, 10);
+    if (Array.isArray(value)) return value.join(", ");
+    return String(value);
+  }
+
+  return (
+    <div className="page">
+      <PageHeader title={title} description={description}>
+        <input
+          ref={inputRef}
+          hidden
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])}
+        />
+        <button
+          className="btn secondary"
+          onClick={() => inputRef.current?.click()}
+        >
+          <Icon name="upload" /> Import
+        </button>
+        <button
+          className="btn secondary"
+          onClick={exportCsv}
+        >
+          <Icon name="download" /> Export CSV
+        </button>
+        <button className="btn primary" onClick={() => setEdit(null)}>
+          <Icon name="plus" /> Add {singular}
+        </button>
+      </PageHeader>
+      <section className="surface table-surface">
+        <div className="table-toolbar">
+          <div className="header-search">
+            <Icon name="search" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search ${title.toLowerCase()}`}
+            />
+          </div>
+          <span className="table-count">{items.length} total</span>
+        </div>
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : rows.length ? (
+          <table>
+            <thead>
+              <tr>
+                <th>{cols[0]?.label || "Name"}</th>
+                {cols.slice(1).map((c) => (
+                  <th key={c.key}>{c.label}</th>
+                ))}
                 <th />
               </tr>
             </thead>
@@ -1850,6 +2214,15 @@ function CrudTablePage({
 
 const detailTabList = ["Overview", "Activity", "Notes", "Emails", "History"] as const;
 type DetailTab = (typeof detailTabList)[number];
+const activityFilters = ["All", "Emails", "Calls", "Meetings", "Notes", "System"] as const;
+type ActivityFilter = (typeof activityFilters)[number];
+const activityFilterTypes: Partial<Record<ActivityFilter, string>> = {
+  Emails: "Email",
+  Calls: "Call",
+  Meetings: "Meeting",
+  Notes: "Note",
+  System: "System",
+};
 
 function RecordDetailPage({
   resource,
@@ -1868,12 +2241,16 @@ function RecordDetailPage({
   const [tab, setTab] = useState<DetailTab>("Overview");
   const [edit, setEdit] = useState(false);
   const [activities, setActivities] = useState<Row[]>([]);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("All");
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState(false);
   const [messages, setMessages] = useState<Row[]>([]);
   const [revisions, setRevisions] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
+  const showActivityFilters = resource === "contacts" || resource === "companies";
 
   const photoKey = resource === "companies" ? "logo" : "avatar";
   const photoField: FieldSpec = {
@@ -1898,8 +2275,34 @@ function RecordDetailPage({
   }, [id, resource]);
 
   useEffect(() => {
-    if (!record) return;
+    if (!record || (tab !== "Activity" && tab !== "Notes")) return;
+    const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
+    if (name) params.set("contact", name);
+    const type = tab === "Notes"
+      ? "Note"
+      : showActivityFilters ? activityFilterTypes[activityFilter] : undefined;
+    if (type) params.set("type", type);
+    const controller = new AbortController();
+    setActivities([]);
+    setActivityError(false);
+    setActivityLoading(true);
+    api<Row[]>(`/activities?${params}`, { signal: controller.signal })
+      .then(setActivities)
+      .catch((error) => {
+        if (error.name !== "AbortError") setActivityError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setActivityLoading(false);
+      });
+    return () => controller.abort();
+  }, [record, tab, activityFilter, showActivityFilters]);
+
+  useEffect(() => {
+    if (!record?.email) return;
+    api<Row[]>("/messages")
+      .then((items) => setMessages(items.filter((m) => m.to === record.email)))
+      .catch(() => {});
     api<{ data: Row[] }>("/activities")
       .then(({ data: items }) =>
         setActivities(
@@ -2053,7 +2456,7 @@ function RecordDetailPage({
             {t}
             {t === "Emails" && messages.length ? (
               <span>{messages.length}</span>
-            ) : t === "Activity" && activities.length ? (
+            ) : t === "Activity" && tab === "Activity" && activities.length ? (
               <span>{activities.length}</span>
             ) : t === "History" && revisions.length ? (
               <span>{revisions.length}</span>
@@ -2087,7 +2490,26 @@ function RecordDetailPage({
 
         {tab === "Activity" && (
           <div className="detail-activity">
-            {activities.length ? (
+            {showActivityFilters && (
+              <div className="detail-tabs activity-filter-tabs" role="group" aria-label="Filter activities">
+                {activityFilters.map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    aria-pressed={activityFilter === filter}
+                    className={activityFilter === filter ? "active" : ""}
+                    onClick={() => setActivityFilter(filter)}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            )}
+            {activityLoading ? (
+              <div className="table-loading">Loading activities…</div>
+            ) : activityError ? (
+              <Empty icon="activity" title="Could not load activities" text="Try another filter." />
+            ) : activities.length ? (
               activities.map((a) => (
                 <div className="activity-item" key={a.id}>
                   {activityIcon(a.type)}
@@ -2135,7 +2557,7 @@ function RecordDetailPage({
                 {noteBusy ? "Saving…" : "Add note"}
               </button>
             </div>
-            {activities
+            {!activityLoading && activities
               .filter((a) => a.type === "Note")
               .map((n) => (
                 <div className="note-card" key={n.id}>
@@ -2146,7 +2568,11 @@ function RecordDetailPage({
                   <p>{n.notes || n.title}</p>
                 </div>
               ))}
-            {!activities.filter((a) => a.type === "Note").length &&
+            {activityLoading ? (
+              <div className="table-loading">Loading notes…</div>
+            ) : activityError ? (
+              <Empty icon="edit" title="Could not load notes" text="Try reopening this tab." />
+            ) : !activities.filter((a) => a.type === "Note").length &&
             !noteText ? (
               <Empty
                 icon="edit"
@@ -2391,6 +2817,294 @@ function RecordForm({
         )}
       </div>
     </Drawer>
+  );
+}
+
+function CompaniesPage() {
+  const fields: FieldSpec[] = [
+    { key: "logo", label: "Logo", type: "photo" },
+    { key: "name", label: "Company name" },
+    { key: "industry", label: "Industry" },
+    { key: "website", label: "Website" },
+    { key: "country", label: "Country" },
+    { key: "employees", label: "Employees", type: "number" },
+    { key: "owner", label: "Owner" },
+  ];
+  const { items, create, update, remove } = useResource<Row>("companies");
+  const { toast } = useApp();
+  const navigate = useNavigate();
+  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const custom = useSchema("companies");
+  const nonPhoto = fields.filter((f) => f.key !== "logo");
+  const photoField = fields.find((f) => f.key === "logo")!;
+  const allFields = [
+    photoField,
+    ...nonPhoto,
+    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
+  ];
+  async function exportCsv() {
+    try {
+      await downloadResourceCsv("companies");
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
+  return (
+    <div className="page">
+      <PageHeader
+        title="Companies"
+        description="Accounts, organizations and relationship ownership."
+      >
+        <button className="btn secondary" onClick={exportCsv}>
+          <Icon name="download" /> Export CSV
+        </button>
+        <button className="btn primary" onClick={() => setEdit(null)}>
+          <Icon name="plus" /> Add company
+        </button>
+      </PageHeader>
+      {items.length ? (
+        <div className="company-grid">
+          {items.map((company) => (
+            <article
+              className="company-card"
+              key={company.id}
+              onClick={() => navigate(`/companies/${company.id}`)}
+              style={{ cursor: "pointer" }}
+            >
+              <header>
+                <span className="company-logo">
+                  {company.logo ? (
+                    <img src={company.logo} alt="" />
+                  ) : (
+                    String(company.name || "NX")
+                      .split(/\s+/)
+                      .map((x: string) => x[0])
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase()
+                  )}
+                </span>
+                <div
+                  className="row-actions"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    className="icon-btn tiny"
+                    onClick={() => setEdit(company)}
+                  >
+                    <Icon name="edit" />
+                  </button>
+                  <button
+                    className="icon-btn tiny danger-link"
+                    onClick={() =>
+                      confirm("Delete this company?") && remove(company.id)
+                    }
+                  >
+                    <Icon name="trash" />
+                  </button>
+                </div>
+              </header>
+              <h3>{company.name || "Untitled company"}</h3>
+              <p>
+                {company.industry || "No industry"}
+                {company.country ? ` · ${company.country}` : ""}
+              </p>
+              <div className="company-meta">
+                <span>
+                  <small>Employees</small>
+                  <b>{company.employees || 0}</b>
+                </span>
+                <span>
+                  <small>Owner</small>
+                  <b>{company.owner || "—"}</b>
+                </span>
+              </div>
+              <footer>
+                <Badge>{company.website || "No website"}</Badge>
+                <span className="link-btn">Open account</span>
+              </footer>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Empty
+          icon="companies"
+          title="No companies"
+          text="Add companies to connect contacts and deals to accounts."
+          action={
+            <button
+              className="btn primary compact"
+              onClick={() => setEdit(null)}
+            >
+              Add company
+            </button>
+          }
+        />
+      )}
+      {edit !== undefined ? (
+        <RecordForm
+          title={`${edit ? "Edit" : "Add"} company`}
+          fields={allFields}
+          initial={edit || {}}
+          onClose={() => setEdit(undefined)}
+          onSave={async (data) => {
+            edit ? await update(edit.id, data) : await create(data);
+            setEdit(undefined);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function PipelinePage() {
+  const { items, create, update, remove } = useResource<Row>("deals");
+  const navigate = useNavigate();
+  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const custom = useSchema("deals");
+  const fields: FieldSpec[] = [
+    { key: "title", label: "Deal name" },
+    { key: "company", label: "Company" },
+    { key: "value", label: "Value", type: "number" },
+    {
+      key: "stage",
+      label: "Stage",
+      type: "select",
+      options: stages.map((x) => x.id),
+    },
+    { key: "owner", label: "Owner" },
+    { key: "closeDate", label: "Close date", type: "date" },
+  ];
+  const allFields = [
+    ...fields,
+    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
+  ];
+  async function drop(stage: string) {
+    if (!dragging) return;
+    await update(dragging, { stage });
+    setDragging(null);
+  }
+  return (
+    <div className="page pipeline-page">
+      <PageHeader
+        title="Pipeline"
+        description="Drag deals between stages and keep your pipeline moving."
+      >
+        <button className="btn primary" onClick={() => setEdit(null)}>
+          <Icon name="plus" /> Add deal
+        </button>
+      </PageHeader>
+      {items.length ? (
+        <div className="pipeline-board">
+          {stages.map((stage) => {
+            const rows = items.filter(
+              (item) => (item.stage || "new") === stage.id,
+            );
+            return (
+              <section
+                className="pipeline-column"
+                key={stage.id}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => drop(stage.id)}
+              >
+                <header>
+                  <div>
+                    <span className="dot" />
+                    <b>{stage.label}</b>
+                    <em>{rows.length}</em>
+                  </div>
+                  <strong>
+                    {money(
+                      rows.reduce(
+                        (sum, row) => sum + Number(row.value || 0),
+                        0,
+                      ),
+                    )}
+                  </strong>
+                </header>
+                <div className="deal-list">
+                  {rows.map((row) => (
+                    <article
+                      className="deal-card"
+                      key={row.id}
+                      draggable
+                      onDragStart={() => setDragging(row.id)}
+                    >
+                      <div className="deal-top">
+                        <Badge tone={stage.id === "won" ? "green" : "blue"}>
+                          {stage.label}
+                        </Badge>
+                        <div className="row-actions">
+                          <button
+                            className="icon-btn tiny"
+                            onClick={() => setEdit(row)}
+                          >
+                            <Icon name="edit" />
+                          </button>
+                          <button
+                            className="icon-btn tiny danger-link"
+                            onClick={() =>
+                              confirm("Delete this deal?") && remove(row.id)
+                            }
+                          >
+                            <Icon name="trash" />
+                          </button>
+                        </div>
+                      </div>
+                      <button
+                        className="deal-title"
+                        onClick={() => navigate(`/deals/${row.id}`)}
+                      >
+                        {row.title || "Untitled deal"}
+                      </button>
+                      <p>{row.company || "No company"}</p>
+                      <strong>{money(row.value || 0)}</strong>
+                      <footer>
+                        <span>{row.owner || "Unassigned"}</span>
+                        <small>{row.closeDate || "No close date"}</small>
+                      </footer>
+                    </article>
+                  ))}
+                  <button
+                    className="add-deal"
+                    onClick={() => setEdit({ id: "", stage: stage.id })}
+                  >
+                    <Icon name="plus" /> Add deal
+                  </button>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty
+          icon="pipeline"
+          title="No deals"
+          text="Add your first deal to start building the sales pipeline."
+          action={
+            <button
+              className="btn primary compact"
+              onClick={() => setEdit(null)}
+            >
+              Add deal
+            </button>
+          }
+        />
+      )}
+      {edit !== undefined ? (
+        <RecordForm
+          title={`${edit?.id ? "Edit" : "Add"} deal`}
+          fields={allFields}
+          initial={edit || { stage: "new" }}
+          onClose={() => setEdit(undefined)}
+          onSave={async (data) => {
+            edit?.id ? await update(edit.id, data) : await create(data);
+            setEdit(undefined);
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -4169,9 +4883,20 @@ function GoalsPage() {
       description="Time-bound targets and progress across teams."
       icon="goal"
       fields={goalFields}
+      columns={goalFields.slice(0, 4)}
       nameKey="name"
       statusField="period"
       synopsis={(r) => `${r.metric || ""}${r.owner ? " · " + r.owner : ""}`}
+      extraColumn={{
+        title: "Progress",
+        render: (goal) => (
+          <GoalProgress
+            name={String(goal.name || "Goal")}
+            current={goal.current}
+            target={goal.target}
+          />
+        ),
+      }}
     />
   );
 }
@@ -4211,28 +4936,25 @@ function DuplicatesPage() {
   const [scope, setScope] = useState<"contacts" | "companies">("contacts");
   const [data, setData] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
   const load = () =>
     api<any>(`/duplicates?resource=${scope}`)
       .then(setData)
       .catch((err) => toast(err.message, "error"));
   useEffect(() => {
+    setSkipped([]);
     load();
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, [scope]);
-  async function mergeGroup(group: any) {
+  async function mergePair(group: any, keep: Row, merge: Row) {
     setBusy(true);
     try {
-      for (let i = 1; i < group.ids.length; i++)
-        await api(
-          `/duplicates/merge`,
-          json("POST", {
-            resource: scope,
-            keepId: group.ids[0],
-            mergeId: group.ids[i],
-          }),
-        );
-      toast("Duplicates merged");
+      await api(
+        `/duplicates/merge`,
+        json("POST", { resource: scope, keepId: keep.id, mergeId: merge.id }),
+      );
+      toast("Duplicate merged");
       load();
       window.dispatchEvent(new Event("tunaxa:resource-changed"));
     } catch (error) {
@@ -4241,7 +4963,42 @@ function DuplicatesPage() {
       setBusy(false);
     }
   }
-  const groups = data?.duplicates || [];
+  function skipPair(key: string) {
+    setSkipped((current) => [...current, key]);
+  }
+  const groups = (data?.duplicates || [])
+    .map((group: any) => ({
+      ...group,
+      records: group.records || group.ids.map((id: string, index: number) => ({
+        id,
+        name: group.names[index],
+      })),
+    }))
+    .flatMap((group: any) =>
+      group.records.slice(1).map((merge: Row) => ({
+        group,
+        keep: group.records[0] as Row,
+        merge,
+        key: `${group.records[0].id}:${merge.id}`,
+      })),
+    )
+    .filter((pair: any) => !skipped.includes(pair.key));
+  const pair = groups[0];
+  const comparisonKeys = pair
+    ? [...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)])].filter(
+        (key) => key !== "id",
+      )
+    : [];
+  const displayName = (record: Row) =>
+    String(record.name || record.email || record.id || "Untitled");
+  const displayValue = (value: unknown) => {
+    if (value === undefined || value === null || value === "") return "—";
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+  const labelFor = (key: string) =>
+    key.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
   return (
     <div className="page">
       <PageHeader
@@ -4269,37 +5026,41 @@ function DuplicatesPage() {
           Companies
         </button>
       </PageHeader>
-      <section className="surface table-surface">
-        {groups.length ? (
-          groups.map((group: any, idx: number) => (
-            <div className="dupe-group" key={idx}>
-              <div className="dupe-group-head">
-                <div className="dupe-member">
-                  <Avatar name={group.names[0]} />
-                  <div>
-                    <b>{group.names[0]}</b>
-                    <small>Primary record (kept)</small>
-                  </div>
-                </div>
-                <button
-                  className="btn secondary compact"
-                  disabled={busy}
-                  onClick={() => mergeGroup(group)}
-                >
-                  <Icon name="check" /> Merge into primary
-                </button>
+      <section className="surface duplicate-comparison">
+        {pair ? (
+          <>
+            <div className="duplicate-comparison-head">
+              <div>
+                <span className="eyebrow">Potential duplicate</span>
+                <h2>Review these records</h2>
               </div>
-              {group.names.slice(1).map((name: string, j: number) => (
-                <div className="dupe-member" key={j}>
-                  <Avatar name={name} />
-                  <div>
-                    <b>{name}</b>
-                    <small>Duplicate (will be merged)</small>
-                  </div>
-                </div>
-              ))}
+              <Badge tone="blue">{pair.group.confidence ?? 0}% match</Badge>
             </div>
-          ))
+            <div className="duplicate-columns">
+              <article className="duplicate-record keep">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.keep)} />
+                  <div><small>Record to keep</small><h3>{displayName(pair.keep)}</h3></div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.keep[key])}</b></div>)}
+                </div>
+              </article>
+              <article className="duplicate-record merge">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.merge)} />
+                  <div><small>Record to merge and delete</small><h3>{displayName(pair.merge)}</h3></div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.merge[key])}</b></div>)}
+                </div>
+              </article>
+            </div>
+            <div className="duplicate-actions">
+              <button className="btn secondary" disabled={busy} onClick={() => skipPair(pair.key)}><Icon name="close" /> Skip</button>
+              <button className="btn primary" disabled={busy} onClick={() => mergePair(pair.group, pair.keep, pair.merge)}><Icon name="check" /> Merge</button>
+            </div>
+          </>
         ) : (
           <Empty
             icon="duplicate"
@@ -4532,7 +5293,8 @@ function FinancePage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -4541,7 +5303,7 @@ function FinancePage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -4751,7 +5513,8 @@ function ReportsPage() {
         </button>
       </PageHeader>
       <div className="stats-grid">
-        <article className="stat-card">
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-blue">
             <Icon name="lead" />
           </div>
@@ -4760,8 +5523,9 @@ function ReportsPage() {
             <strong>{leads.items.length}</strong>
             <span>All lead records</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-green">
             <Icon name="pipeline" />
           </div>
@@ -4773,8 +5537,9 @@ function ReportsPage() {
               total value
             </span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-purple">
             <Icon name="phone" />
           </div>
@@ -4783,8 +5548,9 @@ function ReportsPage() {
             <strong>{calls.items.length}</strong>
             <span>Inbound and outbound</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-amber">
             <Icon name="tasks" />
           </div>
@@ -4795,7 +5561,7 @@ function ReportsPage() {
             </strong>
             <span>Needs attention</span>
           </div>
-        </article>
+        </div>
       </div>
       <section className="surface report-table">
         <div className="section-head">
@@ -4824,6 +5590,70 @@ function ReportsPage() {
             icon="reports"
             title="No report data"
             text="Add leads, deals, calls or tasks and reporting will populate automatically."
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function AuditPage() {
+  const { toast } = useApp();
+  const [items, setItems] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api<{ items: Row[] }>("/audit")
+      .then((result) => setItems(result.items))
+      .catch((error) => toast((error as Error).message, "error"))
+      .finally(() => setLoading(false));
+  }, [toast]);
+
+  return (
+    <div className="page">
+      <PageHeader
+        title="Audit log"
+        description="Review workspace changes and request details."
+      />
+      <section className="surface table-surface">
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : items.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Actor</th>
+                  <th>Created</th>
+                  <th>IP</th>
+                  <th>User agent</th>
+                  <th>Resource ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{entry.action || "—"}</td>
+                    <td>{entry.actor || "—"}</td>
+                    <td>
+                      {entry.createdAt
+                        ? new Date(entry.createdAt).toLocaleString()
+                        : "—"}
+                    </td>
+                    <td>{entry.ip || "—"}</td>
+                    <td>{entry.userAgent || "—"}</td>
+                    <td>{entry.resourceId || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty
+            icon="shield"
+            title="No audit entries"
+            text="Workspace activity will appear here."
           />
         )}
       </section>

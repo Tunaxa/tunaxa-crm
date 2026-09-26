@@ -3,6 +3,15 @@ import crypto from 'node:crypto';
 export const now = () => new Date().toISOString();
 export const id = prefix => `${prefix}_${crypto.randomUUID()}`;
 export const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role });
+export const auditEntry = ({ action, actor, createdAt = now(), req, resourceId = '' }) => ({
+  id: id('audit'),
+  action,
+  actor,
+  createdAt,
+  ip: req?.ip || '',
+  userAgent: req?.headers?.['user-agent'] || '',
+  resourceId,
+});
 
 export const hashPassword = password => {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -145,6 +154,24 @@ export function completeCall(db, call, { endedAt, duration, actorName } = {}) {
   db.audit.unshift({ id: id('audit'), action: `Completed call ${call.phone || call.id}`, actor: actorName || 'System', createdAt: now() });
   return { call, activity, recording };
 }
+
+export const normalizeEmail = email => {
+  if (email === null || email === undefined) return null;
+  let value = String(email).trim();
+  if (!value) return null;
+  const angle = value.match(/<([^<>]+)>/);
+  if (angle) value = angle[1].trim();
+  else if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+    value = value.slice(1, -1).trim();
+  value = value.toLowerCase();
+  if (!value || /\s/.test(value)) return null;
+  const at = value.indexOf('@');
+  if (at < 1 || at !== value.lastIndexOf('@')) return null;
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  if (!local || !domain || !domain.includes('.')) return null;
+  return value;
+};
 
 export const resources = new Set([
   'leads','contacts','companies','deals','tasks','activities','workflows','calls','recordings','messages','templates','sequences','team','customFields','audit',
