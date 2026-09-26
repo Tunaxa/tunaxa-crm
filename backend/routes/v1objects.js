@@ -290,7 +290,7 @@ export default function registerV1ObjectRoutes(app) {
           req.body,
           req.user.workspaceId || "default",
         );
-        broadcast("v1object.created", { type: objectType, item: obj });
+        broadcast("v1object.created", { type: objectType, item: obj }, req.user.workspaceId || "default");
         res.status(201).json(obj);
       } catch (err) {
         console.error(`[v1] POST /api/v1/objects/${objectType}:`, err.message);
@@ -339,7 +339,7 @@ export default function registerV1ObjectRoutes(app) {
         }
 
         const updated = await updateObject(req.params.id, req.body);
-        broadcast("v1object.updated", { type: objectType, item: updated });
+        broadcast("v1object.updated", { type: objectType, item: updated }, req.user.workspaceId || "default");
         res.json(updated);
       } catch (err) {
         console.error(
@@ -373,7 +373,7 @@ export default function registerV1ObjectRoutes(app) {
         broadcast("v1object.deleted", {
           type: req.params.type,
           id: req.params.id,
-        });
+        }, req.user.workspaceId || "default");
         res.json({ ok: true, deleted: req.params.id });
       } catch (err) {
         console.error(
