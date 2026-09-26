@@ -2,7 +2,6 @@ import {
   lazy,
   Suspense,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -38,7 +37,9 @@ import { HomePage } from "./pages/HomePage";
 import { PricingPage } from "./pages/PricingPage";
 import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useResource } from "./lib/useResource";
+import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
 import { Shell } from "./shell/Shell";
 
@@ -82,6 +83,16 @@ function AuthScreen({
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [theme, setTheme] = useState(
+    document.documentElement.classList.contains("dark"),
+  );
+
+  function toggleTheme() {
+    const next = !theme;
+    setTheme(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
+  }
 
   useEffect(() => {
     api<{ needsSetup: boolean }>("/auth/status")
@@ -217,9 +228,15 @@ function AuthScreen({
                   : "Access your CRM revenue command"}
               </p>
             </div>
-            <div className="w-9 h-9 border border-[#3b82f6]/40 bg-[#3b82f6]/10 text-[#3b82f6] font-mono font-bold text-xs flex items-center justify-center">
-              CRM
-            </div>
+            <button
+              className="login-theme-toggle"
+              type="button"
+              onClick={toggleTheme}
+              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
+              title={theme ? "Light mode" : "Dark mode"}
+            >
+              <Icon name={theme ? "sun" : "moon"} />
+            </button>
           </div>
 
           <form onSubmit={submit} className="space-y-4 font-mono text-xs">
@@ -314,288 +331,594 @@ function AuthScreen({
 
 function AppRoutes() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [collapsed, setCollapsed] = useState(
+    localStorage.getItem("tunaxa.sidebar") === "1",
+  );
+  const [mobile, setMobile] = useState(false);
+  const [profile, setProfile] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [theme, setTheme] = useState(
+    document.documentElement.classList.contains("dark"),
+  );
+  const [isEcosystemOpen, setIsEcosystemOpen] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem("tunaxa.sidebar", collapsed ? "1" : "0");
+  }, [collapsed]);
+  useEffect(() => {
+    setMobile(false);
+    setProfile(false);
+  }, [location.pathname]);
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        setQuickOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  function toggleTheme() {
+    const next = !theme;
+    setTheme(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
+  }
+
+  function toggleLanguage() {
+    const current = i18n.language || "en";
+    const next = current === "fr" ? "en" : "fr";
+    i18n.changeLanguage(next);
+    localStorage.setItem("tunaxa.language", next);
+  }
+
+  const refreshAll = () =>
+    window.dispatchEvent(new CustomEvent("tunaxa:resource-changed"));
+  const sseHandlers: SSEHandlers = {
+    "record.created": (data) =>
+      window.dispatchEvent(
+        new CustomEvent("tunaxa:resource-changed", {
+          detail: { resource: data.resource },
+        }),
+      ),
+    "workflow.created": refreshAll,
+    "workflow.updated": refreshAll,
+    "workflow.deleted": refreshAll,
+    "workflow.graph_saved": refreshAll,
+    "sequence.enrolled": refreshAll,
+    "sequence.ran": refreshAll,
+    "form.submitted": refreshAll,
+    "form.created": refreshAll,
+    "form.updated": refreshAll,
+    "form.deleted": refreshAll,
+    "user.role.changed": refreshAll,
+    "user.created": refreshAll,
+    "user.deleted": refreshAll,
+    "lifecycle.transitioned": refreshAll,
+    "leadscoring.rules_changed": refreshAll,
+    "leadscoring.recalculated": refreshAll,
+    "webhook.created": refreshAll,
+    "webhook.updated": refreshAll,
+    "webhook.deleted": refreshAll,
+    "webhook.received": refreshAll,
+    "ticket.opened": refreshAll,
+    "ticket.updated": refreshAll,
+    "execution.processed": refreshAll,
+  };
+  useSSE(sseHandlers);
+
   return (
-    <Suspense fallback={<div className="page"><div className="table-loading">Loading...</div></div>}>
-          <Routes>
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route
-              path="/leads/:id"
-              element={
-                <RecordDetailPage
-                  resource="leads"
-                  fields={leadFields}
-                  title={t("nav.leads")}
-                />
-              }
-            />
-            <Route
-              path="/contacts/:id"
-              element={
-                <RecordDetailPage
-                  resource="contacts"
-                  fields={contactFields}
-                  title={t("nav.contacts")}
-                />
-              }
-            />
-            <Route
-              path="/companies/:id"
-              element={
-                <RecordDetailPage
-                  resource="companies"
-                  fields={[
-                    { key: "name", label: "Company name" },
-                    { key: "industry", label: "Industry" },
-                    { key: "website", label: "Website" },
-                    { key: "country", label: "Country" },
-                    { key: "employees", label: "Employees", type: "number" },
-                    { key: "owner", label: "Owner" },
-                  ]}
-                  title={t("nav.companies")}
-                />
-              }
-            />
-            <Route
-              path="/deals/:id"
-              element={
-                <RecordDetailPage
-                  resource="deals"
-                  fields={[
-                    { key: "title", label: "Deal name" },
-                    { key: "company", label: "Company" },
-                    { key: "value", label: "Value", type: "number" },
-                    {
-                      key: "stage",
-                      label: "Stage",
-                      type: "select",
-                      options: stages.map((x) => x.id),
-                    },
-                    { key: "owner", label: "Owner" },
-                    { key: "closeDate", label: "Close date", type: "date" },
-                  ]}
-                  title={t("nav.deals")}
-                />
-              }
-            />
-            <Route
-              path="/campaigns/:id"
-              element={
-                <RecordDetailPage
-                  resource="campaigns"
-                  fields={campaignFields}
-                  title={t("nav.campaigns")}
-                />
-              }
-            />
-            <Route
-              path="/email-lists/:id"
-              element={
-                <RecordDetailPage
-                  resource="emailLists"
-                  fields={emailListFields}
-                  title={t("nav.emailLists")}
-                />
-              }
-            />
-            <Route
-              path="/landing-pages/:id"
-              element={
-                <RecordDetailPage
-                  resource="landingPages"
-                  fields={landingPageFields}
-                  title={t("nav.landingPages")}
-                />
-              }
-            />
-            <Route
-              path="/products/:id"
-              element={
-                <RecordDetailPage
-                  resource="products"
-                  fields={productFields}
-                  title={t("nav.products")}
-                />
-              }
-            />
-            <Route
-              path="/orders/:id"
-              element={
-                <RecordDetailPage
-                  resource="orders"
-                  fields={orderFields}
-                  title={t("nav.orders")}
-                />
-              }
-            />
-            <Route
-              path="/invoices/:id"
-              element={
-                <RecordDetailPage
-                  resource="invoices"
-                  fields={invoiceFields}
-                  title={t("nav.invoices")}
-                />
-              }
-            />
-            <Route
-              path="/expenses/:id"
-              element={
-                <RecordDetailPage
-                  resource="expenses"
-                  fields={expenseFields}
-                  title={t("nav.expenses")}
-                />
-              }
-            />
-            <Route
-              path="/employees/:id"
-              element={
-                <RecordDetailPage
-                  resource="employees"
-                  fields={employeeFields}
-                  title={t("nav.employees")}
-                />
-              }
-            />
-            <Route
-              path="/leave/:id"
-              element={
-                <RecordDetailPage
-                  resource="leaveRequests"
-                  fields={leaveFields}
-                  title={t("nav.leave")}
-                />
-              }
-            />
-            <Route
-              path="/attendance/:id"
-              element={
-                <RecordDetailPage
-                  resource="attendance"
-                  fields={attendanceFields}
-                  title={t("nav.attendance")}
-                />
-              }
-            />
-            <Route
-              path="/leads"
-              element={<LeadsPage />}
-            />
-            <Route
-              path="/contacts"
-              element={<ContactsPage />}
-            />
-            <Route path="/companies" element={<CompaniesPage />} />
-            <Route path="/pipeline" element={<PipelinePage />} />
-            <Route path="/activities" element={<ActivitiesPage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/workflows" element={<WorkflowsPage />} />
-            <Route path="/calls" element={<CallsPage />} />
-            <Route path="/recordings" element={<RecordingsPage />} />
-            <Route path="/inbox" element={<InboxPage />} />
-            <Route path="/sequences" element={<SequencesPage />} />
-            <Route path="/webhooks" element={<WebhooksPage />} />
-            <Route path="/campaigns" element={<CampaignsPage />} />
-            <Route path="/email-lists" element={<EmailListsPage />} />
-            <Route path="/landing-pages" element={<LandingPagesPage />} />
-            <Route path="/forms" element={<FormsPage />} />
-            <Route path="/products" element={<ProductsPage />} />
-            <Route path="/orders" element={<OrdersPage />} />
-            <Route path="/finance" element={<FinancePage />} />
-            <Route path="/invoices" element={<InvoicesPage />} />
-            <Route path="/expenses" element={<ExpensesPage />} />
-            <Route path="/forecast" element={<ForecastPage />} />
-            <Route path="/employees" element={<EmployeesPage />} />
-            <Route path="/leave" element={<LeavePage />} />
-            <Route path="/attendance" element={<AttendancePage />} />
-            <Route path="/marketing-emails" element={<MarketingEmailsPage />} />
-            <Route
-              path="/marketing-emails/:id"
-              element={
-                <RecordDetailPage
-                  resource="marketingEmails"
-                  fields={marketingEmailFields}
-                  title={t("nav.marketingEmails")}
-                />
-              }
-            />
-            <Route path="/events" element={<EventsPage />} />
-            <Route
-              path="/events/:id"
-              element={
-                <RecordDetailPage
-                  resource="marketingEvents"
-                  fields={marketingEventFields}
-                  title={t("nav.events")}
-                />
-              }
-            />
-            <Route path="/quotes" element={<QuotesPage />} />
-            <Route
-              path="/quotes/:id"
-              element={
-                <RecordDetailPage
-                  resource="quotes"
-                  fields={quoteFields}
-                  title={t("nav.quotes")}
-                />
-              }
-            />
-            <Route path="/contracts" element={<ContractsPage />} />
-            <Route
-              path="/contracts/:id"
-              element={
-                <RecordDetailPage
-                  resource="contracts"
-                  fields={contractFields}
-                  title={t("nav.contracts")}
-                />
-              }
-            />
-            <Route path="/surveys" element={<SurveysPage />} />
-            <Route
-              path="/surveys/:id"
-              element={
-                <RecordDetailPage
-                  resource="surveys"
-                  fields={surveyFields}
-                  title={t("nav.surveys")}
-                />
-              }
-            />
-            <Route path="/survey-responses" element={<SurveyResponsesPage />} />
-            <Route
-              path="/survey-responses/:id"
-              element={
-                <RecordDetailPage
-                  resource="surveyResponses"
-                  fields={surveyResponseFields}
-                  title={t("nav.surveyResponses")}
-                />
-              }
-            />
-            <Route path="/goals" element={<GoalsPage />} />
-            <Route
-              path="/goals/:id"
-              element={
-                <RecordDetailPage
-                  resource="goals"
-                  fields={goalFields}
-                  title={t("nav.goals")}
-                />
-              }
-            />
-            <Route path="/duplicates" element={<DuplicatesPage />} />
-            <Route path="/portal" element={<PortalPage />} />
-            <Route path="/reports" element={<ReportsPage />} />
-            <Route path="/team" element={<TeamPage />} />
-            <Route path="/fields" element={<FieldsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-    </Suspense>
+    <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+      {/* Blueprint dot-grid overlay — fixed behind all content */}
+      <div className="blueprint-grid-global" aria-hidden="true" />
+      <div
+        className={`mobile-overlay ${mobile ? "show" : ""}`}
+        onClick={() => setMobile(false)}
+      />
+      <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
+        <div className="sidebar-logo">
+          <button className="brand" onClick={() => navigate("/dashboard")} title="Tunaxa AXA CRM">
+            {collapsed ? (
+              <div
+                className="w-7 h-7 bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-mono font-black shrink-0"
+                style={{
+                  clipPath:
+                    'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+                }}
+              >
+                <span className="text-xs">TX</span>
+              </div>
+            ) : (
+              <AxacrmLogo size="sm" showTunaxaPrefix={true} />
+            )}
+          </button>
+          <button
+            className="collapse-btn"
+            onClick={() => setCollapsed((value) => !value)}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <Icon name="arrowLeft" />
+          </button>
+        </div>
+        <nav className="nav-scroll">
+          {navGroups.map((group) => (
+            <section className="nav-group" key={group.label}>
+              <div className="nav-label">{t(group.label)}</div>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  data-tooltip={t(item.label)}
+                  className={({ isActive }) =>
+                    `nav-link ${isActive ? "active" : ""}`
+                  }
+                >
+                  <Icon name={item.icon} />
+                  <span>{t(item.label)}</span>
+                </NavLink>
+              ))}
+            </section>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="workspace-mini">
+            <div
+              className="w-7 h-7 bg-[#3b82f6] text-white flex items-center justify-center font-mono font-bold text-xs shrink-0"
+              style={{
+                clipPath:
+                  'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+              }}
+            >
+              <span>TX</span>
+            </div>
+            <div>
+              <b>Tunaxa CRM</b>
+              <small>Enterprise Workspace</small>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <section className="workspace">
+        <header className="topbar topbar-glass">
+          <div className="topbar-left">
+            <button
+              className="icon-btn mobile-menu"
+              onClick={() => setMobile(true)}
+              title="Open Navigation"
+            >
+              <Icon name="menu" />
+            </button>
+            <div className="crumb relative px-3 py-1 border border-[#d1d1d1] dark:border-[#263140] bg-white dark:bg-[#121820]">
+              <CornerBrackets stroke="#3b82f6" size={5} />
+              <span>{t("nav.workspace")}</span>
+              <b>
+                {titles[location.pathname]
+                  ? t(titles[location.pathname])
+                  : "Tunaxa"}
+              </b>
+            </div>
+          </div>
+          <div className="topbar-right">
+            <button
+              className="search-button"
+              onClick={() => setSearchOpen(true)}
+            >
+              <Icon name="search" />
+              <span>Search everything…</span>
+              <kbd>Ctrl K</kbd>
+            </button>
+            <CutButton
+              variant="primary"
+              size="sm"
+              onClick={() => setQuickOpen(true)}
+            >
+              <div className="flex items-center gap-1.5 font-mono text-xs">
+                <Icon name="plus" />
+                <span>NEW</span>
+              </div>
+            </CutButton>
+            <button
+              className="icon-btn"
+              onClick={() => setIsEcosystemOpen(true)}
+              title="Tunaxa Ecosystem Apps"
+              aria-label="Tunaxa Ecosystem Apps"
+            >
+              <LayoutGrid className="w-4 h-4 text-[#3b82f6]" />
+            </button>
+            <button className="icon-btn" onClick={toggleTheme} title={theme ? "Light Blueprint" : "Dark Cyber"}>
+              {theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+            <button
+              className="icon-btn notification-btn"
+              onClick={() => toast("No new notifications")}
+              title="Notifications"
+            >
+              <Icon name="bell" />
+            </button>
+            <div className="profile-wrap">
+              <button
+                className="profile-trigger"
+                onClick={() => setProfile((value) => !value)}
+              >
+                <Avatar name={user?.name || "TX"} />
+                <div>
+                  <b>{user?.name}</b>
+                  <small>{user?.role}</small>
+                </div>
+                <Icon name="chevronDown" />
+              </button>
+              {profile ? (
+                <div className="profile-menu">
+                  <div className="profile-menu-head">
+                    <Avatar name={user?.name || "TX"} size={38} />
+                    <div>
+                      <b>{user?.name}</b>
+                      <small>{user?.email}</small>
+                    </div>
+                  </div>
+                  <button onClick={() => navigate("/settings")}>
+                    <Icon name="settings" /> {t("nav.settings")}
+                  </button>
+                  <button onClick={toggleLanguage}>
+                    <Icon name="globe" />{" "}
+                    {(i18n.language || "en") === "fr" ? "English" : "Français"}
+                  </button>
+                  <button onClick={toggleTheme}>
+                    {theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}{" "}
+                    {theme ? "Light Blueprint" : "Dark Cyber"}
+                  </button>
+                  <hr />
+                  <button className="danger-link" onClick={logout}>
+                    <Icon name="logout" /> Sign out
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </header>
+        <main className="content">
+          <ErrorBoundary fallbackMessage="Something went wrong. Please reload.">
+            <Routes>
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route
+                path="/dashboard"
+                element={
+                  <ErrorBoundary
+                    key={location.pathname}
+                    fallbackMessage="Dashboard failed to load."
+                  >
+                    <DashboardPage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/leads/:id"
+                element={
+                  <RecordDetailPage
+                    resource="leads"
+                    fields={leadFields}
+                    title={t("nav.leads")}
+                  />
+                }
+              />
+              <Route
+                path="/contacts/:id"
+                element={
+                  <RecordDetailPage
+                    resource="contacts"
+                    fields={contactFields}
+                    title={t("nav.contacts")}
+                  />
+                }
+              />
+              <Route
+                path="/companies/:id"
+                element={
+                  <RecordDetailPage
+                    resource="companies"
+                    fields={[
+                      { key: "name", label: "Company name" },
+                      { key: "industry", label: "Industry" },
+                      { key: "website", label: "Website" },
+                      { key: "country", label: "Country" },
+                      { key: "employees", label: "Employees", type: "number" },
+                      { key: "owner", label: "Owner" },
+                    ]}
+                    title={t("nav.companies")}
+                  />
+                }
+              />
+              <Route
+                path="/deals/:id"
+                element={
+                  <RecordDetailPage
+                    resource="deals"
+                    fields={[
+                      { key: "title", label: "Deal name" },
+                      { key: "company", label: "Company" },
+                      { key: "value", label: "Value", type: "number" },
+                      {
+                        key: "stage",
+                        label: "Stage",
+                        type: "select",
+                        options: stages.map((x) => x.id),
+                      },
+                      { key: "owner", label: "Owner" },
+                      { key: "closeDate", label: "Close date", type: "date" },
+                    ]}
+                    title={t("nav.deals")}
+                  />
+                }
+              />
+              <Route
+                path="/campaigns/:id"
+                element={
+                  <RecordDetailPage
+                    resource="campaigns"
+                    fields={campaignFields}
+                    title={t("nav.campaigns")}
+                  />
+                }
+              />
+              <Route
+                path="/email-lists/:id"
+                element={
+                  <RecordDetailPage
+                    resource="emailLists"
+                    fields={emailListFields}
+                    title={t("nav.emailLists")}
+                  />
+                }
+              />
+              <Route
+                path="/landing-pages/:id"
+                element={
+                  <RecordDetailPage
+                    resource="landingPages"
+                    fields={landingPageFields}
+                    title={t("nav.landingPages")}
+                  />
+                }
+              />
+              <Route
+                path="/products/:id"
+                element={
+                  <RecordDetailPage
+                    resource="products"
+                    fields={productFields}
+                    title={t("nav.products")}
+                  />
+                }
+              />
+              <Route
+                path="/orders/:id"
+                element={
+                  <RecordDetailPage
+                    resource="orders"
+                    fields={orderFields}
+                    title={t("nav.orders")}
+                  />
+                }
+              />
+              <Route
+                path="/invoices/:id"
+                element={
+                  <RecordDetailPage
+                    resource="invoices"
+                    fields={invoiceFields}
+                    title={t("nav.invoices")}
+                  />
+                }
+              />
+              <Route
+                path="/expenses/:id"
+                element={
+                  <RecordDetailPage
+                    resource="expenses"
+                    fields={expenseFields}
+                    title={t("nav.expenses")}
+                  />
+                }
+              />
+              <Route
+                path="/employees/:id"
+                element={
+                  <RecordDetailPage
+                    resource="employees"
+                    fields={employeeFields}
+                    title={t("nav.employees")}
+                  />
+                }
+              />
+              <Route
+                path="/leave/:id"
+                element={
+                  <RecordDetailPage
+                    resource="leaveRequests"
+                    fields={leaveFields}
+                    title={t("nav.leave")}
+                  />
+                }
+              />
+              <Route
+                path="/attendance/:id"
+                element={
+                  <RecordDetailPage
+                    resource="attendance"
+                    fields={attendanceFields}
+                    title={t("nav.attendance")}
+                  />
+                }
+              />
+              <Route
+                path="/leads"
+                element={
+                  <PeoplePage
+                    resource="leads"
+                    title={t("nav.leads")}
+                    description="Capture and qualify new opportunities."
+                    icon="lead"
+                    fields={leadFields}
+                  />
+                }
+              />
+              <Route
+                path="/contacts"
+                element={
+                  <ErrorBoundary
+                    key={location.pathname}
+                    fallbackMessage="Contacts failed to load."
+                  >
+                    <PeoplePage
+                      resource="contacts"
+                      title={t("nav.contacts")}
+                      description="Customer and prospect contact records."
+                      icon="contacts"
+                      fields={contactFields}
+                    />
+                  </ErrorBoundary>
+                }
+              />
+              <Route path="/companies" element={<CompaniesPage />} />
+              <Route
+                path="/pipeline"
+                element={
+                  <ErrorBoundary
+                    key={location.pathname}
+                    fallbackMessage="Pipeline failed to load."
+                  >
+                    <PipelinePage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route path="/activities" element={<ActivitiesPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="/calendar" element={<CalendarPage />} />
+              <Route path="/workflows" element={<WorkflowsPage />} />
+              <Route path="/calls" element={<CallsPage />} />
+              <Route path="/recordings" element={<RecordingsPage />} />
+              <Route path="/inbox" element={<InboxPage />} />
+              <Route path="/sequences" element={<SequencesPage />} />
+              <Route path="/webhooks" element={<WebhooksPage />} />
+              <Route path="/campaigns" element={<CampaignsPage />} />
+              <Route path="/email-lists" element={<EmailListsPage />} />
+              <Route path="/landing-pages" element={<LandingPagesPage />} />
+              <Route path="/forms" element={<FormsPage />} />
+              <Route path="/products" element={<ProductsPage />} />
+              <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/finance" element={<FinancePage />} />
+              <Route path="/invoices" element={<InvoicesPage />} />
+              <Route path="/expenses" element={<ExpensesPage />} />
+              <Route path="/forecast" element={<ForecastPage />} />
+              <Route path="/employees" element={<EmployeesPage />} />
+              <Route path="/leave" element={<LeavePage />} />
+              <Route path="/attendance" element={<AttendancePage />} />
+              <Route path="/marketing-emails" element={<MarketingEmailsPage />} />
+              <Route
+                path="/marketing-emails/:id"
+                element={
+                  <RecordDetailPage
+                    resource="marketingEmails"
+                    fields={marketingEmailFields}
+                    title={t("nav.marketingEmails")}
+                  />
+                }
+              />
+              <Route path="/events" element={<EventsPage />} />
+              <Route
+                path="/events/:id"
+                element={
+                  <RecordDetailPage
+                    resource="marketingEvents"
+                    fields={marketingEventFields}
+                    title={t("nav.events")}
+                  />
+                }
+              />
+              <Route path="/quotes" element={<QuotesPage />} />
+              <Route
+                path="/quotes/:id"
+                element={
+                  <RecordDetailPage
+                    resource="quotes"
+                    fields={quoteFields}
+                    title={t("nav.quotes")}
+                  />
+                }
+              />
+              <Route path="/contracts" element={<ContractsPage />} />
+              <Route
+                path="/contracts/:id"
+                element={
+                  <RecordDetailPage
+                    resource="contracts"
+                    fields={contractFields}
+                    title={t("nav.contracts")}
+                  />
+                }
+              />
+              <Route path="/surveys" element={<SurveysPage />} />
+              <Route
+                path="/surveys/:id"
+                element={
+                  <RecordDetailPage
+                    resource="surveys"
+                    fields={surveyFields}
+                    title={t("nav.surveys")}
+                  />
+                }
+              />
+              <Route path="/survey-responses" element={<SurveyResponsesPage />} />
+              <Route
+                path="/survey-responses/:id"
+                element={
+                  <RecordDetailPage
+                    resource="surveyResponses"
+                    fields={surveyResponseFields}
+                    title={t("nav.surveyResponses")}
+                  />
+                }
+              />
+              <Route path="/goals" element={<GoalsPage />} />
+              <Route
+                path="/goals/:id"
+                element={
+                  <RecordDetailPage
+                    resource="goals"
+                    fields={goalFields}
+                    title={t("nav.goals")}
+                  />
+                }
+              />
+              <Route path="/duplicates" element={<DuplicatesPage />} />
+              <Route path="/portal" element={<PortalPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/team" element={<TeamPage />} />
+              <Route path="/fields" element={<FieldsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </ErrorBoundary>
+        </main>
+      </section>
+      {quickOpen ? <QuickCreate onClose={() => setQuickOpen(false)} /> : null}
+      {searchOpen ? (
+        <GlobalSearch onClose={() => setSearchOpen(false)} />
+      ) : null}
+      <EcosystemMenu
+        isOpen={isEcosystemOpen}
+        onClose={() => setIsEcosystemOpen(false)}
+      />
+    </div>
   );
 }
 function QuickCreate({ onClose }: { onClose: () => void }) {
@@ -3188,24 +3511,13 @@ function RecordingsPage() {
 }
 
 function InboxPage() {
-  const { items, create, update, remove, load } = useResource<Row>("messages");
+  const { items, update, remove, load } = useResource<Row>("messages");
   const { toast } = useApp();
   const [compose, setCompose] = useState(false);
   const [selected, setSelected] = useState<Row | null>(null);
   const [sending, setSending] = useState(false);
   const [templates, setTemplates] = useState<Row[]>([]);
   const [templateId, setTemplateId] = useState("");
-  const fields: FieldSpec[] = [
-    {
-      key: "channel",
-      label: "Channel",
-      type: "select",
-      options: ["Email", "SMS"],
-    },
-    { key: "to", label: "Recipient", required: true },
-    { key: "subject", label: "Subject" },
-    { key: "body", label: "Message", type: "textarea", required: true },
-  ];
 
   useEffect(() => {
     api<Row[]>("/templates")

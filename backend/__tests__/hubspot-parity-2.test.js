@@ -19,7 +19,7 @@ afterAll(async () => {
   await closePool();
 });
 
-let formPermalink, submitRecordId, workflowId, branchWorkflowId, queuedLeadId;
+let formPermalink, submitRecordId, workflowId;
 const auth = () => ({ Authorization: `Bearer ${token}` });
 
 describe('Smart Forms & Progressive Profiling', () => {

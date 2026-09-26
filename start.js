@@ -69,19 +69,19 @@ async function main() {
 
   console.log("Backend ready. Starting the interface...");
 
-  const webRoot = path.join(root, "web");
-
   webProcess = spawn(
     process.execPath,
     [
       path.join(root, "node_modules", "vite", "bin", "vite.js"),
+      "--config",
+      path.join(root, "web", "vite.config.ts"),
       "--host",
       "127.0.0.1",
       "--port",
       "5173",
     ],
     {
-      cwd: webRoot,
+      cwd: root,
       stdio: "inherit",
     },
   );
