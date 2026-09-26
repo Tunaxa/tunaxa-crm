@@ -1,22 +1,18 @@
 import { query } from "../pg.js";
+import { toJsonb } from "./json.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
-  "first_name",
-  "last_name",
-  "email",
-  "phone",
-  "title",
+  "name",
+  "status",
+  "subscribers",
 ]);
 const UPDATE_FIELDS = [
-  "company_id",
-  "first_name",
-  "last_name",
-  "email",
-  "phone",
-  "title",
-  "owner_id",
+  "name",
+  "description",
+  "status",
+  "subscribers",
   "custom_fields",
 ];
 
@@ -54,6 +50,7 @@ export async function findAll({
   limit = 20,
   sortBy = "created_at:desc",
   q = "",
+  status = "",
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
@@ -63,26 +60,33 @@ export async function findAll({
   const offset = (normalizedPage - 1) * normalizedLimit;
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
-  const whereClause = searchTerm
-    ? "WHERE (first_name ILIKE $1 OR last_name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1 OR title ILIKE $1)"
-    : "";
+  const statusFilter = String(status || "").trim().toLowerCase();
+  const conditions = [];
+  const params = [];
+  if (searchTerm) {
+    params.push(searchTerm);
+    const p = `$${params.length}`;
+    conditions.push(`(name ILIKE ${p} OR description ILIKE ${p})`);
+  }
+  if (statusFilter) {
+    params.push(statusFilter);
+    conditions.push(`LOWER(COALESCE(status, '')) = $${params.length}`);
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
-     FROM contacts
+     FROM email_lists
      ${whereClause}`,
-    searchTerm ? [searchTerm] : [],
+    [...params],
   );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
+  const params2 = [...params, normalizedLimit, offset];
   const dataResult = await query(
     `SELECT *
-     FROM contacts
+     FROM email_lists
      ${whereClause}
      ORDER BY ${column} ${direction}
-     LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
-    searchTerm
-      ? [searchTerm, normalizedLimit, offset]
-      : [normalizedLimit, offset],
+     LIMIT $${params2.length - 1} OFFSET $${params2.length}`,
+    params2,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
   return {
@@ -94,52 +98,28 @@ export async function findAll({
   };
 }
 
-export async function findById(id, workspaceId) {
-  const scoped = workspaceId !== undefined && workspaceId !== null;
-  const result = await query(
-    scoped
-      ? "SELECT * FROM contacts WHERE id = $1 AND workspace_id = $2"
-      : "SELECT * FROM contacts WHERE id = $1",
-    scoped ? [id, workspaceId] : [id],
-  );
-  return result.rows[0] || null;
-}
-
-/**
- * Exact, case-insensitive email lookup. See the identical helper in leads.js
- * for why findAll({ q }) cannot be used and why the newest match wins. Pass
- * `workspaceId` for lookups driven by an anonymous form submission.
- */
-export async function findByEmail(email, workspaceId) {
-  const value = String(email || "").trim();
-  if (!value) return null;
-  const scoped = workspaceId !== undefined && workspaceId !== null;
-  const result = await query(
-    scoped
-      ? "SELECT * FROM contacts WHERE LOWER(COALESCE(email, '')) = LOWER($1) AND workspace_id = $2 ORDER BY created_at DESC LIMIT 1"
-      : "SELECT * FROM contacts WHERE LOWER(COALESCE(email, '')) = LOWER($1) ORDER BY created_at DESC LIMIT 1",
-    scoped ? [value, workspaceId] : [value],
-  );
+export async function findById(id) {
+  const result = await query("SELECT * FROM email_lists WHERE id = $1", [id]);
   return result.rows[0] || null;
 }
 
 export async function create(data = {}) {
   const result = await query(
-    `INSERT INTO contacts (
-       workspace_id, company_id, first_name, last_name, email, phone,
-       title, owner_id, custom_fields
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO email_lists (
+       workspace_id, name, description, status, subscribers, custom_fields
+     ) VALUES ($1, $2, $3, $4, $5, $6)
      RETURNING *`,
     [
       data.workspace_id,
-      data.company_id,
-      data.first_name,
-      data.last_name,
-      data.email,
-      data.phone,
-      data.title,
-      data.owner_id,
-      data.custom_fields ?? {},
+      data.name,
+      data.description,
+      data.status,
+      // `subscribers` is a count, not an address list: helpers.js coerces it
+      // with Number() and the UI renders a number input.
+      data.subscribers === undefined || data.subscribers === null
+        ? null
+        : Number(data.subscribers),
+      toJsonb(data.custom_fields, {}),
     ],
   );
   return result.rows[0] || null;
@@ -153,13 +133,19 @@ export async function update(id, data = {}) {
   );
   if (fields.length === 0) return null;
 
-  const values = fields.map((field) => data[field]);
+  const values = fields.map((field) => {
+    if (field === "custom_fields") return toJsonb(data[field], null);
+    if (field === "subscribers") {
+      return data.subscribers === null ? null : Number(data.subscribers);
+    }
+    return data[field];
+  });
   const assignments = fields.map(
     (field, index) => `${field} = $${index + 1}`,
   );
   values.push(id);
   const result = await query(
-    `UPDATE contacts
+    `UPDATE email_lists
      SET ${assignments.join(", ")}
      WHERE id = $${fields.length + 1}
      RETURNING *`,
@@ -170,7 +156,7 @@ export async function update(id, data = {}) {
 
 async function remove(id) {
   const result = await query(
-    "DELETE FROM contacts WHERE id = $1 RETURNING id",
+    "DELETE FROM email_lists WHERE id = $1 RETURNING id",
     [id],
   );
   return result.rowCount > 0;

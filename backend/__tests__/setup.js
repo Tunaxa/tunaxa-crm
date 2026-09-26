@@ -87,8 +87,9 @@ export async function resetTestDb() {
   await fs.writeFile(testDbFile, JSON.stringify(emptyDb, null, 2));
   setDbPath(testDbFile);
   // Resources served from Postgres (see migrations/004_contacts_leads.sql,
-  // 005_core_entities.sql and 006_revenue_tables.sql) instead of test-db.json
-  // need their own reset.
+  // 005_core_entities.sql, 006_revenue_tables.sql and
+  // 007_marketing_service_tables.sql) instead of test-db.json need their own
+  // reset.
   // Best-effort on purpose: the JSON-backed resources must keep working when no
   // database is running, and a missing table is just as expected as a missing
   // server.
@@ -98,7 +99,7 @@ export async function resetTestDb() {
     if (pgReachable === false) return;
   }
   try {
-    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses CASCADE;");
+    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses CASCADE;");
     pgReachable = true;
   } catch (error) {
     // ECONNREFUSED when no server is listening, 42P01 before 004/005 are applied.

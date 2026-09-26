@@ -98,8 +98,53 @@ export async function findAll({
   };
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM leads WHERE id = $1", [id]);
+/**
+ * `workspaceId` is optional so the authenticated CRUD routes keep working
+ * unchanged, but any lookup driven by an *anonymous* caller must pass it: a
+ * public form submit supplies a bare `recordId`, and without the filter a
+ * visitor who guessed a UUID from another tenant could have that lead
+ * overwritten by their submission.
+ */
+export async function findById(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM leads WHERE id = $1 AND workspace_id = $2"
+      : "SELECT * FROM leads WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Exact, case-insensitive email lookup.
+ *
+ * findAll({ q }) is not usable here: `q` is a substring ILIKE, so looking up
+ * "a@b.co" would also match "xa@b.com" and let a form submission overwrite the
+ * wrong person. routes/forms.js needs identity, not a search.
+ *
+ * The email index is not unique, so several leads can share an address.
+ * ORDER BY created_at DESC reproduces the old behaviour of `.find()` over a
+ * newest-first array: the most recent match wins.
+ *
+ * `workspaceId` scopes the match to one tenant. routes/forms.js passes the
+ * submitting form's workspace so a form cannot update a same-email lead that
+ * belongs to a different workspace.
+ *
+ * LOWER() on both sides means the plain btree index on email cannot be used for
+ * this lookup. That is deliberate: storing addresses case-folded instead would
+ * silently change what the equality means for existing rows.
+ */
+export async function findByEmail(email, workspaceId) {
+  const value = String(email || "").trim();
+  if (!value) return null;
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM leads WHERE LOWER(COALESCE(email, '')) = LOWER($1) AND workspace_id = $2 ORDER BY created_at DESC LIMIT 1"
+      : "SELECT * FROM leads WHERE LOWER(COALESCE(email, '')) = LOWER($1) ORDER BY created_at DESC LIMIT 1",
+    scoped ? [value, workspaceId] : [value],
+  );
   return result.rows[0] || null;
 }
 
