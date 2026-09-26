@@ -155,6 +155,24 @@ export function completeCall(db, call, { endedAt, duration, actorName } = {}) {
   return { call, activity, recording };
 }
 
+export const normalizeEmail = email => {
+  if (email === null || email === undefined) return null;
+  let value = String(email).trim();
+  if (!value) return null;
+  const angle = value.match(/<([^<>]+)>/);
+  if (angle) value = angle[1].trim();
+  else if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+    value = value.slice(1, -1).trim();
+  value = value.toLowerCase();
+  if (!value || /\s/.test(value)) return null;
+  const at = value.indexOf('@');
+  if (at < 1 || at !== value.lastIndexOf('@')) return null;
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  if (!local || !domain || !domain.includes('.')) return null;
+  return value;
+};
+
 export const resources = new Set([
   'leads','contacts','companies','deals','tasks','activities','workflows','calls','recordings','messages','templates','sequences','team','customFields','audit',
   'campaigns','emailLists','landingPages',
