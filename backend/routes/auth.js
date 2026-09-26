@@ -61,6 +61,42 @@ export default function registerAuthRoutes(app) {
   });
 
   app.get('/api/auth/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
+    app.get('/api/users/me/preferences', auth, async (req, res) => {
+    const db = await readDb();
+    const user = db.users.find(u => u.id === req.user.id);
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json({
+      preferences: user.preferences || {
+        theme: 'light',
+        sidebarCollapsed: false,
+        pageSize: 25,
+      },
+    });
+  });
+
+  app.put('/api/users/me/preferences', auth, async (req, res) => {
+    const { theme, sidebarCollapsed, pageSize } = req.body;
+
+    const result = await mutateDb(db => {
+      const user = db.users.find(u => u.id === req.user.id);
+      if (!user) return null;
+
+      user.preferences = {
+        ...(user.preferences || {}),
+        ...(theme === 'light' || theme === 'dark' ? { theme } : {}),
+        ...(typeof sidebarCollapsed === 'boolean' ? { sidebarCollapsed } : {}),
+        ...(Number.isInteger(pageSize) && pageSize > 0 ? { pageSize } : {}),
+      };
+
+      return user.preferences;
+    });
+
+    if (!result) return res.status(404).json({ error: 'User not found' });
+
+    res.json({ preferences: result });
+  });
 
   app.post('/api/auth/logout', auth, async (req, res) => {
     await mutateDb(db => { db.sessions = db.sessions.filter(x => x.token !== req.token); });

@@ -1,3 +1,5 @@
+const [pageSize, setPageSize] = useState(getPageSize());
+const [page, setPage] = useState(1);
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
 
 import { useForm } from "react-hook-form";
@@ -189,7 +191,31 @@ const stages = [
   { id: "negotiation", label: "Negotiation" },
   { id: "won", label: "Won" },
 ];
+function applyPreferences(preferences: any) {
+  const theme = preferences?.theme === "dark";
+  document.documentElement.classList.toggle("dark", theme);
+  localStorage.setItem("tunaxa.theme", theme ? "dark" : "light");
 
+  if (typeof preferences?.sidebarCollapsed === "boolean") {
+    localStorage.setItem(
+      "tunaxa.sidebar",
+      preferences.sidebarCollapsed ? "1" : "0",
+    );
+  }
+
+  if (Number.isInteger(preferences?.pageSize) && preferences.pageSize > 0) {
+    localStorage.setItem("tunaxa.pageSize", String(preferences.pageSize));
+  }
+}
+function getPageSize() {
+  const value = Number(localStorage.getItem("tunaxa.pageSize"));
+  return Number.isInteger(value) && value > 0 ? value : 25;
+}
+
+function savePageSize(pageSize: number) {
+  localStorage.setItem("tunaxa.pageSize", String(pageSize));
+  api("/users/me/preferences", json("PUT", { pageSize })).catch(() => {});
+}
 function AuthScreen({
   onNavigateToHome,
   onNavigateToPricing,
@@ -239,6 +265,14 @@ function AuthScreen({
         json("POST", body),
       );
       setToken(result.token);
+
+      const preferences = result.user.preferences || {
+        theme: "light",
+        sidebarCollapsed: false,
+        pageSize: 25,
+      };
+
+      applyPreferences(preferences);
       setUser(result.user);
     } catch (error) {
       toast((error as Error).message, "error");
@@ -462,6 +496,7 @@ function Shell() {
   const [collapsed, setCollapsed] = useState(
     localStorage.getItem("tunaxa.sidebar") === "1",
   );
+  const [pageSize, setPageSize] = useState(getPageSize());
   const [mobile, setMobile] = useState(false);
   const [profile, setProfile] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -473,6 +508,11 @@ function Shell() {
 
   useEffect(() => {
     localStorage.setItem("tunaxa.sidebar", collapsed ? "1" : "0");
+
+    api(
+      "/users/me/preferences",
+      json("PUT", { sidebarCollapsed: collapsed }),
+    ).catch(() => {});
   }, [collapsed]);
   useEffect(() => {
     setMobile(false);
@@ -492,12 +532,20 @@ function Shell() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
-
+  function changePageSize(value: number) {
+    setPageSize(value);
+    savePageSize(value);
+  }
   function toggleTheme() {
     const next = !theme;
     setTheme(next);
     document.documentElement.classList.toggle("dark", next);
     localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
+
+    api(
+      "/users/me/preferences",
+      json("PUT", { theme: next ? "dark" : "light" }),
+    ).catch(() => {});
   }
 
   function toggleLanguage() {
@@ -1747,7 +1795,9 @@ function CrudTablePage({
   const { toast } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+const [pageSize, setPageSize] = useState(getPageSize());
+const [page, setPage] = useState(1);
+const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const cols = columns || fields;
   const mCols = new Set(moneyColumn || cols.map((c) => c.key));
@@ -1773,10 +1823,26 @@ function CrudTablePage({
             value === "Terminated"
           ? "red"
           : "blue");
-  const rows = items.filter(
-    (row) =>
-      !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
-  );
+const filteredRows = items.filter(
+  (row) =>
+    !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
+);
+
+const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+
+const rows = filteredRows.slice(
+  (page - 1) * pageSize,
+  page * pageSize,
+);
+useEffect(() => {
+  setPage(1);
+}, [query, pageSize, resource]);
+
+function changePageSize(value: number) {
+  setPageSize(value);
+  setPage(1);
+  savePageSize(value);
+}
 
   async function importCsv(file: File) {
     try {
@@ -1832,7 +1898,7 @@ function CrudTablePage({
     return String(value);
   }
 
-  return (
+    return (
     <div className="page">
       <PageHeader title={title} description={description}>
         <input
@@ -1840,14 +1906,18 @@ function CrudTablePage({
           hidden
           type="file"
           accept=".csv,text/csv"
-          onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])}
+          onChange={(e) =>
+            e.target.files?.[0] && importCsv(e.target.files[0])
+          }
         />
+
         <button
           className="btn secondary"
           onClick={() => inputRef.current?.click()}
         >
           <Icon name="upload" /> Import
         </button>
+
         <button
           className="btn secondary"
           disabled={!items.length}
@@ -1855,14 +1925,20 @@ function CrudTablePage({
         >
           <Icon name="download" /> Export
         </button>
-        <button className="btn primary" onClick={() => setEdit(null)}>
+
+        <button
+          className="btn primary"
+          onClick={() => setEdit(null)}
+        >
           <Icon name="plus" /> Add {singular}
         </button>
       </PageHeader>
+
       <section className="surface table-surface">
         <div className="table-toolbar">
           <div className="header-search">
             <Icon name="search" />
+
             <input
               aria-label={`Search ${title.toLowerCase()}`}
               value={query}
@@ -1870,32 +1946,98 @@ function CrudTablePage({
               placeholder={`Search ${title.toLowerCase()}`}
             />
           </div>
-          <span className="table-count">{items.length} total</span>
+
+          <span className="table-count">
+            {filteredRows.length} total
+          </span>
+
+          <select
+            value={pageSize}
+            onChange={(e) =>
+              changePageSize(Number(e.target.value))
+            }
+            className="table-page-size"
+            aria-label="Rows per page"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
         </div>
+
         {loading ? (
           <div className="table-loading">Loading…</div>
         ) : rows.length ? (
-          <table>
-            <thead>
-              <tr>
-                <th>{cols[0]?.label || "Name"}</th>
-                {cols.slice(1).map((c) => (
-                  <th key={c.key}>{c.label}</th>
-                ))}
-                {extraColumn ? <th>{extraColumn.title}</th> : null}
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  {cols.map((c, i) =>
-                    i === 0 ? (
-                      <td key={c.key}>
+          <>
+            <table>
+              <thead>
+                <tr>
+                  <th>{cols[0]?.label || "Name"}</th>
+
+                  {cols.slice(1).map((c) => (
+                    <th key={c.key}>{c.label}</th>
+                  ))}
+
+                  {extraColumn ? (
+                    <th>{extraColumn.title}</th>
+                  ) : null}
+
+                  <th />
+                </tr>
+              </thead>
+
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    {cols.map((c, i) =>
+                      i === 0 ? (
+                        <td key={c.key}>
+                          <button
+                            className="person-cell person-link"
+                            onClick={() =>
+                              navigate(`/${resource}/${row.id}`)
+                            }
+                          >
+                            <Avatar
+                              name={nameOf(row)}
+                              src={row.avatar || row.logo}
+                            />
+
+                            <div>
+                              <b>{nameOf(row)}</b>
+
+                              {synopsis ? (
+                                <small>{synopsis(row)}</small>
+                              ) : null}
+                            </div>
+                          </button>
+                        </td>
+                      ) : c.key === statusField ? (
+                        <td key={c.key}>
+                          <Badge
+                            tone={toneOf(row[statusField!])}
+                          >
+                            {row[statusField!] || "—"}
+                          </Badge>
+                        </td>
+                      ) : (
+                        <td key={c.key}>{cell(row, c)}</td>
+                      ),
+                    )}
+
+                    {extraColumn ? (
+                      <td>{extraColumn.render(row)}</td>
+                    ) : null}
+
+                    <td>
+                      <div className="row-actions">
                         <button
-                          className="person-cell person-link"
-                          onClick={() => navigate(`/${resource}/${row.id}`)}
+                          className="icon-btn tiny"
+                          onClick={() => setEdit(row)}
+                          title="Edit"
                         >
+                          <Icon name="edit" />
                           <Avatar
                             name={nameOf(row)}
                             src={row.avatar || row.logo}
@@ -1923,42 +2065,51 @@ function CrudTablePage({
 {synopsis ? <small>{synopsis(row)}</small> : null}
                           </div>
                         </button>
-                      </td>
-                    ) : c.key === statusField ? (
-                      <td key={c.key}>
-                        <Badge tone={toneOf(row[statusField!])}>
-                          {row[statusField!] || "—"}
-                        </Badge>
-                      </td>
-                    ) : (
-                      <td key={c.key}>{cell(row, c)}</td>
-                    ),
-                  )}
-                  {extraColumn ? <td>{extraColumn.render(row)}</td> : null}
-                  <td>
-                    <div className="row-actions">
-                      <button
-                        className="icon-btn tiny"
-                        onClick={() => setEdit(row)}
-                        title="Edit"
-                      >
-                        <Icon name="edit" />
-                      </button>
-                      <button
-                        className="icon-btn tiny danger-link"
-                        onClick={() =>
-                          confirm(`Delete ${nameOf(row)}?`) && remove(row.id)
-                        }
-                        title="Delete"
-                      >
-                        <Icon name="trash" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+                        <button
+                          className="icon-btn tiny danger-link"
+                          onClick={() =>
+                            confirm(
+                              `Delete ${nameOf(row)}?`,
+                            ) && remove(row.id)
+                          }
+                          title="Delete"
+                        >
+                          <Icon name="trash" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="table-pagination">
+              <button
+                className="btn secondary compact"
+                disabled={page <= 1}
+                onClick={() =>
+                  setPage((current) => current - 1)
+                }
+              >
+                Previous
+              </button>
+
+              <span>
+                Page {page} of {totalPages}
+              </span>
+
+              <button
+                className="btn secondary compact"
+                disabled={page >= totalPages}
+                onClick={() =>
+                  setPage((current) => current + 1)
+                }
+              >
+                Next
+              </button>
+            </div>
+          </>
         ) : (
           <Empty
             icon={icon}
@@ -1985,7 +2136,21 @@ function CrudTablePage({
           />
         )}
       </section>
+
       {edit !== undefined ? (
+        <RecordForm
+          title={`${edit ? "Edit" : "Add"} ${singular}`}
+          fields={fields}
+          initial={edit || {}}
+          onClose={() => setEdit(undefined)}
+          onSave={async (data) => {
+            edit
+              ? await update(edit.id, data)
+              : await create(data);
+
+            setEdit(undefined);
+          }}
+        />
         renderEditor ? (
           renderEditor({
             title: `${edit ? "Edit" : "Add"} ${singular}`,
@@ -2068,11 +2233,31 @@ function PeoplePage({
     { key: "avatar", label: "Photo", type: "photo" },
     ...allFields,
   ];
-  const rows = items.filter(
-    (row) =>
-      !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
-  );
+const filteredRows = items.filter(
+  (row) =>
+    !query ||
+    JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
+);
 
+const totalPages = Math.max(
+  1,
+  Math.ceil(filteredRows.length / pageSize),
+);
+
+const rows = filteredRows.slice(
+  (page - 1) * pageSize,
+  page * pageSize,
+);
+
+useEffect(() => {
+  setPage(1);
+}, [query, pageSize, resource]);
+
+function changePageSize(value: number) {
+  setPageSize(value);
+  setPage(1);
+  savePageSize(value);
+}
   async function importCsv(file: File) {
     try {
       const text = await file.text();
@@ -2141,8 +2326,21 @@ function PeoplePage({
               placeholder={`Search ${title.toLowerCase()}`}
             />
           </div>
-          <span className="table-count">{items.length} total</span>
-        </div>
+<span className="table-count">
+  {filteredRows.length} total
+</span>
+
+<select
+  value={pageSize}
+  onChange={(e) => changePageSize(Number(e.target.value))}
+  className="table-page-size"
+  aria-label="Rows per page"
+>
+  <option value={10}>10</option>
+  <option value={25}>25</option>
+  <option value={50}>50</option>
+  <option value={100}>100</option>
+</select>        </div>
         {loading ? (
           <div className="table-loading">Loading…</div>
         ) : rows.length ? (
@@ -6798,6 +6996,7 @@ function AuditPage() {
       </section>
     </div>
   );
+
 }
 
 function TeamPage() {
