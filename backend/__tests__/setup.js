@@ -1,11 +1,27 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { beforeAll } from "vitest";
 import { setDbPath } from "../store.js";
+
+const execFileAsync = promisify(execFile);
+
+beforeAll(async () => {
+  await execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "migrate"], {
+    cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
+    env: process.env,
+  });
+});
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const testDbDir = path.join(root, "__tests__");
-const testDbFile = path.join(testDbDir, "test-db.json");
+const workerId = (process.env.VITEST_POOL_ID || "1").replace(
+  /[^a-zA-Z0-9_-]/g,
+  "_",
+);
+const testDbFile = path.join(testDbDir, `test-db-${workerId}.json`);
 
 const emptyDb = {
   users: [],
