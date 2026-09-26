@@ -15,6 +15,8 @@ import {
   YAxis,
 } from "recharts";
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -24,7 +26,6 @@ import {
 } from "react";
 import {
   Navigate,
-  NavLink,
   Route,
   Routes,
   useLocation,
@@ -72,7 +73,23 @@ import {
 import { CornerBrackets } from "./components/CornerBrackets";
 import { QuoteForm } from "./components/quotes/QuoteForm";
 import { useResource } from "./lib/useResource";
+import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
+import { Shell } from "./shell/Shell";
+
+const LeadsPage = lazy(() =>
+  import("./pages/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
+);
+const ContactsPage = lazy(() =>
+  import("./pages/sales/ContactsPage").then((module) => ({ default: module.ContactsPage })),
+);
+const CompaniesPage = lazy(() =>
+  import("./pages/sales/CompaniesPage").then((module) => ({ default: module.CompaniesPage })),
+);
+const PipelinePage = lazy(() =>
+  import("./pages/sales/PipelinePage").then((module) => ({ default: module.PipelinePage })),
+);
+
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
 type NavItem = { path: string; label: string; icon: string };
@@ -488,8 +505,7 @@ function AuthScreen({
   );
 }
 
-function Shell() {
-  const { user, logout, toast } = useApp();
+function AppRoutes() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -554,6 +570,41 @@ function Shell() {
     i18n.changeLanguage(next);
     localStorage.setItem("tunaxa.language", next);
   }
+
+  const refreshAll = () =>
+    window.dispatchEvent(new CustomEvent("tunaxa:resource-changed"));
+  const sseHandlers: SSEHandlers = {
+    "record.created": (data) =>
+      window.dispatchEvent(
+        new CustomEvent("tunaxa:resource-changed", {
+          detail: { resource: data.resource },
+        }),
+      ),
+    "workflow.created": refreshAll,
+    "workflow.updated": refreshAll,
+    "workflow.deleted": refreshAll,
+    "workflow.graph_saved": refreshAll,
+    "sequence.enrolled": refreshAll,
+    "sequence.ran": refreshAll,
+    "form.submitted": refreshAll,
+    "form.created": refreshAll,
+    "form.updated": refreshAll,
+    "form.deleted": refreshAll,
+    "user.role.changed": refreshAll,
+    "user.created": refreshAll,
+    "user.deleted": refreshAll,
+    "lifecycle.transitioned": refreshAll,
+    "leadscoring.rules_changed": refreshAll,
+    "leadscoring.recalculated": refreshAll,
+    "webhook.created": refreshAll,
+    "webhook.updated": refreshAll,
+    "webhook.deleted": refreshAll,
+    "webhook.received": refreshAll,
+    "ticket.opened": refreshAll,
+    "ticket.updated": refreshAll,
+    "execution.processed": refreshAll,
+  };
+  useSSE(sseHandlers);
 
   return (
     <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
@@ -1087,7 +1138,6 @@ function Shell() {
     </div>
   );
 }
-
 function QuickCreate({ onClose }: { onClose: () => void }) {
   const { toast } = useApp();
   const [type, setType] = useState("leads");
@@ -1429,7 +1479,7 @@ type FieldSpec = {
   required?: boolean;
   placeholder?: string;
 };
-const leadFields: FieldSpec[] = [
+export const leadFields: FieldSpec[] = [
   { key: "name", label: "Lead name", required: true },
   { key: "company", label: "Company" },
   { key: "email", label: "Email", type: "email" },
@@ -1445,7 +1495,7 @@ const leadFields: FieldSpec[] = [
   
   { key: "value", label: "Estimated value", type: "number" },
 ];
-const contactFields: FieldSpec[] = [
+export const contactFields: FieldSpec[] = [
   { key: "name", label: "Contact name", required: true },
   { key: "role", label: "Job title" },
   { key: "company", label: "Company" },
@@ -2292,6 +2342,16 @@ function changePageSize(value: number) {
     }
   }
 
+  function cell(row: Row, field: FieldSpec) {
+    const value = row[field.key];
+    if (value === undefined || value === null || value === "") return "—";
+    if (showMoney(field.key) && mCols.has(field.key))
+      return money(Number(value));
+    if (field.type === "date") return String(value).slice(0, 10);
+    if (Array.isArray(value)) return value.join(", ");
+    return String(value);
+  }
+
   return (
     <div className="page">
       <PageHeader title={title} description={description}>
@@ -2312,7 +2372,7 @@ function changePageSize(value: number) {
           <Icon name="download" /> Export CSV
         </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add {title.slice(0, -1).toLowerCase()}
+          <Icon name="plus" /> Add {singular}
         </button>
       </PageHeader>
       <section className="surface table-surface">
@@ -2347,49 +2407,43 @@ function changePageSize(value: number) {
           <table>
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Company</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>{resource === "leads" ? "Status" : "Owner"}</th>
+                <th>{cols[0]?.label || "Name"}</th>
+                {cols.slice(1).map((c) => (
+                  <th key={c.key}>{c.label}</th>
+                ))}
                 <th />
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td>
-                    <button
-                      className="person-cell person-link"
-                      onClick={() => navigate(`/${resource}/${row.id}`)}
-                    >
-                      <Avatar name={row.name || "NX"} src={row.avatar} />
-                      <div>
-                        <b>{row.name || "Untitled"}</b>
-                        <small>{row.role || row.source || "—"}</small>
-                      </div>
-                    </button>
-                  </td>
-                  <td>{row.company || "—"}</td>
-                  <td>{row.email || "—"}</td>
-                  <td>{row.phone || "—"}</td>
-                  <td>
-                    {resource === "leads" ? (
-                      <Badge
-                        tone={
-                          row.status === "Qualified"
-                            ? "green"
-                            : row.status === "Lost"
-                              ? "red"
-                              : "blue"
-                        }
-                      >
-                        {row.status || "New"}
-                      </Badge>
+                  {cols.map((c, i) =>
+                    i === 0 ? (
+                      <td key={c.key}>
+                        <button
+                          className="person-cell person-link"
+                          onClick={() => navigate(`/${resource}/${row.id}`)}
+                        >
+                          <Avatar
+                            name={nameOf(row)}
+                            src={row.avatar || row.logo}
+                          />
+                          <div>
+                            <b>{nameOf(row)}</b>
+                            {synopsis ? <small>{synopsis(row)}</small> : null}
+                          </div>
+                        </button>
+                      </td>
+                    ) : c.key === statusField ? (
+                      <td key={c.key}>
+                        <Badge tone={toneOf(row[statusField!])}>
+                          {row[statusField!] || "—"}
+                        </Badge>
+                      </td>
                     ) : (
-                      row.owner || "—"
-                    )}
-                  </td>
+                      <td key={c.key}>{cell(row, c)}</td>
+                    ),
+                  )}
                   <td>
                     <div className="row-actions">
                       <button
@@ -2402,8 +2456,7 @@ function changePageSize(value: number) {
                       <button
                         className="icon-btn tiny danger-link"
                         onClick={() =>
-                          confirm(`Delete ${row.name || "record"}?`) &&
-                          remove(row.id)
+                          confirm(`Delete ${nameOf(row)}?`) && remove(row.id)
                         }
                         title="Delete"
                       >
@@ -2426,7 +2479,7 @@ function changePageSize(value: number) {
             text={
               query
                 ? "Try another search term."
-                : `Add your first ${title.slice(0, -1).toLowerCase()} or import a CSV file.`
+                : `Add your first ${singular} or import a CSV file.`
             }
             action={
               !query ? (
@@ -2434,7 +2487,7 @@ function changePageSize(value: number) {
                   className="btn primary compact"
                   onClick={() => setEdit(null)}
                 >
-                  Add {title.slice(0, -1).toLowerCase()}
+                  Add {singular}
                 </button>
               ) : undefined
             }
@@ -2443,8 +2496,8 @@ function changePageSize(value: number) {
       </section>
       {edit !== undefined ? (
         <RecordForm
-          title={`${edit ? "Edit" : "Add"} ${title.slice(0, -1)}`}
-          fields={peopleFields}
+          title={`${edit ? "Edit" : "Add"} ${singular}`}
+          fields={fields}
           initial={edit || {}}
           onClose={() => setEdit(undefined)}
           onSave={async (data) => {
@@ -2457,7 +2510,7 @@ function changePageSize(value: number) {
   );
 }
 
-const detailTabList = ["Overview", "Activity", "Notes", "Emails"] as const;
+const detailTabList = ["Overview", "Activity", "Notes", "Emails", "History"] as const;
 type DetailTab = (typeof detailTabList)[number];
 const activityFilters = [
   "All",
@@ -2497,6 +2550,7 @@ function RecordDetailPage({
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState(false);
   const [messages, setMessages] = useState<Row[]>([]);
+  const [revisions, setRevisions] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
 
@@ -2558,6 +2612,27 @@ function RecordDetailPage({
     api<Row[]>("/messages")
       .then((items) => setMessages(items.filter((m) => m.to === record.email)))
       .catch(() => {});
+    api<{ data: Row[] }>("/activities")
+      .then(({ data: items }) =>
+        setActivities(
+          items.filter(
+            (a) =>
+              a.contact === name ||
+              a.title?.toLowerCase().includes(name.toLowerCase()),
+          ),
+        ),
+      )
+      .catch(() => {});
+    if (record.email)
+      api<{ data: Row[] }>("/messages")
+        .then(({ data: items }) =>
+          setMessages(items.filter((m) => m.to === record.email)),
+        )
+        .catch(() => {});
+    if (resource === "contacts")
+      api<{ data: Row[] }>(`/revisions/${resource}/${record.id}`)
+        .then((result) => setRevisions(result.data))
+        .catch(() => setRevisions([]));
   }, [record]);
 
   async function addNote() {
@@ -2699,7 +2774,10 @@ function RecordDetailPage({
       </div>
 
       <div className="detail-tabs">
-        {detailTabList.map((t) => (
+        {(resource === "contacts"
+          ? detailTabList
+          : detailTabList.filter((item) => item !== "History")
+        ).map((t) => (
           <button
             key={t}
             className={tab === t ? "active" : ""}
@@ -2710,6 +2788,8 @@ function RecordDetailPage({
               <span>{messages.length}</span>
             ) : t === "Activity" && tab === "Activity" && activities.length ? (
               <span>{activities.length}</span>
+            ) : t === "History" && revisions.length ? (
+              <span>{revisions.length}</span>
             ) : null}
           </button>
         ))}
@@ -2880,6 +2960,37 @@ function RecordDetailPage({
             )}
           </div>
         )}
+
+        {tab === "History" && resource === "contacts" && (
+          <div className="detail-activity">
+            {revisions.length ? (
+              revisions.map((revision) => (
+                <div className="activity-item" key={revision.id}>
+                  <span className="activity-icon tone-blue">
+                    <Icon name="edit" />
+                  </span>
+                  <div>
+                    <div className="activity-item-head">
+                      <b>{revision.actor || "System"}</b>
+                      <time>{revision.createdAt || ""}</time>
+                    </div>
+                    {revision.changes?.map((change: Row) => (
+                      <p key={`${revision.id}-${change.field}`}>
+                        <strong>{change.field}</strong>: {String(change.from ?? "—")} → {String(change.to ?? "—")}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <Empty
+                icon="edit"
+                title="No history yet"
+                text="Changes to this contact will appear here."
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {edit ? (
@@ -2890,8 +3001,9 @@ function RecordDetailPage({
           onClose={() => setEdit(false)}
           onSave={async (data) => {
             try {
-              await api(`/${resource}/${record.id}`, json("PATCH", data));
-              setRecord((prev) => (prev ? { ...prev, ...data } : prev));
+              const payload = { ...record, ...data };
+              await api(`/${resource}/${record.id}`, json("PUT", payload));
+              setRecord((prev) => (prev ? { ...prev, ...payload } : prev));
               setEdit(false);
               toast("Updated");
             } catch (error) {
@@ -8602,7 +8714,15 @@ function AppInner() {
     </OnboardingGate>
   ) : (
 
-  if (user) return <Shell />;
+  if (user)
+    return (
+      <Shell
+        renderQuickCreate={(onClose) => <QuickCreate onClose={onClose} />}
+        renderGlobalSearch={(onClose) => <GlobalSearch onClose={onClose} />}
+      >
+        <AppRoutes />
+      </Shell>
+    );
 
   if (unauthView === "pricing") {
     return (
@@ -8642,3 +8762,5 @@ export default function App() {
     </AppProvider>
   );
 }
+
+

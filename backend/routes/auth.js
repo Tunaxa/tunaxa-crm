@@ -52,7 +52,10 @@ export default function registerAuthRoutes(app) {
     const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     const db = await readDb();
+    const session = db.sessions.find(x => x.token === token);
+    const user = session ? db.users.find(x => x.id === session.userId) : null;
     if (!session || sessionIsExpired(session) || !user) return res.status(401).json({ error: 'Session expired' });
+    const nextToken = crypto.randomBytes(32).toString('hex');
     await mutateDb(next => {
       next.sessions = next.sessions.filter(x => x.token !== token);
       next.sessions.push({ token: nextToken, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
@@ -96,6 +99,21 @@ export default function registerAuthRoutes(app) {
     if (!result) return res.status(404).json({ error: 'User not found' });
 
     res.json({ preferences: result });
+  });
+
+  app.post('/api/auth/events-token', auth, async (req, res) => {
+    const sseLifetimeMs = 120_000;
+    const token = crypto.randomBytes(32).toString('hex');
+    await mutateDb(db => {
+      db.sessions.push({
+        token,
+        userId: req.user.id,
+        createdAt: now(),
+        expiresAt: new Date(Date.now() + sseLifetimeMs).toISOString(),
+        purpose: 'sse',
+      });
+    });
+    res.json({ token, expiresAt: new Date(Date.now() + sseLifetimeMs).toISOString() });
   });
 
   app.post('/api/auth/logout', auth, async (req, res) => {
