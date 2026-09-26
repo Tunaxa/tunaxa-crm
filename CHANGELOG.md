@@ -8,6 +8,11 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Workflow Execution Runs Migration (Migration 009):** Added `backend/db/migrations/009_workflow_runs.sql` creating the `workflow_runs` table with `TEXT` primary keys, `workspace_id` tenant isolation, `status` tracking (`running`, `success`, `failed`), `started_at`/`completed_at` timestamps, `steps JSONB`, `error_message`, and `update_updated_at_column()` triggers with 5 secondary indexes.
+- **Workflow Runs Repository:** Implemented `backend/db/repositories/workflow-runs.js` providing `create`, `update`, `findById`, `findByWorkflowId`, and `findAll` with JSONB serialization (`toJsonb`) and workspace isolation. Registered in repository index under `workflowRuns` and `workflow_runs`.
+- **Workflow Execution Tracking (`backend/services/workflows.js`):** Instrumented `triggerWorkflows()` to log run records on trigger and capture detailed per-node step execution metadata (`nodeId`, `nodeType`, `nodeName`, `status`, `output`, `error`, `executedAt`). Downstream nodes on inactive branches are explicitly recorded with `status: 'skipped'`.
+- **Workflow Runs API (`backend/routes/workflowbuilder.js`):** Added `GET /api/workflows/:id/runs` endpoint with pagination and workspace isolation under `auth` and `requireRole('admin', 'member')`.
+- **Workflow Runs Tests:** Added repository unit tests (`backend/db/repositories/__tests__/workflow-runs.test.js`) and end-to-end integration tests (`backend/__tests__/workflow-runs.test.js`) verifying graph step tracking, skipped condition branches, failure handling, 404 validation, and workspace isolation.
 - **Workflow Node Graph Execution Engine (`backend/services/workflows.js`):**
   - Upgraded `triggerWorkflows()` to support visual node graph execution (`Trigger` → `Condition` → `Action`/`Delay`) in addition to legacy flat action lists.
   - Implemented graph adjacency traversal supporting edge schemas (`{ source, target, sourceHandle }` and `{ from, to, fromHandle }`) as well as direct node pointers (`node.next`, `trueNext`, `falseNext`).
@@ -50,6 +55,7 @@ and this project adheres to Semantic Versioning.
 
 ### Changed
 
+- **Test Database Setup (`backend/__tests__/setup.js`):** Included `workflow_runs` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
 - **Forms Route Cutover (`backend/routes/forms.js`):** Swapped permalink resolution and form submission handlers to use repositories; added workspace isolation to prevent cross-tenant overwrites; preserved custom fields during partial submissions; and wired activity creation into PostgreSQL.
 - **Tickets Route Cutover (`backend/routes/tickets.js`):** Swapped ticket CRUD and comments to repositories; moved `PUT /api/tickets/sla` before parameterized `:id` routes to resolve route shadowing; and wired ticket activities to PostgreSQL.
 - **Portal Ticket Resolution (`backend/routes/dataops.js`):** Updated `emailEquals` to check `contactEmail` so tickets are properly matched in `/api/portal/access`.
