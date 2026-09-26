@@ -108,13 +108,13 @@ async function pgFindAll(resource, query = {}) {
     filters.page = Number(query.page) || 1;
     filters.limit = Number(query.limit) || 20;
     const result = await repo.findAll(filters);
-    return result.data.map((row) => pgToLegacy(row, resource));
+    return result.data.map((row) => coerceBuiltIns(resource, pgToLegacy(row, resource)));
   }
 
   const rows = [];
   for (let page = 1; page <= MAX_PG_PAGES; page++) {
     const result = await repo.findAll({ ...filters, page, limit: 100 });
-    rows.push(...result.data.map((row) => pgToLegacy(row, resource)));
+    rows.push(...result.data.map((row) => coerceBuiltIns(resource, pgToLegacy(row, resource))));
     if (result.data.length === 0 || rows.length >= result.total) break;
   }
   return rows;
@@ -229,7 +229,7 @@ export default function registerResourceRoutes(app) {
       try {
         const row = await repo.findById(req.params.id);
         if (!row) return res.status(404).json({ error: "Record not found" });
-        return res.json(pgToLegacy(row, req.params.resource));
+        return res.json(coerceBuiltIns(req.params.resource, pgToLegacy(row, req.params.resource)));
       } catch (err) {
         return next(err);
       }
@@ -260,7 +260,7 @@ export default function registerResourceRoutes(app) {
           // Coerce numeric built-ins (e.g. deals.value, companies.employees)
           coerceBuiltIns(resource, pgData);
           const row = await repo.create(pgData);
-          const item = pgToLegacy(row, resource);
+          const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
           const event = createdEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
           broadcast("record.created", { resource, item });
@@ -386,7 +386,7 @@ export default function registerResourceRoutes(app) {
           coerceBuiltIns(resource, pgData);
           const row = await repo.update(req.params.id, pgData);
           if (!row) return res.status(404).json({ error: "Record not found" });
-          const item = pgToLegacy(row, resource);
+          const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
           const event = updatedEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
           broadcast("record.updated", { resource, item });
