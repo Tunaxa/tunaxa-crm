@@ -33,15 +33,37 @@ describe('Generic CRUD - leads', () => {
   it('GET /api/leads lists leads', async () => {
     const res = await request(app).get('/api/leads').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
   });
 
   it('GET /api/leads?q=Acme filters', async () => {
     const res = await request(app).get('/api/leads?q=Acme').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.length).toBe(1);
-    expect(res.body[0].name).toBe('Acme Corp');
+    expect(res.body.data.length).toBe(1);
+    expect(res.body.data[0].name).toBe('Acme Corp');
+  });
+
+  it('GET /api/leads paginates and sorts', async () => {
+    const res = await request(app)
+      .get('/api/leads?page=1&limit=1&sortBy=name&sortDir=asc')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.page).toBe(1);
+    expect(res.body.limit).toBe(1);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
+  });
+
+  it('GET /api/leads/export.csv streams a CSV', async () => {
+    const res = await request(app)
+      .get('/api/leads/export.csv')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text).toContain('name');
+    expect(res.text).toContain('Acme Corp');
   });
 
   it('PUT /api/leads/:id updates lead', async () => {
@@ -59,7 +81,7 @@ describe('Generic CRUD - leads', () => {
     expect(res.status).toBe(200);
 
     const list = await request(app).get('/api/leads').set('Authorization', `Bearer ${token}`);
-    expect(list.body.find(x => x.id === leadId)).toBeUndefined();
+    expect(list.body.data.find(x => x.id === leadId)).toBeUndefined();
   });
 
   it('PUT /api/leads/:id returns 404 for missing', async () => {
