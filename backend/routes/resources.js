@@ -42,16 +42,40 @@ export default function registerResourceRoutes(app) {
     if (!resources.has(req.params.resource)) return next();
     const db = req.db || (await readDb());
     let rows = db[req.params.resource] || [];
-    const q = String(req.query.q || "")
-      .toLowerCase()
-      .trim();
-    if (q)
-      rows = rows.filter((item) =>
-        JSON.stringify(item).toLowerCase().includes(q),
-      );
-    if (req.fieldPerms)
-      rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
-    res.json(rows);
+    const q = String(req.query.q || '').toLowerCase().trim();
+    if (q) rows = rows.filter(item => JSON.stringify(item).toLowerCase().includes(q));
+    const page = Math.max(1, Number.parseInt(String(req.query.page || '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query.limit || '25'), 10) || 25));
+    const sortBy = String(req.query.sortBy || 'createdAt');
+    const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+    rows = [...rows].sort((a, b) => {
+      const left = a[sortBy] ?? '';
+      const right = b[sortBy] ?? '';
+      return String(left).localeCompare(String(right), undefined, { numeric: true }) * sortDir;
+    });
+    const total = rows.length;
+    rows = rows.slice((page - 1) * limit, page * limit);
+    if (req.fieldPerms) rows = rows.map(item => applyFieldMasking(item, req.fieldPerms));
+    res.json({ data: rows, total, page, limit });
+  });
+
+  app.get('/api/:resource/export.csv', auth, async (req, res, next) => {
+    if (!resources.has(req.params.resource)) return next();
+    const db = req.db || await readDb();
+    const rows = db[req.params.resource] || [];
+    const visibleRows = req.fieldPerms
+      ? rows.map(item => applyFieldMasking(item, req.fieldPerms))
+      : rows;
+    const keys = [...new Set(visibleRows.flatMap(row => Object.keys(row)))];
+    const escape = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    res.status(200);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${req.params.resource}.csv"`);
+    res.write(`${keys.map(escape).join(',')}\n`);
+    for (const row of visibleRows) {
+      res.write(`${keys.map(key => escape(row[key])).join(',')}\n`);
+    }
+    res.end();
   });
 
   app.get("/api/:resource/:id", auth, async (req, res, next) => {

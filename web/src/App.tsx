@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -7,7 +9,6 @@ import {
 } from "react";
 import {
   Navigate,
-  NavLink,
   Route,
   Routes,
   useLocation,
@@ -35,124 +36,28 @@ import { AxacrmLogo } from "./components/common/AxacrmLogo";
 import { HomePage } from "./pages/HomePage";
 import { PricingPage } from "./pages/PricingPage";
 import { AppProvider, useApp } from "./context/AppContext";
-import { LayoutGrid, Sun, Moon } from "lucide-react";
-import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
+import { Shell } from "./shell/Shell";
+
+const LeadsPage = lazy(() =>
+  import("./pages/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
+);
+const ContactsPage = lazy(() =>
+  import("./pages/sales/ContactsPage").then((module) => ({ default: module.ContactsPage })),
+);
+const CompaniesPage = lazy(() =>
+  import("./pages/sales/CompaniesPage").then((module) => ({ default: module.CompaniesPage })),
+);
+const PipelinePage = lazy(() =>
+  import("./pages/sales/PipelinePage").then((module) => ({ default: module.PipelinePage })),
+);
 
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
-type NavItem = { path: string; label: string; icon: string };
-type NavGroup = { label: string; items: NavItem[] };
-
-const navGroups: NavGroup[] = [
-  {
-    label: "nav.overview",
-    items: [{ path: "/dashboard", label: "nav.dashboard", icon: "dashboard" }],
-  },
-  {
-    label: "nav.sales",
-    items: [
-      { path: "/leads", label: "nav.leads", icon: "lead" },
-      { path: "/contacts", label: "nav.contacts", icon: "contacts" },
-      { path: "/companies", label: "nav.companies", icon: "companies" },
-      { path: "/pipeline", label: "nav.pipeline", icon: "pipeline" },
-    ],
-  },
-  {
-    label: "nav.marketing",
-    items: [
-      { path: "/campaigns", label: "nav.campaigns", icon: "campaign" },
-      { path: "/marketing-emails", label: "nav.marketingEmails", icon: "mail" },
-      { path: "/events", label: "nav.events", icon: "event" },
-      { path: "/email-lists", label: "nav.emailLists", icon: "inbox" },
-      { path: "/landing-pages", label: "nav.landingPages", icon: "landing" },
-      { path: "/forms", label: "nav.forms", icon: "form" },
-    ],
-  },
-  {
-    label: "nav.revenue",
-    items: [
-      { path: "/quotes", label: "nav.quotes", icon: "quote" },
-      { path: "/contracts", label: "nav.contracts", icon: "contract" },
-      { path: "/products", label: "nav.products", icon: "cart" },
-      { path: "/orders", label: "nav.orders", icon: "send" },
-    ],
-  },
-  {
-    label: "nav.financial",
-    items: [
-      { path: "/finance", label: "nav.finance", icon: "money" },
-      { path: "/invoices", label: "nav.invoices", icon: "invoice" },
-      { path: "/expenses", label: "nav.expenses", icon: "reports" },
-      { path: "/forecast", label: "nav.forecast", icon: "trend" },
-    ],
-  },
-  {
-    label: "nav.service",
-    items: [
-      { path: "/surveys", label: "nav.surveys", icon: "survey" },
-      {
-        path: "/survey-responses",
-        label: "nav.surveyResponses",
-        icon: "response",
-      },
-      { path: "/portal", label: "nav.portal", icon: "portal" },
-    ],
-  },
-  {
-    label: "nav.hr",
-    items: [
-      { path: "/employees", label: "nav.employees", icon: "employee" },
-      { path: "/leave", label: "nav.leave", icon: "leave" },
-      { path: "/attendance", label: "nav.attendance", icon: "clockIn" },
-    ],
-  },
-  {
-    label: "nav.work",
-    items: [
-      { path: "/activities", label: "nav.activities", icon: "activity" },
-      { path: "/tasks", label: "nav.tasks", icon: "tasks" },
-      { path: "/calendar", label: "nav.calendar", icon: "calendar" },
-      { path: "/calls", label: "nav.calls", icon: "phone" },
-      { path: "/recordings", label: "nav.recordings", icon: "recording" },
-      { path: "/inbox", label: "nav.inbox", icon: "inbox" },
-    ],
-  },
-  {
-    label: "nav.automation",
-    items: [
-      { path: "/workflows", label: "nav.workflows", icon: "workflow" },
-      { path: "/webhooks", label: "nav.webhooks", icon: "webhook" },
-      { path: "/sequences", label: "nav.sequences", icon: "sequence" },
-    ],
-  },
-  {
-    label: "nav.analytics",
-    items: [
-      { path: "/reports", label: "nav.reports", icon: "reports" },
-      { path: "/goals", label: "nav.goals", icon: "goal" },
-      { path: "/duplicates", label: "nav.duplicates", icon: "duplicate" },
-    ],
-  },
-  {
-    label: "nav.workspace",
-    items: [
-      { path: "/team", label: "nav.team", icon: "team" },
-      { path: "/fields", label: "nav.fields", icon: "fields" },
-      { path: "/settings", label: "nav.settings", icon: "settings" },
-    ],
-  },
-];
-
-const titles = Object.fromEntries(
-  navGroups.flatMap((group) =>
-    group.items.map((item) => [item.path, item.label]),
-  ),
-);
 const stages = [
   { id: "new", label: "New" },
   { id: "qualified", label: "Qualified" },
@@ -424,8 +329,7 @@ function AuthScreen({
   );
 }
 
-function Shell() {
-  const { user, logout, toast } = useApp();
+function AppRoutes() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -1017,7 +921,6 @@ function Shell() {
     </div>
   );
 }
-
 function QuickCreate({ onClose }: { onClose: () => void }) {
   const { toast } = useApp();
   const [type, setType] = useState("leads");
@@ -1353,7 +1256,7 @@ type FieldSpec = {
   required?: boolean;
   placeholder?: string;
 };
-const leadFields: FieldSpec[] = [
+export const leadFields: FieldSpec[] = [
   { key: "name", label: "Lead name", required: true },
   { key: "company", label: "Company" },
   { key: "email", label: "Email", type: "email" },
@@ -1368,7 +1271,7 @@ const leadFields: FieldSpec[] = [
   { key: "owner", label: "Owner" },
   { key: "value", label: "Estimated value", type: "number" },
 ];
-const contactFields: FieldSpec[] = [
+export const contactFields: FieldSpec[] = [
   { key: "name", label: "Contact name", required: true },
   { key: "role", label: "Job title" },
   { key: "company", label: "Company" },
@@ -1945,251 +1848,7 @@ function CrudTablePage({
   );
 }
 
-function useSchema(object: string): FieldSpec[] {
-  const [custom, setCustom] = useState<FieldSpec[]>([]);
-  useEffect(() => {
-    api<{ fields: FieldSpec[] }>(`/schema/${object}`)
-      .then((schema) => setCustom(schema.fields))
-      .catch(() => {});
-  }, [object]);
-  return custom;
-}
-
-function PeoplePage({
-  resource,
-  title,
-  description,
-  icon,
-  fields,
-}: {
-  resource: string;
-  title: string;
-  description: string;
-  icon: string;
-  fields: FieldSpec[];
-}) {
-  const { items, loading, load, create, update, remove } =
-    useResource<Row>(resource);
-  const { toast } = useApp();
-  const navigate = useNavigate();
-  const [query, setQuery] = useState("");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const custom = useSchema(resource);
-  const allFields = [
-    ...fields,
-    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
-  ];
-  const peopleFields: FieldSpec[] = [
-    { key: "avatar", label: "Photo", type: "photo" },
-    ...allFields,
-  ];
-  const rows = items.filter(
-    (row) =>
-      !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
-  );
-
-  async function importCsv(file: File) {
-    try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      if (lines.length < 2) return toast("CSV has no rows", "error");
-      const headers = lines[0]
-        .split(",")
-        .map((x) => x.trim().replace(/^"|"$/g, ""));
-      const records = lines.slice(1).map((line) => {
-        const values = line
-          .split(",")
-          .map((x) => x.trim().replace(/^"|"$/g, ""));
-        return Object.fromEntries(
-          headers.map((key, index) => [key, values[index] || ""]),
-        );
-      });
-      await api(`/${resource}/batch`, json("POST", records));
-      await load();
-      toast(`${records.length} rows imported`);
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  }
-
-  function exportCsv() {
-    if (!items.length) return toast("Nothing to export", "error");
-    const keys = allFields.map((x) => x.key);
-    const csv = [
-      keys.join(","),
-      ...items.map((row) =>
-        keys
-          .map((key) => `"${String(row[key] || "").replace(/"/g, '""')}"`)
-          .join(","),
-      ),
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${resource}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  return (
-    <div className="page">
-      <PageHeader title={title} description={description}>
-        <input
-          ref={inputRef}
-          hidden
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])}
-        />
-        <button
-          className="btn secondary"
-          onClick={() => inputRef.current?.click()}
-        >
-          <Icon name="upload" /> Import
-        </button>
-        <button
-          className="btn secondary"
-          disabled={!items.length}
-          onClick={exportCsv}
-        >
-          <Icon name="download" /> Export
-        </button>
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add {title.slice(0, -1).toLowerCase()}
-        </button>
-      </PageHeader>
-      <section className="surface table-surface">
-        <div className="table-toolbar">
-          <div className="header-search">
-            <Icon name="search" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search ${title.toLowerCase()}`}
-            />
-          </div>
-          <span className="table-count">{items.length} total</span>
-        </div>
-        {loading ? (
-          <div className="table-loading">Loading…</div>
-        ) : rows.length ? (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Company</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>{resource === "leads" ? "Status" : "Owner"}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    <button
-                      className="person-cell person-link"
-                      onClick={() => navigate(`/${resource}/${row.id}`)}
-                    >
-                      <Avatar name={row.name || "NX"} src={row.avatar} />
-                      <div>
-                        <b>{row.name || "Untitled"}</b>
-                        <small>{row.role || row.source || "—"}</small>
-                      </div>
-                    </button>
-                  </td>
-                  <td>{row.company || "—"}</td>
-                  <td>{row.email || "—"}</td>
-                  <td>{row.phone || "—"}</td>
-                  <td>
-                    {resource === "leads" ? (
-                      <Badge
-                        tone={
-                          row.status === "Qualified"
-                            ? "green"
-                            : row.status === "Lost"
-                              ? "red"
-                              : "blue"
-                        }
-                      >
-                        {row.status || "New"}
-                      </Badge>
-                    ) : (
-                      row.owner || "—"
-                    )}
-                  </td>
-                  <td>
-                    <div className="row-actions">
-                      <button
-                        className="icon-btn tiny"
-                        onClick={() => setEdit(row)}
-                        title="Edit"
-                      >
-                        <Icon name="edit" />
-                      </button>
-                      <button
-                        className="icon-btn tiny danger-link"
-                        onClick={() =>
-                          confirm(`Delete ${row.name || "record"}?`) &&
-                          remove(row.id)
-                        }
-                        title="Delete"
-                      >
-                        <Icon name="trash" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <Empty
-            icon={icon}
-            title={
-              query
-                ? `No ${title.toLowerCase()} found`
-                : `No ${title.toLowerCase()} yet`
-            }
-            text={
-              query
-                ? "Try another search term."
-                : `Add your first ${title.slice(0, -1).toLowerCase()} or import a CSV file.`
-            }
-            action={
-              !query ? (
-                <button
-                  className="btn primary compact"
-                  onClick={() => setEdit(null)}
-                >
-                  Add {title.slice(0, -1).toLowerCase()}
-                </button>
-              ) : undefined
-            }
-          />
-        )}
-      </section>
-      {edit !== undefined ? (
-        <RecordForm
-          title={`${edit ? "Edit" : "Add"} ${title.slice(0, -1)}`}
-          fields={peopleFields}
-          initial={edit || {}}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-const detailTabList = ["Overview", "Activity", "Notes", "Emails"] as const;
+const detailTabList = ["Overview", "Activity", "Notes", "Emails", "History"] as const;
 type DetailTab = (typeof detailTabList)[number];
 
 function RecordDetailPage({
@@ -2210,6 +1869,7 @@ function RecordDetailPage({
   const [edit, setEdit] = useState(false);
   const [activities, setActivities] = useState<Row[]>([]);
   const [messages, setMessages] = useState<Row[]>([]);
+  const [revisions, setRevisions] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
 
@@ -2240,8 +1900,8 @@ function RecordDetailPage({
   useEffect(() => {
     if (!record) return;
     const name = record.name || record.title || "";
-    api<Row[]>("/activities")
-      .then((items) =>
+    api<{ data: Row[] }>("/activities")
+      .then(({ data: items }) =>
         setActivities(
           items.filter(
             (a) =>
@@ -2252,11 +1912,15 @@ function RecordDetailPage({
       )
       .catch(() => {});
     if (record.email)
-      api<Row[]>("/messages")
-        .then((items) =>
+      api<{ data: Row[] }>("/messages")
+        .then(({ data: items }) =>
           setMessages(items.filter((m) => m.to === record.email)),
         )
         .catch(() => {});
+    if (resource === "contacts")
+      api<{ data: Row[] }>(`/revisions/${resource}/${record.id}`)
+        .then((result) => setRevisions(result.data))
+        .catch(() => setRevisions([]));
   }, [record]);
 
   async function addNote() {
@@ -2377,7 +2041,10 @@ function RecordDetailPage({
       </div>
 
       <div className="detail-tabs">
-        {detailTabList.map((t) => (
+        {(resource === "contacts"
+          ? detailTabList
+          : detailTabList.filter((item) => item !== "History")
+        ).map((t) => (
           <button
             key={t}
             className={tab === t ? "active" : ""}
@@ -2388,6 +2055,8 @@ function RecordDetailPage({
               <span>{messages.length}</span>
             ) : t === "Activity" && activities.length ? (
               <span>{activities.length}</span>
+            ) : t === "History" && revisions.length ? (
+              <span>{revisions.length}</span>
             ) : null}
           </button>
         ))}
@@ -2521,6 +2190,37 @@ function RecordDetailPage({
             )}
           </div>
         )}
+
+        {tab === "History" && resource === "contacts" && (
+          <div className="detail-activity">
+            {revisions.length ? (
+              revisions.map((revision) => (
+                <div className="activity-item" key={revision.id}>
+                  <span className="activity-icon tone-blue">
+                    <Icon name="edit" />
+                  </span>
+                  <div>
+                    <div className="activity-item-head">
+                      <b>{revision.actor || "System"}</b>
+                      <time>{revision.createdAt || ""}</time>
+                    </div>
+                    {revision.changes?.map((change: Row) => (
+                      <p key={`${revision.id}-${change.field}`}>
+                        <strong>{change.field}</strong>: {String(change.from ?? "—")} → {String(change.to ?? "—")}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <Empty
+                icon="edit"
+                title="No history yet"
+                text="Changes to this contact will appear here."
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {edit ? (
@@ -2531,8 +2231,9 @@ function RecordDetailPage({
           onClose={() => setEdit(false)}
           onSave={async (data) => {
             try {
-              await api(`/${resource}/${record.id}`, json("PATCH", data));
-              setRecord((prev) => (prev ? { ...prev, ...data } : prev));
+              const payload = { ...record, ...data };
+              await api(`/${resource}/${record.id}`, json("PUT", payload));
+              setRecord((prev) => (prev ? { ...prev, ...payload } : prev));
               setEdit(false);
               toast("Updated");
             } catch (error) {
@@ -2690,283 +2391,6 @@ function RecordForm({
         )}
       </div>
     </Drawer>
-  );
-}
-
-function CompaniesPage() {
-  const fields: FieldSpec[] = [
-    { key: "logo", label: "Logo", type: "photo" },
-    { key: "name", label: "Company name" },
-    { key: "industry", label: "Industry" },
-    { key: "website", label: "Website" },
-    { key: "country", label: "Country" },
-    { key: "employees", label: "Employees", type: "number" },
-    { key: "owner", label: "Owner" },
-  ];
-  const { items, create, update, remove } = useResource<Row>("companies");
-  const navigate = useNavigate();
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const custom = useSchema("companies");
-  const nonPhoto = fields.filter((f) => f.key !== "logo");
-  const photoField = fields.find((f) => f.key === "logo")!;
-  const allFields = [
-    photoField,
-    ...nonPhoto,
-    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
-  ];
-  return (
-    <div className="page">
-      <PageHeader
-        title="Companies"
-        description="Accounts, organizations and relationship ownership."
-      >
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add company
-        </button>
-      </PageHeader>
-      {items.length ? (
-        <div className="company-grid">
-          {items.map((company) => (
-            <article
-              className="company-card"
-              key={company.id}
-              onClick={() => navigate(`/companies/${company.id}`)}
-              style={{ cursor: "pointer" }}
-            >
-              <header>
-                <span className="company-logo">
-                  {company.logo ? (
-                    <img src={company.logo} alt="" />
-                  ) : (
-                    String(company.name || "NX")
-                      .split(/\s+/)
-                      .map((x: string) => x[0])
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase()
-                  )}
-                </span>
-                <div
-                  className="row-actions"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    className="icon-btn tiny"
-                    onClick={() => setEdit(company)}
-                  >
-                    <Icon name="edit" />
-                  </button>
-                  <button
-                    className="icon-btn tiny danger-link"
-                    onClick={() =>
-                      confirm("Delete this company?") && remove(company.id)
-                    }
-                  >
-                    <Icon name="trash" />
-                  </button>
-                </div>
-              </header>
-              <h3>{company.name || "Untitled company"}</h3>
-              <p>
-                {company.industry || "No industry"}
-                {company.country ? ` · ${company.country}` : ""}
-              </p>
-              <div className="company-meta">
-                <span>
-                  <small>Employees</small>
-                  <b>{company.employees || 0}</b>
-                </span>
-                <span>
-                  <small>Owner</small>
-                  <b>{company.owner || "—"}</b>
-                </span>
-              </div>
-              <footer>
-                <Badge>{company.website || "No website"}</Badge>
-                <span className="link-btn">Open account</span>
-              </footer>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <Empty
-          icon="companies"
-          title="No companies"
-          text="Add companies to connect contacts and deals to accounts."
-          action={
-            <button
-              className="btn primary compact"
-              onClick={() => setEdit(null)}
-            >
-              Add company
-            </button>
-          }
-        />
-      )}
-      {edit !== undefined ? (
-        <RecordForm
-          title={`${edit ? "Edit" : "Add"} company`}
-          fields={allFields}
-          initial={edit || {}}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function PipelinePage() {
-  const { items, create, update, remove } = useResource<Row>("deals");
-  const navigate = useNavigate();
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const custom = useSchema("deals");
-  const fields: FieldSpec[] = [
-    { key: "title", label: "Deal name" },
-    { key: "company", label: "Company" },
-    { key: "value", label: "Value", type: "number" },
-    {
-      key: "stage",
-      label: "Stage",
-      type: "select",
-      options: stages.map((x) => x.id),
-    },
-    { key: "owner", label: "Owner" },
-    { key: "closeDate", label: "Close date", type: "date" },
-  ];
-  const allFields = [
-    ...fields,
-    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
-  ];
-  async function drop(stage: string) {
-    if (!dragging) return;
-    await update(dragging, { stage });
-    setDragging(null);
-  }
-  return (
-    <div className="page pipeline-page">
-      <PageHeader
-        title="Pipeline"
-        description="Drag deals between stages and keep your pipeline moving."
-      >
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add deal
-        </button>
-      </PageHeader>
-      {items.length ? (
-        <div className="pipeline-board">
-          {stages.map((stage) => {
-            const rows = items.filter(
-              (item) => (item.stage || "new") === stage.id,
-            );
-            return (
-              <section
-                className="pipeline-column"
-                key={stage.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => drop(stage.id)}
-              >
-                <header>
-                  <div>
-                    <span className="dot" />
-                    <b>{stage.label}</b>
-                    <em>{rows.length}</em>
-                  </div>
-                  <strong>
-                    {money(
-                      rows.reduce(
-                        (sum, row) => sum + Number(row.value || 0),
-                        0,
-                      ),
-                    )}
-                  </strong>
-                </header>
-                <div className="deal-list">
-                  {rows.map((row) => (
-                    <article
-                      className="deal-card"
-                      key={row.id}
-                      draggable
-                      onDragStart={() => setDragging(row.id)}
-                    >
-                      <div className="deal-top">
-                        <Badge tone={stage.id === "won" ? "green" : "blue"}>
-                          {stage.label}
-                        </Badge>
-                        <div className="row-actions">
-                          <button
-                            className="icon-btn tiny"
-                            onClick={() => setEdit(row)}
-                          >
-                            <Icon name="edit" />
-                          </button>
-                          <button
-                            className="icon-btn tiny danger-link"
-                            onClick={() =>
-                              confirm("Delete this deal?") && remove(row.id)
-                            }
-                          >
-                            <Icon name="trash" />
-                          </button>
-                        </div>
-                      </div>
-                      <button
-                        className="deal-title"
-                        onClick={() => navigate(`/deals/${row.id}`)}
-                      >
-                        {row.title || "Untitled deal"}
-                      </button>
-                      <p>{row.company || "No company"}</p>
-                      <strong>{money(row.value || 0)}</strong>
-                      <footer>
-                        <span>{row.owner || "Unassigned"}</span>
-                        <small>{row.closeDate || "No close date"}</small>
-                      </footer>
-                    </article>
-                  ))}
-                  <button
-                    className="add-deal"
-                    onClick={() => setEdit({ id: "", stage: stage.id })}
-                  >
-                    <Icon name="plus" /> Add deal
-                  </button>
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      ) : (
-        <Empty
-          icon="pipeline"
-          title="No deals"
-          text="Add your first deal to start building the sales pipeline."
-          action={
-            <button
-              className="btn primary compact"
-              onClick={() => setEdit(null)}
-            >
-              Add deal
-            </button>
-          }
-        />
-      )}
-      {edit !== undefined ? (
-        <RecordForm
-          title={`${edit?.id ? "Edit" : "Add"} deal`}
-          fields={allFields}
-          initial={edit || { stage: "new" }}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit?.id ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
-      ) : null}
-    </div>
   );
 }
 
@@ -6728,7 +6152,15 @@ function AppInner() {
       </main>
     );
 
-  if (user) return <Shell />;
+  if (user)
+    return (
+      <Shell
+        renderQuickCreate={(onClose) => <QuickCreate onClose={onClose} />}
+        renderGlobalSearch={(onClose) => <GlobalSearch onClose={onClose} />}
+      >
+        <AppRoutes />
+      </Shell>
+    );
 
   if (unauthView === "pricing") {
     return (
@@ -6768,3 +6200,5 @@ export default function App() {
     </AppProvider>
   );
 }
+
+
