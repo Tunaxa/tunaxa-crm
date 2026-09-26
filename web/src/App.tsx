@@ -284,7 +284,8 @@ function AuthScreen({
           </h1>
 
           <p className="text-xs sm:text-sm text-[#52525b] dark:text-[#8b949e] font-mono leading-relaxed max-w-md">
-            Manage inbound leads, visual Kanban deals, multi-channel sequences, quotes, and billing from a single high-performance workspace.
+            Manage inbound leads, visual Kanban deals, multi-channel sequences,
+            quotes, and billing from a single high-performance workspace.
           </p>
         </div>
 
@@ -404,16 +405,12 @@ function AuthScreen({
             </div>
 
             <div className="pt-2">
-              <CutButton
-                variant="primary"
-                className="w-full"
-                disabled={busy}
-              >
+              <CutButton variant="primary" className="w-full" disabled={busy}>
                 {busy
                   ? "AUTHENTICATING TELEMETRY…"
                   : mode === "setup"
-                  ? "CREATE WORKSPACE →"
-                  : "OPEN WORKSPACE →"}
+                    ? "CREATE WORKSPACE →"
+                    : "OPEN WORKSPACE →"}
               </CutButton>
             </div>
 
@@ -421,7 +418,9 @@ function AuthScreen({
               <div className="pt-4 text-center border-t border-[#e4e4e7] dark:border-[#21262d]">
                 <button
                   type="button"
-                  onClick={() => setMode((m) => (m === "login" ? "setup" : "login"))}
+                  onClick={() =>
+                    setMode((m) => (m === "login" ? "setup" : "login"))
+                  }
                   className="text-[#71717a] dark:text-[#8b949e] hover:text-[#3b82f6] bg-transparent border-none cursor-pointer text-xs"
                 >
                   {mode === "login"
@@ -507,13 +506,17 @@ function Shell() {
       />
       <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
         <div className="sidebar-logo">
-          <button className="brand" onClick={() => navigate("/dashboard")} title="Tunaxa AXA CRM">
+          <button
+            className="brand"
+            onClick={() => navigate("/dashboard")}
+            title="Tunaxa AXA CRM"
+          >
             {collapsed ? (
               <div
                 className="w-7 h-7 bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-mono font-black shrink-0"
                 style={{
                   clipPath:
-                    'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+                    "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
                 }}
               >
                 <span className="text-xs">TX</span>
@@ -558,7 +561,7 @@ function Shell() {
               className="w-7 h-7 bg-[#3b82f6] text-white flex items-center justify-center font-mono font-bold text-xs shrink-0"
               style={{
                 clipPath:
-                  'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+                  "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
               }}
             >
               <span>TX</span>
@@ -620,10 +623,14 @@ function Shell() {
             </button>
             <button
               className="icon-btn"
-              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
               onClick={toggleTheme}
+              title={theme ? "Light Blueprint" : "Dark Cyber"}
             >
-              <Icon name={theme ? "sun" : "moon"} />
+              {theme ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
             </button>
             <button
               className="icon-btn notification-btn"
@@ -662,7 +669,11 @@ function Shell() {
                     {(i18n.language || "en") === "fr" ? "English" : "Français"}
                   </button>
                   <button onClick={toggleTheme}>
-                    {theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}{" "}
+                    {theme ? (
+                      <Sun className="w-4 h-4" />
+                    ) : (
+                      <Moon className="w-4 h-4" />
+                    )}{" "}
                     {theme ? "Light Blueprint" : "Dark Cyber"}
                   </button>
                   <hr />
@@ -911,7 +922,10 @@ function Shell() {
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/leave" element={<LeavePage />} />
               <Route path="/attendance" element={<AttendancePage />} />
-              <Route path="/marketing-emails" element={<MarketingEmailsPage />} />
+              <Route
+                path="/marketing-emails"
+                element={<MarketingEmailsPage />}
+              />
               <Route
                 path="/marketing-emails/:id"
                 element={
@@ -966,7 +980,10 @@ function Shell() {
                   />
                 }
               />
-              <Route path="/survey-responses" element={<SurveyResponsesPage />} />
+              <Route
+                path="/survey-responses"
+                element={<SurveyResponsesPage />}
+              />
               <Route
                 path="/survey-responses/:id"
                 element={
@@ -2095,10 +2112,7 @@ function PeoplePage({
         >
           <Icon name="upload" /> Import
         </button>
-        <button
-          className="btn secondary"
-          onClick={exportCsv}
-        >
+        <button className="btn secondary" onClick={exportCsv}>
           <Icon name="download" /> Export CSV
         </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
@@ -2236,7 +2250,14 @@ function PeoplePage({
 
 const detailTabList = ["Overview", "Activity", "Notes", "Emails"] as const;
 type DetailTab = (typeof detailTabList)[number];
-const activityFilters = ["All", "Emails", "Calls", "Meetings", "Notes", "System"] as const;
+const activityFilters = [
+  "All",
+  "Emails",
+  "Calls",
+  "Meetings",
+  "Notes",
+  "System",
+] as const;
 type ActivityFilter = (typeof activityFilters)[number];
 const activityFilterTypes: Partial<Record<ActivityFilter, string>> = {
   Emails: "Email",
@@ -2271,7 +2292,8 @@ function RecordDetailPage({
   const [noteBusy, setNoteBusy] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
-  const showActivityFilters = resource === "contacts" || resource === "companies";
+  const showActivityFilters =
+    resource === "contacts" || resource === "companies";
 
   const photoKey = resource === "companies" ? "logo" : "avatar";
   const photoField: FieldSpec = {
@@ -2300,9 +2322,12 @@ function RecordDetailPage({
     const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
     if (name) params.set("contact", name);
-    const type = tab === "Notes"
-      ? "Note"
-      : showActivityFilters ? activityFilterTypes[activityFilter] : undefined;
+    const type =
+      tab === "Notes"
+        ? "Note"
+        : showActivityFilters
+          ? activityFilterTypes[activityFilter]
+          : undefined;
     if (type) params.set("type", type);
     const controller = new AbortController();
     setActivities([]);
@@ -2507,7 +2532,11 @@ function RecordDetailPage({
         {tab === "Activity" && (
           <div className="detail-activity">
             {showActivityFilters && (
-              <div className="detail-tabs activity-filter-tabs" role="group" aria-label="Filter activities">
+              <div
+                className="detail-tabs activity-filter-tabs"
+                role="group"
+                aria-label="Filter activities"
+              >
                 {activityFilters.map((filter) => (
                   <button
                     key={filter}
@@ -2524,7 +2553,11 @@ function RecordDetailPage({
             {activityLoading ? (
               <div className="table-loading">Loading activities…</div>
             ) : activityError ? (
-              <Empty icon="activity" title="Could not load activities" text="Try another filter." />
+              <Empty
+                icon="activity"
+                title="Could not load activities"
+                text="Try another filter."
+              />
             ) : activities.length ? (
               activities.map((a) => (
                 <div className="activity-item" key={a.id}>
@@ -2574,23 +2607,28 @@ function RecordDetailPage({
                 {noteBusy ? "Saving…" : "Add note"}
               </button>
             </div>
-            {!activityLoading && activities
-              .filter((a) => a.type === "Note")
-              .map((n) => (
-                <div className="note-card" key={n.id}>
-                  <div className="note-card-head">
-                    <b>Note</b>
-                    <time>{n.date || n.createdAt || ""}</time>
+            {!activityLoading &&
+              activities
+                .filter((a) => a.type === "Note")
+                .map((n) => (
+                  <div className="note-card" key={n.id}>
+                    <div className="note-card-head">
+                      <b>Note</b>
+                      <time>{n.date || n.createdAt || ""}</time>
+                    </div>
+                    <p>{n.notes || n.title}</p>
                   </div>
-                  <p>{n.notes || n.title}</p>
-                </div>
-              ))}
+                ))}
             {activityLoading ? (
               <div className="table-loading">Loading notes…</div>
             ) : activityError ? (
-              <Empty icon="edit" title="Could not load notes" text="Try reopening this tab." />
+              <Empty
+                icon="edit"
+                title="Could not load notes"
+                text="Try reopening this tab."
+              />
             ) : !activities.filter((a) => a.type === "Note").length &&
-            !noteText ? (
+              !noteText ? (
               <Empty
                 icon="edit"
                 title="No notes yet"
@@ -4161,6 +4199,7 @@ function RecordingsPage() {
   const { items, load, remove } = useResource<Row>("recordings");
   const { toast } = useApp();
   const [selected, setSelected] = useState<Row | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
 
   async function summarize(item: Row) {
     try {
@@ -4177,16 +4216,21 @@ function RecordingsPage() {
   }
 
   async function transcribe(item: Row) {
+    setTranscribing(true);
+
     try {
       const result = await api<Row>(
         `/recordings/${item.id}/transcribe`,
         json("POST"),
       );
+
       setSelected(result);
       toast("Transcription ready");
-      load();
+      await load();
     } catch (error) {
       toast((error as Error).message, "error");
+    } finally {
+      setTranscribing(false);
     }
   }
 
@@ -4269,10 +4313,11 @@ function RecordingsPage() {
               </button>
               <button
                 className="btn secondary"
-                disabled={!selected.fileUrl}
+                disabled={!selected.fileUrl || transcribing}
                 onClick={() => transcribe(selected)}
               >
-                <Icon name="ai" /> Transcribe
+                <Icon name="ai" />
+                {transcribing ? "Processing transcript..." : "Transcribe"}
               </button>
               <button
                 className="btn primary"
@@ -4305,9 +4350,24 @@ function RecordingsPage() {
             </h3>
             <p>{selected.summary || "No summary yet."}</p>
             <h3>Transcript</h3>
-            <p className="transcript-text">
-              {selected.transcript || "No transcript is available yet."}
-            </p>
+
+            <div
+              className="transcript-text"
+              style={{
+                maxHeight: "280px",
+                overflowY: "auto",
+                whiteSpace: "pre-wrap",
+                padding: "12px",
+              }}
+            >
+              {transcribing ? (
+                <span>Processing transcript...</span>
+              ) : selected.transcript ? (
+                selected.transcript
+              ) : (
+                <span>No transcript is available yet.</span>
+              )}
+            </div>
           </div>
         </Modal>
       ) : null}
@@ -5758,10 +5818,12 @@ function DuplicatesPage() {
   const groups = (data?.duplicates || [])
     .map((group: any) => ({
       ...group,
-      records: group.records || group.ids.map((id: string, index: number) => ({
-        id,
-        name: group.names[index],
-      })),
+      records:
+        group.records ||
+        group.ids.map((id: string, index: number) => ({
+          id,
+          name: group.names[index],
+        })),
     }))
     .flatMap((group: any) =>
       group.records.slice(1).map((merge: Row) => ({
@@ -5774,9 +5836,9 @@ function DuplicatesPage() {
     .filter((pair: any) => !skipped.includes(pair.key));
   const pair = groups[0];
   const comparisonKeys = pair
-    ? [...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)])].filter(
-        (key) => key !== "id",
-      )
+    ? [
+        ...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)]),
+      ].filter((key) => key !== "id")
     : [];
   const displayName = (record: Row) =>
     String(record.name || record.email || record.id || "Untitled");
@@ -5787,7 +5849,9 @@ function DuplicatesPage() {
     return String(value);
   };
   const labelFor = (key: string) =>
-    key.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
+    key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (value) => value.toUpperCase());
   return (
     <div className="page">
       <PageHeader
@@ -5829,25 +5893,53 @@ function DuplicatesPage() {
               <article className="duplicate-record keep">
                 <div className="duplicate-record-head">
                   <Avatar name={displayName(pair.keep)} />
-                  <div><small>Record to keep</small><h3>{displayName(pair.keep)}</h3></div>
+                  <div>
+                    <small>Record to keep</small>
+                    <h3>{displayName(pair.keep)}</h3>
+                  </div>
                 </div>
                 <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.keep[key])}</b></div>)}
+                  {comparisonKeys.map((key) => (
+                    <div className="duplicate-field" key={key}>
+                      <span>{labelFor(key)}</span>
+                      <b>{displayValue(pair.keep[key])}</b>
+                    </div>
+                  ))}
                 </div>
               </article>
               <article className="duplicate-record merge">
                 <div className="duplicate-record-head">
                   <Avatar name={displayName(pair.merge)} />
-                  <div><small>Record to merge and delete</small><h3>{displayName(pair.merge)}</h3></div>
+                  <div>
+                    <small>Record to merge and delete</small>
+                    <h3>{displayName(pair.merge)}</h3>
+                  </div>
                 </div>
                 <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.merge[key])}</b></div>)}
+                  {comparisonKeys.map((key) => (
+                    <div className="duplicate-field" key={key}>
+                      <span>{labelFor(key)}</span>
+                      <b>{displayValue(pair.merge[key])}</b>
+                    </div>
+                  ))}
                 </div>
               </article>
             </div>
             <div className="duplicate-actions">
-              <button className="btn secondary" disabled={busy} onClick={() => skipPair(pair.key)}><Icon name="close" /> Skip</button>
-              <button className="btn primary" disabled={busy} onClick={() => mergePair(pair.group, pair.keep, pair.merge)}><Icon name="check" /> Merge</button>
+              <button
+                className="btn secondary"
+                disabled={busy}
+                onClick={() => skipPair(pair.key)}
+              >
+                <Icon name="close" /> Skip
+              </button>
+              <button
+                className="btn primary"
+                disabled={busy}
+                onClick={() => mergePair(pair.group, pair.keep, pair.merge)}
+              >
+                <Icon name="check" /> Merge
+              </button>
             </div>
           </>
         ) : (
@@ -7983,11 +8075,18 @@ function AppInner() {
     const hash = window.location.hash.toLowerCase();
     if (hash.includes("pricing")) return "pricing";
     if (hash.includes("demo") || hash.includes("lab")) return "demo";
-    if (hash.includes("login") || hash.includes("signin") || hash.includes("setup")) return "login";
+    if (
+      hash.includes("login") ||
+      hash.includes("signin") ||
+      hash.includes("setup")
+    )
+      return "login";
     return "home";
   };
 
-  const [unauthView, setUnauthView] = useState<"home" | "pricing" | "demo" | "login">(getInitialUnauthView);
+  const [unauthView, setUnauthView] = useState<
+    "home" | "pricing" | "demo" | "login"
+  >(getInitialUnauthView);
 
   useEffect(() => {
     const onHashChange = () => {
