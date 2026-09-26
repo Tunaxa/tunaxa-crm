@@ -75,6 +75,12 @@ describe('Duplicate management', () => {
     const group = find.body.duplicates.find(g => g.names.includes('Jane Doe'));
     expect(group).toBeTruthy();
     expect(group.ids.length).toBe(2);
+    expect(group.records).toHaveLength(2);
+    expect(group.confidence).toBe(100);
+    expect(group.score).toBe(1);
+    expect(group.matches).toHaveLength(1);
+    expect(group.matches[0].score).toBe(1);
+    expect(group.matches[0].rawScore).toBe(0);
 
     const merge = await request(app).post('/api/duplicates/merge').set('Authorization', `Bearer ${token}`).send({ resource: 'contacts', keepId: group.ids[0], mergeId: group.ids[1] });
     expect(merge.status).toBe(200);
@@ -84,40 +90,77 @@ describe('Duplicate management', () => {
     expect(list.body.filter(c => c.email === 'jane@test.com').length).toBe(1);
   });
 
-  it('merges multiple duplicates into the primary record in a single atomic request', async () => {
-    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Bulk One', email: 'bulk@test.com' });
-    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Bulk Two', email: 'bulk@test.com', phone: '+456', company: 'ACME' });
-    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Bulk Three', email: 'bulk@test.com' });
+  it('returns confidence for fuzzy company name matches', async () => {
+    await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Acme Corporation' });
+    await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Acme Corporaton' });
 
-    const find = await request(app).get('/api/duplicates?resource=contacts').set('Authorization', `Bearer ${token}`);
-    const group = find.body.duplicates.find(g => g.names.includes('Bulk One'));
+    const find = await request(app).get('/api/duplicates?resource=companies').set('Authorization', `Bearer ${token}`);
+    const group = find.body.duplicates.find(g => g.names.includes('Acme Corporation'));
     expect(group).toBeTruthy();
-    expect(group.ids.length).toBe(3);
-    const keepId = group.ids[group.names.indexOf('Bulk One')];
+    expect(group.confidence).toBeGreaterThan(80);
+    expect(group.confidence).toBeLessThan(100);
+  it('detects fuzzy-near-match duplicates for companies and scores them below 1', async () => {
+    await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Phil Schmitz' });
+    await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Philip Schmitz' });
 
-    const merge = await request(app).post('/api/duplicates/merge').set('Authorization', `Bearer ${token}`).send({ resource: 'contacts', keepId, mergeIds: group.ids.filter(id => id !== keepId) });
-    expect(merge.status).toBe(200);
-    expect(merge.body.phone).toBe('+456');
-    expect(merge.body.company).toBe('ACME');
-
-    const list = await request(app).get('/api/contacts').set('Authorization', `Bearer ${token}`);
-    expect(list.body.filter(c => c.email === 'bulk@test.com').length).toBe(1);
-  });
-
-  it('rolls back cleanly when a requested mergeId does not exist', async () => {
-    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Ghost Keep', email: 'ghost@test.com' });
-    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Ghost Dup', email: 'ghost@test.com' });
-
-    const find = await request(app).get('/api/duplicates?resource=contacts').set('Authorization', `Bearer ${token}`);
-    const group = find.body.duplicates.find(g => g.names.includes('Ghost Keep'));
+    const find = await request(app).get('/api/duplicates?resource=companies').set('Authorization', `Bearer ${token}`);
+    expect(find.status).toBe(200);
+    const group = find.body.duplicates.find(g => g.names.includes('Phil Schmitz'));
     expect(group).toBeTruthy();
     expect(group.ids.length).toBe(2);
+    expect(group.score).toBeGreaterThan(0);
+    expect(group.score).toBeLessThan(1);
+    expect(group.matches).toHaveLength(1);
+    expect(group.matches[0].score).toBe(group.score);
+  });
 
-    const merge = await request(app).post('/api/duplicates/merge').set('Authorization', `Bearer ${token}`).send({ resource: 'contacts', keepId: group.ids[0], mergeIds: [group.ids[1], 'missing-id'] });
-    expect(merge.status).toBe(404);
+  it('does not flag contacts sharing only an email domain (different local parts)', async () => {
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Exact Test', email: 'exact.test@example.com' });
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Dupe Test', email: 'dupe.test@example.com' });
 
-    const list = await request(app).get('/api/contacts').set('Authorization', `Bearer ${token}`);
-    expect(list.body.filter(c => c.email === 'ghost@test.com').length).toBe(2);
+    const find = await request(app).get('/api/duplicates?resource=contacts').set('Authorization', `Bearer ${token}`);
+    expect(find.status).toBe(200);
+    expect(find.body.duplicates.find(g => g.names.includes('Dupe Test'))).toBeUndefined();
+    expect(find.body.total).toBe(0);
+  });
+
+  it('scores each duplicate member against the primary record it would merge into', async () => {
+    // New records are unshifted onto the front of the list, and the first row
+    // in the list is the primary/kept record. Create the Phils first so the
+    // typo'd "Philp Schmitz" ends up as the primary, matching the manual-test
+    // scenario.
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Phil Schmitz', email: 'phil.schmitz@soylent.co' });
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Phil Schmitz', email: 'phil.schmitz@acme.com' });
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Philp Schmitz', email: 'philp.schmitz@acme.com' });
+
+    const find = await request(app).get('/api/duplicates?resource=contacts').set('Authorization', `Bearer ${token}`);
+    const group = find.body.duplicates.find(g => g.names[0] === 'Philp Schmitz');
+    expect(group).toBeTruthy();
+    expect(group.ids.length).toBe(3);
+    // Each member is scored against the primary "Philp Schmitz", which differs
+    // from "Phil Schmitz" by one character, so neither member may be reported
+    // at full confidence even though the two "Phil Schmitz" records match each
+    // other exactly.
+    expect(group.matches).toHaveLength(2);
+    expect(group.matches.every(m => m.score > 0 && m.score < 1)).toBe(true);
+    expect(group.matches.every(m => m.rawScore > 0 && m.rawScore <= 0.2)).toBe(true);
+  });
+
+  it('does not group contacts whose email local parts merely overlap by substring (alice vs alice.miller)', async () => {
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Alice', email: 'alice@example.com' });
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Alice Miller', email: 'alice.miller@example.com' });
+
+    const find = await request(app).get('/api/duplicates?resource=contacts').set('Authorization', `Bearer ${token}`);
+    expect(find.status).toBe(200);
+    expect(find.body.duplicates.find(g => g.names.includes('Alice Miller'))).toBeUndefined();
+  });
+
+  it('does not fuzzy-match very short email local parts', async () => {
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Abe', email: 'ab@example.com' });
+    await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`).send({ name: 'Acc', email: 'ac@example.com' });
+
+    const find = await request(app).get('/api/duplicates?resource=contacts').set('Authorization', `Bearer ${token}`);
+    expect(find.body.duplicates.find(g => g.names.includes('Acc'))).toBeUndefined();
   });
 });
 

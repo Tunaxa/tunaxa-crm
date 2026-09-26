@@ -77,6 +77,15 @@ function useFocusTrap() {
 
   return containerRef;
 }
+export { CornerBrackets } from './ui/CornerBrackets';
+export { PixelIndicator } from './ui/PixelIndicator';
+export { CutButton } from './ui/CutButton';
+export { RevenueFlowCanvas } from './ui/RevenueFlowCanvas';
+export { RevenueTicker } from './ui/RevenueTicker';
+export { CountUpNumber } from './ui/CountUpNumber';
+export { PixelDivider } from './ui/PixelDivider';
+export { SectionHeader } from './ui/SectionHeader';
+export type { SectionHeaderProps } from './ui/SectionHeader';
 
 export function Modal({ title, children, onClose, footer }: { title: string; children: ReactNode; onClose: () => void; footer?: ReactNode }) {
   const modalRef = useFocusTrap();
@@ -139,8 +148,32 @@ export function Avatar({ name, src, size = 34 }: { name: string; src?: string; s
   return <span className="avatar" style={{ width: size, height: size }}>{initials}</span>;
 }
 
-export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'blue' | 'green' | 'amber' | 'red' | 'purple' }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
+export interface BadgeProps {
+  children: ReactNode;
+  variant?: 'blue' | 'emerald' | 'amber' | 'red' | 'neutral';
+  tone?: 'neutral' | 'blue' | 'green' | 'amber' | 'red' | 'purple';
+  className?: string;
+}
+
+export function Badge({ children, variant, tone, className = '' }: BadgeProps) {
+  if (variant) {
+    const variantStyles: Record<string, string> = {
+      blue: 'border-[#3b82f6]/40 bg-[#3b82f6]/10 text-[#2563eb] dark:text-[#60a5fa]',
+      emerald: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+      amber: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+      red: 'border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-400',
+      neutral: 'border-[#d1d1d1] dark:border-[#263140] bg-[#f7f7f7] dark:bg-[#121820] text-[#737373] dark:text-[#8b949e]',
+    };
+    const style = variantStyles[variant] || variantStyles.neutral;
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-0.5 border text-[10px] font-mono font-bold uppercase tracking-wider ${style} ${className}`}
+      >
+        {children}
+      </span>
+    );
+  }
+  return <span className={`badge badge-${tone || 'neutral'} ${className}`}>{children}</span>;
 }
 
 export function Toggle({ value, onChange }: { value: boolean; onChange: (value: boolean) => void }) {

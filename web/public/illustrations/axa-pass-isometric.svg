@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="100%" height="100%" fill="none">
+  <defs>
+    <!-- Vault Gradients -->
+    <linearGradient id="vault_top" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+
+    <linearGradient id="vault_left" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+
+    <linearGradient id="vault_right" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1E1B4B" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+
+    <linearGradient id="key_glow_grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="50%" stop-color="#818CF8" />
+      <stop offset="100%" stop-color="#C084FC" />
+    </linearGradient>
+
+    <filter id="pass_iso_glow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#8B5CF6" flood-opacity="0.25" />
+    </filter>
+  </defs>
+
+  <g filter="url(#pass_iso_glow)">
+    <!-- 1. ISOMETRIC VAULT SAFE BLOCK -->
+    <!-- Base Platform -->
+    <polygon points="300,100 480,205 300,310 120,205" fill="url(#vault_top)" stroke="#38BDF8" stroke-width="1.5" stroke-opacity="0.4" />
+    <!-- Left Face -->
+    <polygon points="120,205 300,310 300,380 120,275" fill="url(#vault_left)" />
+    <!-- Right Face -->
+    <polygon points="300,310 480,205 480,275 300,380" fill="url(#vault_right)" />
+
+    <!-- 2. CIRCULAR VAULT LOCK COMBINATION WHEEL (Isometric Ellipse) -->
+    <ellipse cx="300" cy="205" rx="64" ry="36" fill="#0F172A" stroke="#8B5CF6" stroke-width="3" />
+    <ellipse cx="300" cy="205" rx="44" ry="24" fill="#1E1B4B" stroke="#60A5FA" stroke-width="2" stroke-dasharray="6 4" />
+    <circle cx="300" cy="205" r="8" fill="#38BDF8" />
+
+    <!-- 3. FLOATING CRYPTOGRAPHIC KEY FRAGMENTS (Zero-Knowledge Distributed Shares) -->
+    <!-- Key Node 1 -->
+    <g transform="translate(180, 80)">
+      <polygon points="30,5 60,22 30,39 0,22" fill="#1E293B" stroke="#8B5CF6" stroke-width="1.5" />
+      <polygon points="0,22 30,39 30,45 0,28" fill="#0F172A" />
+      <polygon points="30,39 60,22 60,28 30,45" fill="#020617" />
+      <text x="30" y="24" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="8" font-weight="700" fill="#A78BFA">KEY_A</text>
+    </g>
+
+    <!-- Key Node 2 -->
+    <g transform="translate(380, 70)">
+      <polygon points="30,5 60,22 30,39 0,22" fill="#1E293B" stroke="#38BDF8" stroke-width="1.5" />
+      <polygon points="0,22 30,39 30,45 0,28" fill="#0F172A" />
+      <polygon points="30,39 60,22 60,28 30,45" fill="#020617" />
+      <text x="30" y="24" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="8" font-weight="700" fill="#38BDF8">KEY_B</text>
+    </g>
+
+    <!-- 4. FLOATING ENCRYPTED CREDENTIAL CARD -->
+    <g transform="translate(240, 260)">
+      <polygon points="60,6 120,40 60,74 0,40" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.5" />
+      <polygon points="0,40 60,74 60,82 0,48" fill="#CBD5E1" />
+      <polygon points="60,74 120,40 120,48 60,82" fill="#94A3B8" />
+      <text x="60" y="38" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="9" font-weight="800" fill="#0F172A">SHA-256 VAULT</text>
+      <text x="60" y="52" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="7" font-weight="600" fill="#2563EB">•••••••••••• (256-BIT)</text>
+    </g>
+
+    <!-- 5. TELEMETRY BADGE -->
+    <text x="300" y="360" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="10" font-weight="700" fill="#60A5FA" letter-spacing="2">ZERO-KNOWLEDGE VERIFIED</text>
+  </g>
+</svg>

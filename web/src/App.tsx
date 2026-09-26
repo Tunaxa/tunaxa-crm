@@ -26,10 +26,21 @@ import {
   PhotoField,
   Toggle,
   money,
+  CornerBrackets,
+  PixelIndicator,
+  CutButton,
+  RevenueFlowCanvas,
 } from "./components/ui";
+import { AxacrmLogo } from "./components/common/AxacrmLogo";
+import { HomePage } from "./pages/HomePage";
+import { PricingPage } from "./pages/PricingPage";
 import { AppProvider, useApp } from "./context/AppContext";
+import { LayoutGrid, Sun, Moon } from "lucide-react";
+import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { CornerBrackets } from "./components/CornerBrackets";
+import { GoalProgress } from "./components/goals/GoalProgress";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -126,6 +137,7 @@ const navGroups: NavGroup[] = [
       { path: "/reports", label: "nav.reports", icon: "reports" },
       { path: "/goals", label: "nav.goals", icon: "goal" },
       { path: "/duplicates", label: "nav.duplicates", icon: "duplicate" },
+      { path: "/audit", label: "nav.audit", icon: "shield" },
     ],
   },
   {
@@ -151,7 +163,15 @@ const stages = [
   { id: "won", label: "Won" },
 ];
 
-function AuthScreen() {
+function AuthScreen({
+  onNavigateToHome,
+  onNavigateToPricing,
+  onNavigateToDemo,
+}: {
+  onNavigateToHome?: () => void;
+  onNavigateToPricing?: () => void;
+  onNavigateToDemo?: () => void;
+}) {
   const { setUser, toast } = useApp();
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [mode, setMode] = useState<"login" | "setup">("login");
@@ -202,126 +222,199 @@ function AuthScreen() {
 
   if (needsSetup === null)
     return (
-      <main className="login-page">
-        <section className="login-form-panel">
-          <div className="login-card">
-            <div className="loading-line" />
+      <main className="min-h-screen bg-[#f7f7f7] dark:bg-[#090d13] flex items-center justify-center p-4 tunaxa-grid-texture font-mono">
+        <div className="border border-[#d1d1d1] dark:border-[#21262d] bg-white dark:bg-[#161b22] p-8 text-center relative shadow-sm max-w-sm w-full">
+          <CornerBrackets stroke="#3b82f6" size={8} />
+          <PixelIndicator active pulseColor="blue" className="mx-auto mb-3" />
+          <div className="text-xs text-[#71717a] dark:text-[#8b949e]">
+            INITIALIZING AXA CRM WORKSPACE…
           </div>
-        </section>
+        </div>
       </main>
     );
 
   return (
-    <main className="login-page">
-      <img className="login-bg" src="/crm-dashboard-bg.jpg" alt="" />
-      <div className="login-overlay" />
-      <section className="login-hero">
-        <div className="login-hero-inner">
-          <div className="login-brand">
-            <img src={logo} alt="Tunaxa" />
-            <b>Tunaxa</b>
+    <main className="min-h-screen bg-[#f7f7f7] dark:bg-[#090d13] text-[#1e2329] dark:text-[#f3f4f6] font-sans antialiased flex flex-col md:flex-row tunaxa-grid-texture relative selection:bg-[#3b82f6]/20">
+      {/* Left hero section with Revenue Flow Canvas */}
+      <section className="relative w-full md:w-1/2 min-h-[360px] md:min-h-screen flex flex-col justify-between p-8 sm:p-12 border-b md:border-b-0 md:border-r border-[#d1d1d1] dark:border-[#21262d] bg-white/60 dark:bg-[#090d13]/80 backdrop-blur-xs overflow-hidden">
+        {/* Background Canvas Animation */}
+        <div className="absolute inset-0 pointer-events-none opacity-40 dark:opacity-30">
+          <RevenueFlowCanvas active={true} />
+        </div>
+
+        <div className="relative z-10">
+          <div className="flex items-center justify-between gap-4 mb-8">
+            <AxacrmLogo />
+            {onNavigateToHome && (
+              <button
+                type="button"
+                onClick={onNavigateToHome}
+                className="font-mono text-xs text-[#71717a] dark:text-[#8b949e] hover:text-[#3b82f6] dark:hover:text-[#3b82f6] flex items-center gap-1 bg-transparent border-none cursor-pointer transition-colors"
+              >
+                ← RETURN TO HOME
+              </button>
+            )}
           </div>
-          <div className="login-hero-text">
-            <span className="login-hero-label">CRM WORKSPACE</span>
-            <h1>One workspace for every customer relationship.</h1>
-            <p>
-              Manage sales, communication, tasks and revenue from a focused CRM
-              workspace.
-            </p>
+
+          <div className="inline-flex items-center gap-2 mb-3">
+            <PixelIndicator active pulseColor="blue" />
+            <span className="font-mono text-xs text-[#3b82f6] font-bold">
+              / REVENUE COMMAND WORKSPACE
+            </span>
           </div>
-          <div className="login-hero-badges">
-            <span>
-              <Icon name="checkCircle" /> Clean workspace
-            </span>
-            <span>
-              <Icon name="shield" /> Secure access
-            </span>
-            <span>
-              <Icon name="workflow" /> Persistent data
-            </span>
+
+          <h1 className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-[#18181b] dark:text-white uppercase leading-tight mb-4">
+            HIGH-VELOCITY SALES PIPELINES & CUSTOMER RELATIONSHIPS.
+          </h1>
+
+          <p className="text-xs sm:text-sm text-[#52525b] dark:text-[#8b949e] font-mono leading-relaxed max-w-md">
+            Manage inbound leads, visual Kanban deals, multi-channel sequences, quotes, and billing from a single high-performance workspace.
+          </p>
+        </div>
+
+        <div className="relative z-10 pt-8 border-t border-[#d1d1d1]/60 dark:border-[#21262d] space-y-3 font-mono text-xs text-[#52525b] dark:text-[#8b949e]">
+          <div className="flex items-center gap-2">
+            <PixelIndicator active pulseColor="emerald" />
+            <span>Zero-Knowledge AXA PASS Credential Linking</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <PixelIndicator active pulseColor="blue" />
+            <span>Visual Automated Sequences & Webhook Ingestion</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <PixelIndicator active pulseColor="emerald" />
+            <span>75%+ Lower TCO vs Salesforce & HubSpot</span>
+          </div>
+
+          <div className="flex items-center gap-4 pt-3 text-[11px]">
+            {onNavigateToPricing && (
+              <button
+                type="button"
+                onClick={onNavigateToPricing}
+                className="text-[#3b82f6] hover:underline bg-transparent border-none p-0 cursor-pointer"
+              >
+                View Pricing & TCO →
+              </button>
+            )}
+            {onNavigateToDemo && (
+              <button
+                type="button"
+                onClick={onNavigateToDemo}
+                className="text-[#3b82f6] hover:underline bg-transparent border-none p-0 cursor-pointer"
+              >
+                Explore Sales Lab Demo →
+              </button>
+            )}
           </div>
         </div>
       </section>
-      <section className="login-form-panel">
-        <form className="login-card" onSubmit={submit}>
-          <div className="login-card-head">
-            <div className="login-card-icon">N/V</div>
+
+      {/* Right authentication form */}
+      <section className="w-full md:w-1/2 flex items-center justify-center p-6 sm:p-12 relative">
+        <div className="w-full max-w-md border border-[#d1d1d1] dark:border-[#21262d] bg-white dark:bg-[#161b22] p-8 sm:p-10 relative shadow-xl">
+          <CornerBrackets stroke="#3b82f6" size={10} />
+
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#e4e4e7] dark:border-[#21262d]">
             <div>
-              <h2>
-                {mode === "setup"
-                  ? "Create your workspace"
-                  : "Sign in to Tunaxa"}
+              <h2 className="text-xl font-bold font-mono text-[#18181b] dark:text-white">
+                {mode === "setup" ? "CREATE WORKSPACE" : "SIGN IN TO TUNAXA"}
               </h2>
-              <p>
+              <p className="font-mono text-xs text-[#71717a] dark:text-[#8b949e] mt-0.5">
                 {mode === "setup"
-                  ? "Create the first owner account"
-                  : "Open your CRM workspace"}
+                  ? "Initialize owner credentials"
+                  : "Access your CRM revenue command"}
               </p>
             </div>
-            <button
-              className="login-theme-toggle"
-              type="button"
-              onClick={toggleTheme}
-              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
-              title={theme ? "Light mode" : "Dark mode"}
-            >
-              <Icon name={theme ? "sun" : "moon"} />
-            </button>
+            <div className="w-9 h-9 border border-[#3b82f6]/40 bg-[#3b82f6]/10 text-[#3b82f6] font-mono font-bold text-xs flex items-center justify-center">
+              CRM
+            </div>
           </div>
-          <div className="login-card-body">
-            {mode === "setup" ? (
-              <label className="field">
-                <span>Your name</span>
+
+          <form onSubmit={submit} className="space-y-4 font-mono text-xs">
+            {mode === "setup" && (
+              <div>
+                <label className="block text-[#71717a] dark:text-[#8b949e] mb-1 font-bold">
+                  YOUR NAME
+                </label>
                 <input
+                  type="text"
+                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Owner name"
+                  placeholder="e.g. Alex Vance"
+                  className="w-full p-2.5 border border-[#d1d1d1] dark:border-[#21262d] bg-[#f9fafb] dark:bg-[#0d1117] text-[#18181b] dark:text-white focus:outline-none focus:border-[#3b82f6]"
                   autoFocus
                 />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[#71717a] dark:text-[#8b949e] mb-1 font-bold">
+                EMAIL ADDRESS
               </label>
-            ) : null}
-            <label className="field">
-              <span>Email address</span>
               <input
                 type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@company.com"
+                className="w-full p-2.5 border border-[#d1d1d1] dark:border-[#21262d] bg-[#f9fafb] dark:bg-[#0d1117] text-[#18181b] dark:text-white focus:outline-none focus:border-[#3b82f6]"
                 autoFocus={mode === "login"}
               />
-            </label>
-            <label className="field">
-              <span>Password</span>
-              <div className="input-with-action">
-                <input
-                  type={show ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Minimum 6 characters"
-                />
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-[#71717a] dark:text-[#8b949e] font-bold">
+                  PASSWORD
+                </label>
                 <button
                   type="button"
-                  onClick={() => setShow((value) => !value)}
+                  onClick={() => setShow((v) => !v)}
+                  className="text-[#71717a] dark:text-[#8b949e] hover:text-[#18181b] dark:hover:text-white bg-transparent border-none cursor-pointer text-[11px]"
                 >
-                  <Icon name="eye" />
+                  {show ? "HIDE" : "SHOW"}
                 </button>
               </div>
-            </label>
-            {mode === "login" && (
-              <label className="check">
-                <input type="checkbox" /> Remember me
-              </label>
+              <input
+                type={show ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+                className="w-full p-2.5 border border-[#d1d1d1] dark:border-[#21262d] bg-[#f9fafb] dark:bg-[#0d1117] text-[#18181b] dark:text-white focus:outline-none focus:border-[#3b82f6]"
+              />
+            </div>
+
+            <div className="pt-2">
+              <CutButton
+                variant="primary"
+                className="w-full"
+                disabled={busy}
+              >
+                {busy
+                  ? "AUTHENTICATING TELEMETRY…"
+                  : mode === "setup"
+                  ? "CREATE WORKSPACE →"
+                  : "OPEN WORKSPACE →"}
+              </CutButton>
+            </div>
+
+            {needsSetup !== true && (
+              <div className="pt-4 text-center border-t border-[#e4e4e7] dark:border-[#21262d]">
+                <button
+                  type="button"
+                  onClick={() => setMode((m) => (m === "login" ? "setup" : "login"))}
+                  className="text-[#71717a] dark:text-[#8b949e] hover:text-[#3b82f6] bg-transparent border-none cursor-pointer text-xs"
+                >
+                  {mode === "login"
+                    ? "Need to create a new workspace? Set up here"
+                    : "Already have a workspace? Sign in"}
+                </button>
+              </div>
             )}
-            <button className="btn login-submit" type="submit" disabled={busy}>
-              {busy
-                ? "Please wait…"
-                : mode === "setup"
-                  ? "Create workspace"
-                  : "Sign in"}{" "}
-              <Icon name="arrowRight" />
-            </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </section>
     </main>
   );
@@ -342,6 +435,7 @@ function Shell() {
   const [theme, setTheme] = useState(
     document.documentElement.classList.contains("dark"),
   );
+  const [isEcosystemOpen, setIsEcosystemOpen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("tunaxa.sidebar", collapsed ? "1" : "0");
@@ -381,19 +475,33 @@ function Shell() {
 
   return (
     <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+      {/* Blueprint dot-grid overlay — fixed behind all content */}
+      <div className="blueprint-grid-global" aria-hidden="true" />
       <div
         className={`mobile-overlay ${mobile ? "show" : ""}`}
         onClick={() => setMobile(false)}
       />
       <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
         <div className="sidebar-logo">
-          <button className="brand" onClick={() => navigate("/dashboard")}>
-            <img src={logo} alt="Tunaxa" />
-            <span>Tunaxa</span>
+          <button className="brand" onClick={() => navigate("/dashboard")} title="Tunaxa AXA CRM">
+            {collapsed ? (
+              <div
+                className="w-7 h-7 bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-mono font-black shrink-0"
+                style={{
+                  clipPath:
+                    'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+                }}
+              >
+                <span className="text-xs">TX</span>
+              </div>
+            ) : (
+              <AxacrmLogo size="sm" showTunaxaPrefix={true} />
+            )}
           </button>
           <button
             className="collapse-btn"
             onClick={() => setCollapsed((value) => !value)}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             <Icon name="arrowLeft" />
           </button>
@@ -406,6 +514,7 @@ function Shell() {
                 <NavLink
                   key={item.path}
                   to={item.path}
+                  data-tooltip={t(item.label)}
                   className={({ isActive }) =>
                     `nav-link ${isActive ? "active" : ""}`
                   }
@@ -419,24 +528,34 @@ function Shell() {
         </nav>
         <div className="sidebar-bottom">
           <div className="workspace-mini">
-            <span className="workspace-mark">NX</span>
+            <div
+              className="w-7 h-7 bg-[#3b82f6] text-white flex items-center justify-center font-mono font-bold text-xs shrink-0"
+              style={{
+                clipPath:
+                  'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+              }}
+            >
+              <span>TX</span>
+            </div>
             <div>
-              <b>Tunaxa</b>
-              <small>Local workspace</small>
+              <b>Tunaxa CRM</b>
+              <small>Enterprise Workspace</small>
             </div>
           </div>
         </div>
       </aside>
       <section className="workspace">
-        <header className="topbar">
+        <header className="topbar topbar-glass">
           <div className="topbar-left">
             <button
               className="icon-btn mobile-menu"
               onClick={() => setMobile(true)}
+              title="Open Navigation"
             >
               <Icon name="menu" />
             </button>
-            <div className="crumb">
+            <div className="crumb relative px-3 py-1 border border-[#d1d1d1] dark:border-[#263140] bg-white dark:bg-[#121820]">
+              <CornerBrackets stroke="#3b82f6" size={5} />
               <span>{t("nav.workspace")}</span>
               <b>
                 {titles[location.pathname]
@@ -451,21 +570,34 @@ function Shell() {
               onClick={() => setSearchOpen(true)}
             >
               <Icon name="search" />
-              <span>Search everything</span>
+              <span>Search everything…</span>
               <kbd>Ctrl K</kbd>
             </button>
-            <button
-              className="btn primary compact"
+            <CutButton
+              variant="primary"
+              size="sm"
               onClick={() => setQuickOpen(true)}
             >
-              <Icon name="plus" /> New
+              <div className="flex items-center gap-1.5 font-mono text-xs">
+                <Icon name="plus" />
+                <span>NEW</span>
+              </div>
+            </CutButton>
+            <button
+              className="icon-btn"
+              onClick={() => setIsEcosystemOpen(true)}
+              title="Tunaxa Ecosystem Apps"
+              aria-label="Tunaxa Ecosystem Apps"
+            >
+              <LayoutGrid className="w-4 h-4 text-[#3b82f6]" />
             </button>
-            <button className="icon-btn" onClick={toggleTheme}>
-              <Icon name={theme ? "sun" : "moon"} />
+            <button className="icon-btn" onClick={toggleTheme} title={theme ? "Light Blueprint" : "Dark Cyber"}>
+              {theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
             <button
               className="icon-btn notification-btn"
               onClick={() => toast("No new notifications")}
+              title="Notifications"
             >
               <Icon name="bell" />
             </button>
@@ -474,7 +606,7 @@ function Shell() {
                 className="profile-trigger"
                 onClick={() => setProfile((value) => !value)}
               >
-                <Avatar name={user?.name || "NX"} />
+                <Avatar name={user?.name || "TX"} />
                 <div>
                   <b>{user?.name}</b>
                   <small>{user?.role}</small>
@@ -484,7 +616,7 @@ function Shell() {
               {profile ? (
                 <div className="profile-menu">
                   <div className="profile-menu-head">
-                    <Avatar name={user?.name || "NX"} size={38} />
+                    <Avatar name={user?.name || "TX"} size={38} />
                     <div>
                       <b>{user?.name}</b>
                       <small>{user?.email}</small>
@@ -498,8 +630,8 @@ function Shell() {
                     {(i18n.language || "en") === "fr" ? "English" : "Français"}
                   </button>
                   <button onClick={toggleTheme}>
-                    <Icon name={theme ? "sun" : "moon"} />{" "}
-                    {theme ? "Light mode" : "Dark mode"}
+                    {theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}{" "}
+                    {theme ? "Light Blueprint" : "Dark Cyber"}
                   </button>
                   <hr />
                   <button className="danger-link" onClick={logout}>
@@ -827,6 +959,7 @@ function Shell() {
               <Route path="/duplicates" element={<DuplicatesPage />} />
               <Route path="/portal" element={<PortalPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/audit" element={<AuditPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
@@ -839,6 +972,10 @@ function Shell() {
       {searchOpen ? (
         <GlobalSearch onClose={() => setSearchOpen(false)} />
       ) : null}
+      <EcosystemMenu
+        isOpen={isEcosystemOpen}
+        onClose={() => setIsEcosystemOpen(false)}
+      />
     </div>
   );
 }
@@ -1078,7 +1215,8 @@ function DashboardPage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -1087,7 +1225,7 @@ function DashboardPage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -1518,6 +1656,7 @@ function CrudTablePage({
   primary,
   statusTone,
   moneyColumn,
+  extraColumn,
 }: {
   resource: string;
   title: string;
@@ -1531,6 +1670,7 @@ function CrudTablePage({
   primary?: (row: Row) => string;
   statusTone?: (value?: string) => BadgeTone;
   moneyColumn?: string[];
+  extraColumn?: { title: string; render: (row: Row) => ReactNode };
 }) {
   const { items, loading, load, create, update, remove } =
     useResource<Row>(resource);
@@ -1671,6 +1811,7 @@ function CrudTablePage({
                 {cols.slice(1).map((c) => (
                   <th key={c.key}>{c.label}</th>
                 ))}
+                {extraColumn ? <th>{extraColumn.title}</th> : null}
                 <th />
               </tr>
             </thead>
@@ -1704,6 +1845,7 @@ function CrudTablePage({
                       <td key={c.key}>{cell(row, c)}</td>
                     ),
                   )}
+                  {extraColumn ? <td>{extraColumn.render(row)}</td> : null}
                   <td>
                     <div className="row-actions">
                       <button
@@ -1780,6 +1922,22 @@ function useSchema(object: string): FieldSpec[] {
   return custom;
 }
 
+async function downloadResourceCsv(resource: string) {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const response = await fetch(`/api/${resource}/export.csv`, { headers });
+  if (!response.ok) throw new Error(`Export failed (${response.status})`);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${resource}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 function PeoplePage({
   resource,
   title,
@@ -1840,23 +1998,12 @@ function PeoplePage({
     }
   }
 
-  function exportCsv() {
-    if (!items.length) return toast("Nothing to export", "error");
-    const keys = allFields.map((x) => x.key);
-    const csv = [
-      keys.join(","),
-      ...items.map((row) =>
-        keys
-          .map((key) => `"${String(row[key] || "").replace(/"/g, '""')}"`)
-          .join(","),
-      ),
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${resource}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  async function exportCsv() {
+    try {
+      await downloadResourceCsv(resource);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
   }
 
   return (
@@ -1877,10 +2024,9 @@ function PeoplePage({
         </button>
         <button
           className="btn secondary"
-          disabled={!items.length}
           onClick={exportCsv}
         >
-          <Icon name="download" /> Export
+          <Icon name="download" /> Export CSV
         </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
           <Icon name="plus" /> Add {title.slice(0, -1).toLowerCase()}
@@ -2016,6 +2162,15 @@ function PeoplePage({
 
 const detailTabList = ["Overview", "Activity", "Notes", "Emails"] as const;
 type DetailTab = (typeof detailTabList)[number];
+const activityFilters = ["All", "Emails", "Calls", "Meetings", "Notes", "System"] as const;
+type ActivityFilter = (typeof activityFilters)[number];
+const activityFilterTypes: Partial<Record<ActivityFilter, string>> = {
+  Emails: "Email",
+  Calls: "Call",
+  Meetings: "Meeting",
+  Notes: "Note",
+  System: "System",
+};
 
 function RecordDetailPage({
   resource,
@@ -2034,11 +2189,15 @@ function RecordDetailPage({
   const [tab, setTab] = useState<DetailTab>("Overview");
   const [edit, setEdit] = useState(false);
   const [activities, setActivities] = useState<Row[]>([]);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("All");
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState(false);
   const [messages, setMessages] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
+  const showActivityFilters = resource === "contacts" || resource === "companies";
 
   const photoKey = resource === "companies" ? "logo" : "avatar";
   const photoField: FieldSpec = {
@@ -2063,25 +2222,34 @@ function RecordDetailPage({
   }, [id, resource]);
 
   useEffect(() => {
-    if (!record) return;
+    if (!record || (tab !== "Activity" && tab !== "Notes")) return;
+    const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
-    api<Row[]>("/activities")
-      .then((items) =>
-        setActivities(
-          items.filter(
-            (a) =>
-              a.contact === name ||
-              a.title?.toLowerCase().includes(name.toLowerCase()),
-          ),
-        ),
-      )
+    if (name) params.set("contact", name);
+    const type = tab === "Notes"
+      ? "Note"
+      : showActivityFilters ? activityFilterTypes[activityFilter] : undefined;
+    if (type) params.set("type", type);
+    const controller = new AbortController();
+    setActivities([]);
+    setActivityError(false);
+    setActivityLoading(true);
+    api<Row[]>(`/activities?${params}`, { signal: controller.signal })
+      .then(setActivities)
+      .catch((error) => {
+        if (error.name !== "AbortError") setActivityError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setActivityLoading(false);
+      });
+    return () => controller.abort();
+  }, [record, tab, activityFilter, showActivityFilters]);
+
+  useEffect(() => {
+    if (!record?.email) return;
+    api<Row[]>("/messages")
+      .then((items) => setMessages(items.filter((m) => m.to === record.email)))
       .catch(() => {});
-    if (record.email)
-      api<Row[]>("/messages")
-        .then((items) =>
-          setMessages(items.filter((m) => m.to === record.email)),
-        )
-        .catch(() => {});
   }, [record]);
 
   async function addNote() {
@@ -2211,7 +2379,7 @@ function RecordDetailPage({
             {t}
             {t === "Emails" && messages.length ? (
               <span>{messages.length}</span>
-            ) : t === "Activity" && activities.length ? (
+            ) : t === "Activity" && tab === "Activity" && activities.length ? (
               <span>{activities.length}</span>
             ) : null}
           </button>
@@ -2243,7 +2411,26 @@ function RecordDetailPage({
 
         {tab === "Activity" && (
           <div className="detail-activity">
-            {activities.length ? (
+            {showActivityFilters && (
+              <div className="detail-tabs activity-filter-tabs" role="group" aria-label="Filter activities">
+                {activityFilters.map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    aria-pressed={activityFilter === filter}
+                    className={activityFilter === filter ? "active" : ""}
+                    onClick={() => setActivityFilter(filter)}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            )}
+            {activityLoading ? (
+              <div className="table-loading">Loading activities…</div>
+            ) : activityError ? (
+              <Empty icon="activity" title="Could not load activities" text="Try another filter." />
+            ) : activities.length ? (
               activities.map((a) => (
                 <div className="activity-item" key={a.id}>
                   {activityIcon(a.type)}
@@ -2291,7 +2478,7 @@ function RecordDetailPage({
                 {noteBusy ? "Saving…" : "Add note"}
               </button>
             </div>
-            {activities
+            {!activityLoading && activities
               .filter((a) => a.type === "Note")
               .map((n) => (
                 <div className="note-card" key={n.id}>
@@ -2302,7 +2489,11 @@ function RecordDetailPage({
                   <p>{n.notes || n.title}</p>
                 </div>
               ))}
-            {!activities.filter((a) => a.type === "Note").length &&
+            {activityLoading ? (
+              <div className="table-loading">Loading notes…</div>
+            ) : activityError ? (
+              <Empty icon="edit" title="Could not load notes" text="Try reopening this tab." />
+            ) : !activities.filter((a) => a.type === "Note").length &&
             !noteText ? (
               <Empty
                 icon="edit"
@@ -2529,6 +2720,7 @@ function CompaniesPage() {
     { key: "owner", label: "Owner" },
   ];
   const { items, create, update, remove } = useResource<Row>("companies");
+  const { toast } = useApp();
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const custom = useSchema("companies");
@@ -2539,12 +2731,22 @@ function CompaniesPage() {
     ...nonPhoto,
     ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
   ];
+  async function exportCsv() {
+    try {
+      await downloadResourceCsv("companies");
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
   return (
     <div className="page">
       <PageHeader
         title="Companies"
         description="Accounts, organizations and relationship ownership."
       >
+        <button className="btn secondary" onClick={exportCsv}>
+          <Icon name="download" /> Export CSV
+        </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
           <Icon name="plus" /> Add company
         </button>
@@ -4570,9 +4772,20 @@ function GoalsPage() {
       description="Time-bound targets and progress across teams."
       icon="goal"
       fields={goalFields}
+      columns={goalFields.slice(0, 4)}
       nameKey="name"
       statusField="period"
       synopsis={(r) => `${r.metric || ""}${r.owner ? " · " + r.owner : ""}`}
+      extraColumn={{
+        title: "Progress",
+        render: (goal) => (
+          <GoalProgress
+            name={String(goal.name || "Goal")}
+            current={goal.current}
+            target={goal.target}
+          />
+        ),
+      }}
     />
   );
 }
@@ -4612,27 +4825,25 @@ function DuplicatesPage() {
   const [scope, setScope] = useState<"contacts" | "companies">("contacts");
   const [data, setData] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
   const load = () =>
     api<any>(`/duplicates?resource=${scope}`)
       .then(setData)
       .catch((err) => toast(err.message, "error"));
   useEffect(() => {
+    setSkipped([]);
     load();
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, [scope]);
-  async function mergeGroup(group: any) {
+  async function mergePair(group: any, keep: Row, merge: Row) {
     setBusy(true);
     try {
       await api(
         `/duplicates/merge`,
-        json("POST", {
-          resource: scope,
-          keepId: group.ids[0],
-          mergeIds: group.ids.slice(1),
-        }),
+        json("POST", { resource: scope, keepId: keep.id, mergeId: merge.id }),
       );
-      toast("Duplicates merged");
+      toast("Duplicate merged");
       load();
       window.dispatchEvent(new Event("tunaxa:resource-changed"));
     } catch (error) {
@@ -4641,7 +4852,42 @@ function DuplicatesPage() {
       setBusy(false);
     }
   }
-  const groups = data?.duplicates || [];
+  function skipPair(key: string) {
+    setSkipped((current) => [...current, key]);
+  }
+  const groups = (data?.duplicates || [])
+    .map((group: any) => ({
+      ...group,
+      records: group.records || group.ids.map((id: string, index: number) => ({
+        id,
+        name: group.names[index],
+      })),
+    }))
+    .flatMap((group: any) =>
+      group.records.slice(1).map((merge: Row) => ({
+        group,
+        keep: group.records[0] as Row,
+        merge,
+        key: `${group.records[0].id}:${merge.id}`,
+      })),
+    )
+    .filter((pair: any) => !skipped.includes(pair.key));
+  const pair = groups[0];
+  const comparisonKeys = pair
+    ? [...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)])].filter(
+        (key) => key !== "id",
+      )
+    : [];
+  const displayName = (record: Row) =>
+    String(record.name || record.email || record.id || "Untitled");
+  const displayValue = (value: unknown) => {
+    if (value === undefined || value === null || value === "") return "—";
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+  const labelFor = (key: string) =>
+    key.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
   return (
     <div className="page">
       <PageHeader
@@ -4669,37 +4915,41 @@ function DuplicatesPage() {
           Companies
         </button>
       </PageHeader>
-      <section className="surface table-surface">
-        {groups.length ? (
-          groups.map((group: any, idx: number) => (
-            <div className="dupe-group" key={idx}>
-              <div className="dupe-group-head">
-                <div className="dupe-member">
-                  <Avatar name={group.names[0]} />
-                  <div>
-                    <b>{group.names[0]}</b>
-                    <small>Primary record (kept)</small>
-                  </div>
-                </div>
-                <button
-                  className="btn secondary compact"
-                  disabled={busy}
-                  onClick={() => mergeGroup(group)}
-                >
-                  <Icon name="check" /> Merge into primary
-                </button>
+      <section className="surface duplicate-comparison">
+        {pair ? (
+          <>
+            <div className="duplicate-comparison-head">
+              <div>
+                <span className="eyebrow">Potential duplicate</span>
+                <h2>Review these records</h2>
               </div>
-              {group.names.slice(1).map((name: string, j: number) => (
-                <div className="dupe-member" key={j}>
-                  <Avatar name={name} />
-                  <div>
-                    <b>{name}</b>
-                    <small>Duplicate (will be merged)</small>
-                  </div>
-                </div>
-              ))}
+              <Badge tone="blue">{pair.group.confidence ?? 0}% match</Badge>
             </div>
-          ))
+            <div className="duplicate-columns">
+              <article className="duplicate-record keep">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.keep)} />
+                  <div><small>Record to keep</small><h3>{displayName(pair.keep)}</h3></div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.keep[key])}</b></div>)}
+                </div>
+              </article>
+              <article className="duplicate-record merge">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.merge)} />
+                  <div><small>Record to merge and delete</small><h3>{displayName(pair.merge)}</h3></div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.merge[key])}</b></div>)}
+                </div>
+              </article>
+            </div>
+            <div className="duplicate-actions">
+              <button className="btn secondary" disabled={busy} onClick={() => skipPair(pair.key)}><Icon name="close" /> Skip</button>
+              <button className="btn primary" disabled={busy} onClick={() => mergePair(pair.group, pair.keep, pair.merge)}><Icon name="check" /> Merge</button>
+            </div>
+          </>
         ) : (
           <Empty
             icon="duplicate"
@@ -4932,7 +5182,8 @@ function FinancePage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -4941,7 +5192,7 @@ function FinancePage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -5151,7 +5402,8 @@ function ReportsPage() {
         </button>
       </PageHeader>
       <div className="stats-grid">
-        <article className="stat-card">
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-blue">
             <Icon name="lead" />
           </div>
@@ -5160,8 +5412,9 @@ function ReportsPage() {
             <strong>{leads.items.length}</strong>
             <span>All lead records</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-green">
             <Icon name="pipeline" />
           </div>
@@ -5173,8 +5426,9 @@ function ReportsPage() {
               total value
             </span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-purple">
             <Icon name="phone" />
           </div>
@@ -5183,8 +5437,9 @@ function ReportsPage() {
             <strong>{calls.items.length}</strong>
             <span>Inbound and outbound</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-amber">
             <Icon name="tasks" />
           </div>
@@ -5195,7 +5450,7 @@ function ReportsPage() {
             </strong>
             <span>Needs attention</span>
           </div>
-        </article>
+        </div>
       </div>
       <section className="surface report-table">
         <div className="section-head">
@@ -5224,6 +5479,70 @@ function ReportsPage() {
             icon="reports"
             title="No report data"
             text="Add leads, deals, calls or tasks and reporting will populate automatically."
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function AuditPage() {
+  const { toast } = useApp();
+  const [items, setItems] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api<{ items: Row[] }>("/audit")
+      .then((result) => setItems(result.items))
+      .catch((error) => toast((error as Error).message, "error"))
+      .finally(() => setLoading(false));
+  }, [toast]);
+
+  return (
+    <div className="page">
+      <PageHeader
+        title="Audit log"
+        description="Review workspace changes and request details."
+      />
+      <section className="surface table-surface">
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : items.length ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Actor</th>
+                  <th>Created</th>
+                  <th>IP</th>
+                  <th>User agent</th>
+                  <th>Resource ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>{entry.action || "—"}</td>
+                    <td>{entry.actor || "—"}</td>
+                    <td>
+                      {entry.createdAt
+                        ? new Date(entry.createdAt).toLocaleString()
+                        : "—"}
+                    </td>
+                    <td>{entry.ip || "—"}</td>
+                    <td>{entry.userAgent || "—"}</td>
+                    <td>{entry.resourceId || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty
+            icon="shield"
+            title="No audit entries"
+            text="Workspace activity will appear here."
           />
         )}
       </section>
@@ -5999,7 +6318,7 @@ function FormsPage() {
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, []);
-  const publicBase = "http://127.0.0.1:3001";
+  const publicBase = "http://127.0.0.1:3000";
   return (
     <SimpleCards
       title="Forms"
@@ -6487,6 +6806,46 @@ function AppInner() {
   const location = useLocation();
   const [checking, setChecking] = useState(Boolean(getToken()));
   const isPortal = location.pathname === "/portal/access";
+
+  const getInitialUnauthView = (): "home" | "pricing" | "demo" | "login" => {
+    const hash = window.location.hash.toLowerCase();
+    if (hash.includes("pricing")) return "pricing";
+    if (hash.includes("demo") || hash.includes("lab")) return "demo";
+    if (hash.includes("login") || hash.includes("signin") || hash.includes("setup")) return "login";
+    return "home";
+  };
+
+  const [unauthView, setUnauthView] = useState<"home" | "pricing" | "demo" | "login">(getInitialUnauthView);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setUnauthView(getInitialUnauthView());
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const navigateToHome = () => {
+    window.location.hash = "#/home";
+    setUnauthView("home");
+    window.scrollTo(0, 0);
+  };
+  const navigateToPricing = () => {
+    window.location.hash = "#/pricing";
+    setUnauthView("pricing");
+    window.scrollTo(0, 0);
+  };
+  const navigateToDemo = () => {
+    window.location.hash = "#/demo";
+    setUnauthView("demo");
+    window.scrollTo(0, 0);
+  };
+  const navigateToLogin = () => {
+    window.location.hash = "#/login";
+    setUnauthView("login");
+    window.scrollTo(0, 0);
+  };
+
   useEffect(() => {
     if (isPortal || !getToken()) {
       setChecking(false);
@@ -6497,16 +6856,52 @@ function AppInner() {
       .catch(() => setToken(""))
       .finally(() => setChecking(false));
   }, []);
+
   if (isPortal) return <PortalView />;
   if (checking)
     return (
-      <main className="login-page">
-        <section className="login-form-panel">
-          <div className="login-card">Loading Tunaxa…</div>
-        </section>
+      <main className="min-h-screen bg-[#f7f7f7] dark:bg-[#090d13] flex items-center justify-center p-4 tunaxa-grid-texture font-mono">
+        <div className="border border-[#d1d1d1] dark:border-[#21262d] bg-white dark:bg-[#161b22] p-8 text-center relative shadow-sm max-w-sm w-full">
+          <CornerBrackets stroke="#3b82f6" size={8} />
+          <PixelIndicator active pulseColor="blue" className="mx-auto mb-3" />
+          <div className="text-xs text-[#71717a] dark:text-[#8b949e]">
+            LOADING TUNAXA AXA CRM…
+          </div>
+        </div>
       </main>
     );
-  return user ? <Shell /> : <AuthScreen />;
+
+  if (user) return <Shell />;
+
+  if (unauthView === "pricing") {
+    return (
+      <PricingPage
+        onNavigateToHome={navigateToHome}
+        onNavigateToLogin={navigateToLogin}
+        onNavigateToDemo={navigateToDemo}
+        onNavigateToSetup={navigateToLogin}
+      />
+    );
+  }
+
+  if (unauthView === "login") {
+    return (
+      <AuthScreen
+        onNavigateToHome={navigateToHome}
+        onNavigateToPricing={navigateToPricing}
+        onNavigateToDemo={navigateToDemo}
+      />
+    );
+  }
+
+  return (
+    <HomePage
+      onNavigateToLogin={navigateToLogin}
+      onNavigateToPricing={navigateToPricing}
+      onNavigateToDemo={navigateToDemo}
+      onNavigateToSetup={navigateToLogin}
+    />
+  );
 }
 
 export default function App() {
