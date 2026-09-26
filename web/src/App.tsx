@@ -40,6 +40,7 @@ import { LayoutGrid, Sun, Moon } from "lucide-react";
 import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { CustomReportBuilder } from "./components/reports/CustomReportBuilder";
 import {
   invitationIsExpired,
   normalizeInvitations,
@@ -5748,6 +5749,7 @@ function ReportsPage() {
           <Icon name="download" /> Export CSV
         </button>
       </PageHeader>
+      <CustomReportBuilder />
       <div className="stats-grid">
         <div className="stat-card hover-crm-card relative">
           <CornerBrackets stroke="#3b82f6" size="sm" />

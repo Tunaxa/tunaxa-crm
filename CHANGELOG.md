@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
 - Email-based team invitations with a sent confirmation, pending invitation list, expiry display, retry state, and resend action. The frontend uses `POST /api/users/invite` and `GET /api/users/invites` without directly creating user accounts.
 - A first-login onboarding gate for empty workspaces with a resumable four-step wizard for company profile, contact CSV import, pipeline stages, and team invitations. Progress and completion are stored per user, and every step or the full setup can be skipped.
 - Added a reusable electronic-signature modal with draw and typed-name modes, live typed preview, explicit consent, PNG/SVG output, validation, and accessible controls.
@@ -36,6 +37,8 @@ and this project adheres to Semantic Versioning.
 
 ### Testing
 
+- Production build, TypeScript type-check, targeted ESLint, and report query/result normalization tests pass (3/3).
+- Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
 - Production build, TypeScript type-check, targeted ESLint, and invitation response/expiry tests pass (3/3).
 - Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
 - Production build, TypeScript type-check, targeted ESLint, and onboarding preference tests pass (3/3).
