@@ -8,6 +8,16 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Quote PDF Generation Service (`backend/services/quotePdf.js`):**
+  - Added `@react-pdf/renderer` server-side rendering for PDF generation in Node.js ESM using `React.createElement`.
+  - Designed professional quote template featuring Tunaxa brand badge, quote reference metadata, customer/company details grid, styled line items table, financial totals (subtotal, discount, tax, grand total), terms/notes, and dual signature block (Prepared By & Accepted By).
+  - Exported `renderQuotePdfStream()` for direct HTTP streaming and `renderQuotePdfBuffer()` for binary buffers.
+- **Quote PDF Streaming Route (`backend/routes/quotes.js`):**
+  - Added authenticated `GET /api/quotes/:id/pdf` endpoint streaming quote PDFs with `inline` `Content-Disposition`.
+  - Enriches quote metadata with referenced company and contact names/emails from PostgreSQL repositories.
+  - Registered quote routes in `backend/server.js` with proper route precedence.
+- **Quote PDF Test Suite (`backend/__tests__/quote-pdf.test.js`):**
+  - Added 7 unit and integration tests covering binary buffer generation, empty line item fallbacks, stream readability, 401 authentication checks, 404 missing quote handling, HTTP streaming headers, and company/contact enrichment.
 - **Workflow "Wait" Node & Delay Engine (`backend/services/workflows.js`):**
   - Added support for `wait` nodes in visual workflow graphs.
   - Halts synchronous execution along the active branch when a `wait` node is encountered and records a step with `status: 'waiting'`, `delayMs`, and `scheduledResumeAt`.
