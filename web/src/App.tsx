@@ -428,8 +428,15 @@ function AuthScreen({
                 </button>
               </div>
             )}
-          </form>
-        </div>
+            <button className="btn login-submit" type="submit" style={{ marginTop: 4 }} disabled={busy}>{busy
+                ? "Please wait…"
+                : mode === "setup"
+                  ? "Create workspace"
+                  : "Sign in"}{" "}
+              <Icon name="arrowRight" />
+            </button>
+          </div>
+        </form>
       </section>
     </main>
   );
