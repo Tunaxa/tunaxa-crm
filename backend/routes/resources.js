@@ -50,7 +50,28 @@ function buildCsvRow(columns, row) {
 // `category` has to be listed here or it never reaches SQL: products and
 // expenses both implement a category filter, and because findAll() destructures
 // its argument, an unlisted key is dropped silently rather than rejected.
-const PG_FILTER_KEYS = ["q", "type", "contact", "recordId", "stage", "status", "category"];
+//
+// The 007 entities add filters on their own vocabulary: campaigns by channel,
+// forms by enabled/submitTo, tickets by priority/source, surveys by audience,
+// and survey responses by survey name and respondent email. `stage` and
+// `status` are already covered by the revenue cutover.
+const PG_FILTER_KEYS = [
+  "q",
+  "type",
+  "contact",
+  "recordId",
+  "stage",
+  "status",
+  "category",
+  "channel",
+  "enabled",
+  "submitTo",
+  "priority",
+  "source",
+  "audience",
+  "survey",
+  "respondentEmail",
+];
 
 // Hard stop on page-through loops. A repository that reports a total it cannot
 // deliver would otherwise spin until the request times out.

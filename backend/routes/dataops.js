@@ -9,15 +9,24 @@ import { repoFor } from '../db/repositories/index.js';
 import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
-const emailEquals = (record, email) => norm(record.customerEmail) === email || norm(record.email) === email || norm(record.contact) === email;
+// `contactEmail` is how a ticket records the requester's address, so the portal
+// needs it to match at all: without it the tickets section of a customer's
+// portal is always empty. None of the other portal resources carry that field,
+// so widening the check only affects tickets.
+const emailEquals = (record, email) =>
+  norm(record.customerEmail) === email ||
+  norm(record.email) === email ||
+  norm(record.contactEmail) === email ||
+  norm(record.contact) === email;
 
-// Contacts, leads, companies, deals, tasks, activities and the six revenue
-// resources are served from Postgres rather than the JSON store (see
-// migrations/004_contacts_leads.sql, 005_core_entities.sql and
-// 006_revenue_tables.sql), so anything that reads a whole resource has to go
-// through the same repositories the write path uses. Reading them from
-// readDb() would consult an empty JSON store and silently report zero rows
-// while the records plainly exist in the database.
+// Contacts, leads, companies, deals, tasks, activities, the six revenue
+// resources and the six 007 marketing/service resources are served from
+// Postgres rather than the JSON store (see
+// migrations/004_contacts_leads.sql, 005_core_entities.sql,
+// 006_revenue_tables.sql and 007_marketing_service_tables.sql), so anything
+// that reads a whole resource has to go through the same repositories the write
+// path uses. Reading them from readDb() would consult an empty JSON store and
+// silently report zero rows while the records plainly exist in the database.
 async function loadRows(resource) {
   if (!PG_RESOURCES.has(resource)) {
     const db = await readDb();
@@ -206,11 +215,12 @@ export default function registerDataOpsRoutes(app) {
     try {
       // Every read goes through loadRows so the portal reflects the same
       // source of truth as the write path. Reading these arrays out of db.json
-      // would return empty lists for contacts, quotes, contracts and invoices
-      // as soon as records are created, because those resources are written to
-      // Postgres. `tickets` has no repository yet, so loadRows transparently
-      // falls back to the JSON store for it and will pick up Postgres for free
-      // once one lands.
+      // would return empty lists as soon as records are created, because these
+      // resources are written to Postgres: contacts and leads in
+      // 004_contacts_leads.sql, the revenue tables in 006_revenue_tables.sql,
+      // and tickets in 007_marketing_service_tables.sql. loadRows picks the
+      // right source per resource from PG_RESOURCES, so the portal covers
+      // tickets with no change beyond adding the resource to that set.
       const [contactRows, quoteRows, contractRows, invoiceRows, ticketRows] = await Promise.all([
         loadRows('contacts'),
         loadRows('quotes'),
