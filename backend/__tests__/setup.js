@@ -86,21 +86,21 @@ export async function resetTestDb() {
   await fs.mkdir(testDbDir, { recursive: true });
   await fs.writeFile(testDbFile, JSON.stringify(emptyDb, null, 2));
   setDbPath(testDbFile);
-  // Contacts and leads are served from Postgres (see
-  // migrations/004_contacts_leads.sql) instead of test-db.json, so they need
-  // their own reset. Best-effort on purpose: the JSON-backed resources must
-  // keep working when no database is running, and a missing table is just as
-  // expected as a missing server.
+  // Resources served from Postgres (see migrations/004_contacts_leads.sql and
+  // 005_core_entities.sql) instead of test-db.json need their own reset.
+  // Best-effort on purpose: the JSON-backed resources must keep working when no
+  // database is running, and a missing table is just as expected as a missing
+  // server.
   if (pgReachable === false) return;
   if (pgReachable === null) {
     pgReachable = await canReachPostgres();
     if (pgReachable === false) return;
   }
   try {
-    await query("TRUNCATE TABLE leads, contacts CASCADE;");
+    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts CASCADE;");
     pgReachable = true;
   } catch (error) {
-    // ECONNREFUSED when no server is listening, 42P01 before 004 is applied.
+    // ECONNREFUSED when no server is listening, 42P01 before 004/005 are applied.
     if (error.code === "ECONNREFUSED" || error.code === "42P01") {
       pgReachable = false;
     }

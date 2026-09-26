@@ -61,7 +61,7 @@ export async function processExecutionQueue() {
           live.status = 'processing';
           live.attempts = (live.attempts || 0) + 1;
         });
-        await mutateDb(db => {
+        await mutateDb(async db => {
           const record = item.resource && db[item.resource]
             ? (db[item.resource].find(x => x.id === item.recordId) || null)
             : null;
@@ -75,7 +75,7 @@ export async function processExecutionQueue() {
             executed++;
             return;
           }
-          const messages = runAction(db, item.action, record || {}, { resource: item.resource, flowId: item.flowId, flowName: item.flowName });
+          const messages = await runAction(db, item.action, record || {}, { resource: item.resource, flowId: item.flowId, flowName: item.flowName });
           outbound.push(...messages);
           const live = db.executionQueue.find(x => x.id === item.id);
           if (live) {

@@ -8,6 +8,18 @@ import { readDb, mutateDb } from '../store.js';
 let app;
 let token;
 
+// triggerWorkflows is fire-and-forget and task actions now land in Postgres on an
+// async continuation, so the row can appear just after the triggering request
+// returns. Poll briefly rather than racing it.
+async function waitForTasks(match) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const res = await request(app).get('/api/tasks').set('Authorization', `Bearer ${token}`);
+    if (res.status === 200 && res.body.some(match)) return true;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return false;
+}
+
 beforeAll(async () => {
   await resetTestDb();
   const mod = await import('../server.js');
@@ -82,9 +94,7 @@ describe('Workflows actually fire on module events', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ stock: 4 });
 
-    const tasks = await request(app).get('/api/tasks').set('Authorization', `Bearer ${token}`);
-    const created = tasks.body.find(t => t.title === 'Reorder low-stock product Widget');
-    expect(created).toBeTruthy();
+    expect(await waitForTasks(t => t.title === 'Reorder low-stock product Widget')).toBe(true);
   });
 
   it('invoice creation triggers the unpaid-reminder email', async () => {
@@ -103,8 +113,12 @@ describe('Workflows actually fire on module events', () => {
       .send({ number: 'INV-5002', amount: 250, status: 'unpaid', customerName: 'Acme', customerEmail: 'acme@test.com' });
     expect(invoice.status).toBe(201);
 
-    const messages = await request(app).get('/api/messages').set('Authorization', `Bearer ${token}`);
-    const created = messages.body.find(m => m.subject === 'Invoice reminder');
+    let created = null;
+    for (let attempt = 0; attempt < 40 && !created; attempt++) {
+      const res = await request(app).get('/api/messages').set('Authorization', `Bearer ${token}`);
+      created = res.status === 200 ? res.body.find(m => m.subject === 'Invoice reminder') : null;
+      if (!created) await new Promise(r => setTimeout(r, 50));
+    }
     expect(created).toBeTruthy();
     expect(created.to).toBe('acme@test.com');
   });

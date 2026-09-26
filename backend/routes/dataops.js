@@ -5,61 +5,30 @@ import { now } from '../helpers.js';
 import { cacheFlush } from '../services/cache.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import Fuse from 'fuse.js';
-import * as contactsRepo from '../db/repositories/contacts.js';
-import * as leadsRepo from '../db/repositories/leads.js';
+import { repoFor } from '../db/repositories/index.js';
 import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
 const emailEquals = (record, email) => norm(record.customerEmail) === email || norm(record.email) === email || norm(record.contact) === email;
-const compact = value => norm(value).replace(/[^a-z0-9]/g, '');
 
-function similarity(left, right) {
-  const a = compact(left);
-  const b = compact(right);
-  if (!a || !b) return 0;
-  if (a === b) return 1;
-  if (a.length < 4 || b.length < 4) return 0;
-  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
-  for (let row = 1; row <= a.length; row++) {
-    let diagonal = previous[0];
-    previous[0] = row;
-    for (let column = 1; column <= b.length; column++) {
-      const above = previous[column];
-      previous[column] = Math.min(
-        previous[column] + 1,
-        previous[column - 1] + 1,
-        diagonal + (a[row - 1] === b[column - 1] ? 0 : 1),
-      );
-      diagonal = above;
-    }
-  }
-  return 1 - previous[b.length] / Math.max(a.length, b.length);
-}
-
-function duplicateScore(left, right, resource) {
-  if (resource === 'contacts' && norm(left.email) && norm(left.email) === norm(right.email)) return 1;
-  const leftName = left.name;
-  const rightName = right.name;
-  return similarity(leftName, rightName);
-}
-
-// Contacts and leads are served from Postgres rather than the JSON store (see
-// migrations/004_contacts_leads.sql), so duplicate detection has to read them
-// from the same repositories the write path uses. Reading them from readDb()
-// would consult an empty JSON store and silently report zero duplicates
-// while the records plainly exist in the database.
+// Contacts, leads, companies, deals, tasks and activities are served from
+// Postgres rather than the JSON store (see migrations/004_contacts_leads.sql
+// and 005_core_entities.sql), so duplicate detection has to read them from the
+// same repositories the write path uses. Reading them from readDb() would
+// consult an empty JSON store and silently report zero duplicates while the
+// records plainly exist in the database.
 async function loadDuplicateRows(resource) {
   if (!PG_RESOURCES.has(resource)) {
     const db = await readDb();
     return db[resource] || [];
   }
-  const repo = resource === 'contacts' ? contactsRepo : leadsRepo;
+  const repo = repoFor(resource);
   const rows = [];
   // findAll() caps a single page at 100 rows, so page through the whole result
   // set. Stopping after one page would quietly drop duplicates beyond it.
   for (let page = 1; ; page++) {
     const result = await repo.findAll({ page, limit: 100 });
-    rows.push(...result.data.map(pgToLegacy));
+    rows.push(...result.data.map(row => pgToLegacy(row, resource)));
     if (result.data.length === 0 || rows.length >= result.total) break;
   }
   return rows;
