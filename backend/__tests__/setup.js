@@ -99,7 +99,7 @@ export async function resetTestDb() {
     if (pgReachable === false) return;
   }
   try {
-    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses CASCADE;");
+    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses, workflow_runs CASCADE;");
     pgReachable = true;
   } catch (error) {
     // ECONNREFUSED when no server is listening, 42P01 before 004/005 are applied.
