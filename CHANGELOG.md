@@ -8,6 +8,17 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Workflow Node Graph Execution Engine (`backend/services/workflows.js`):**
+  - Upgraded `triggerWorkflows()` to support visual node graph execution (`Trigger` → `Condition` → `Action`/`Delay`) in addition to legacy flat action lists.
+  - Implemented graph adjacency traversal supporting edge schemas (`{ source, target, sourceHandle }` and `{ from, to, fromHandle }`) as well as direct node pointers (`node.next`, `trueNext`, `falseNext`).
+  - Added condition branch evaluation (`evaluateCondition` and `evaluateOperator`) supporting direct properties, dot-notation nested paths, and `custom_fields` fallbacks.
+  - Added support for comparison operators (`equals`, `not_equals`, `contains`, `greater_than`, `less_than`, `is_empty`, `is_not_empty`, `in`, `starts_with`, `ends_with`, `daysAgo`) and compound rule sets (`match: all | any`).
+  - Implemented strict branch skipping: when a condition evaluates to `false`, non-matching branches are omitted from downstream execution unless connected to an explicit `false` handle.
+  - Built-in cycle detection and recursion bounds (`MAX_STEPS = 200`) to guard against cyclic workflow graphs.
+  - Integrated delayed actions and `delay` node scheduling via `scheduleExecution()`.
+  - Updated `dryRunFlow()` to simulate node graph branch execution without state mutation.
+- **Workflow Graph Unit Tests (`backend/services/__tests__/workflows-graph.test.js`):**
+  - Added 19 comprehensive unit tests covering linear execution, conditional branching, false-branch skipping, compound condition logic, cycle prevention, delay scheduling, edge format compatibility, and legacy flat workflow fallback.
 - **Marketing & Service Repositories:** Added repository modules for `campaigns`, `email-lists`, `forms`, `tickets`, `surveys`, and `survey-responses` under `backend/db/repositories/`.
 - **Workspace Scoping on Repositories:** Extended `leads` and `contacts` repositories with optional `workspaceId` parameters on `findById` and `findByEmail` to prevent cross-tenant record tampering during public form submissions.
 - **Queue Record Resolution:** Added `findRecord(resource, recordId)` in `backend/services/queue.js` to resolve workflow execution target records from PostgreSQL repositories or the legacy JSON store dynamically.
