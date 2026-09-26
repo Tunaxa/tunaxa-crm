@@ -125,7 +125,7 @@ export default function registerAuthRoutes(app) {
       return publicUser(user);
     });
     if (!saved) return res.status(404).json({ error: 'User not found' });
-    broadcast('user.role.changed', { userId: saved.id, role: saved.role });
+    broadcast('user.role.changed', { userId: saved.id, role: saved.role }, req.user.workspaceId || 'default');
     res.json(saved);
   });
 
@@ -140,7 +140,7 @@ export default function registerAuthRoutes(app) {
       return publicUser(user);
     });
     if (!saved) return res.status(409).json({ error: 'Email already exists' });
-    broadcast('user.created', { user: saved });
+    broadcast('user.created', { user: saved }, req.user.workspaceId || 'default');
     res.status(201).json(saved);
   });
 
@@ -157,7 +157,7 @@ export default function registerAuthRoutes(app) {
       db.audit.unshift({ id: id('audit'), action: `Removed user: ${deleted.email}`, actor: req.user.name, createdAt: now() });
     });
     if (!deleted) return res.status(404).json({ error: 'User not found' });
-    broadcast('user.deleted', { userId: deleted.id });
+    broadcast('user.deleted', { userId: deleted.id }, req.user.workspaceId || 'default');
     res.json({ ok: true });
   });
 }
