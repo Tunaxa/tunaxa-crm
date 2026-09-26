@@ -7,6 +7,21 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Goal Tracking Schema Migration (Migration 010):**
+  - Added `backend/db/migrations/010_goals.sql` creating the `goals` table with `TEXT` primary keys, `workspace_id` tenant isolation, `type` (`revenue`, `activity`, `deal`), `target`, `period` (`monthly`, `quarterly`, `annual`), `assigned_to`, `assigned_type`, `start_date`, `end_date`, `status`, and `update_updated_at_column()` trigger with secondary indexes.
+- **Goals Repository & Entity Shape Mapping:**
+  - Implemented `backend/db/repositories/goals.js` with CRUD operations, tenant workspace filtering, pagination, and whitelisted sorting.
+  - Registered repository in `backend/db/repositories/index.js` under `goals`.
+  - Configured bidirectional mapping and aliases (`assignedTo`, `startDate`, `endDate`) in `backend/db/legacy-shape.js` and added `goals` to `PG_RESOURCES`.
+- **Live Goal Progress Calculation Engine (`backend/services/goals.js`):**
+  - Implemented `calculateGoalProgress()` computing actuals vs. targets from live CRM data across `revenue` (closed won deal values), `activity` (logged activities), and `deal` (created deals) metrics.
+  - Added date boundary resolution for `monthly`, `quarterly`, and `annual` periods with automatic UTC window calculation.
+  - Added pace tracking computing percentage, remaining value, and status (`achieved`, `on_track`, `at_risk`, `behind`) with an in-memory JSON fallback.
+- **Goal Tracking API Routes (`backend/routes/goals.js`):**
+  - Added authenticated endpoints: `GET /api/goals`, `POST /api/goals`, `GET /api/goals/:id`, `PUT /api/goals/:id`, `DELETE /api/goals/:id`, and `GET /api/goals/:id/progress`.
+  - Registered route module in `backend/server.js` with `admin`/`member` RBAC validation.
+- **Goal Tracking Test Suite (`backend/__tests__/goals.test.js`):**
+  - Added 23 unit and integration tests covering goal CRUD, input validation, revenue/activity/deal progress calculations, pace status evaluation, and workspace isolation.
 - **Custom Report Aggregation Engine (`backend/services/reports.js`):**
   - Implemented `runReportQuery()` supporting dynamic grouping and metric aggregations (`count`, `sum`, `avg`) across core, revenue, and marketing/service entities.
   - Added strict SQL injection protection: identifier regex validation (`/^[a-zA-Z0-9_]+$/`), column whitelisting, and property mapping via `RESOURCE_MAPPINGS` in `backend/db/legacy-shape.js`.
@@ -25,6 +40,10 @@ and this project adheres to Semantic Versioning.
   - Added 11 unit and integration tests covering queue fallback, immediate 201 response on upload, worker background processing, transcript persistence, SSE event delivery, failure handling, and async route modes.
 
 ### Changed
+- **Test Database Setup (`backend/__tests__/setup.js`):**
+  - Included `goals` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
+- **Resource Numeric Coercion (`backend/routes/resources.js`):**
+  - Added numeric coercion for `target` to ensure consistent JSON types.
 - **Recording Upload Route (`backend/routes/recordings.js`):**
   - Decoupled synchronous transcription from `POST /api/recordings/upload`; returns immediately with HTTP 201 Created and `status: 'queued'` with job metadata.
   - Added support for asynchronous background transcription on `POST /api/recordings/:id/transcribe` via `?async=true` returning HTTP 202 Accepted.

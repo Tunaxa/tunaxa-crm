@@ -25,6 +25,7 @@ import * as tickets from "./tickets.js";
 import * as surveys from "./surveys.js";
 import * as surveyResponses from "./survey-responses.js";
 import * as workflowRuns from "./workflow-runs.js";
+import * as goals from "./goals.js";
 
 export const repositories = {
   contacts,
@@ -46,6 +47,7 @@ export const repositories = {
   surveys,
   surveyResponses,
   workflowRuns,
+  goals,
   // The URL segment is what selects a repository, and the frontend asks for
   // `emailLists` / `surveyResponses` (helpers.js lists them camelCase too), so
   // those are the canonical keys above. The snake_case spellings are aliases

@@ -35,6 +35,7 @@ export const PG_RESOURCES = new Set([
     "surveys",
     "surveyResponses",
     "survey_responses",
+    "goals",
   ]);
 
 /**
@@ -654,6 +655,43 @@ export const RESOURCE_MAPPINGS = {
       updated_at: "updatedAt",
     },
     hidden: ["workspace_id", "custom_fields"],
+  },
+  goals: {
+    columns: [
+      "workspace_id",
+      "name",
+      "type",
+      "target",
+      "period",
+      "assigned_to",
+      "assigned_type",
+      "start_date",
+      "end_date",
+      "status",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      metric: "type",
+      assignedTo: "assigned_to",
+      assignedType: "assigned_type",
+      startDate: "start_date",
+      endDate: "end_date",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      assigned_to: "assignedTo",
+      assigned_type: "assignedType",
+      start_date: "startDate",
+      end_date: "endDate",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "name",
+    titleFallbacks: ["name", "title"],
   },
 };
 
