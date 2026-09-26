@@ -65,6 +65,21 @@ export default function registerAuthRoutes(app) {
 
   app.get('/api/auth/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
 
+  app.post('/api/auth/events-token', auth, async (req, res) => {
+    const sseLifetimeMs = 120_000;
+    const token = crypto.randomBytes(32).toString('hex');
+    await mutateDb(db => {
+      db.sessions.push({
+        token,
+        userId: req.user.id,
+        createdAt: now(),
+        expiresAt: new Date(Date.now() + sseLifetimeMs).toISOString(),
+        purpose: 'sse',
+      });
+    });
+    res.json({ token, expiresAt: new Date(Date.now() + sseLifetimeMs).toISOString() });
+  });
+
   app.post('/api/auth/logout', auth, async (req, res) => {
     await mutateDb(db => { db.sessions = db.sessions.filter(x => x.token !== req.token); });
     res.json({ ok: true });

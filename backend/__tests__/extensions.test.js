@@ -28,7 +28,7 @@ function crud(resource, singular, payload) {
     it('GET lists records', async () => {
       const res = await request(app).get(`/api/${resource}`).set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
-      expect(res.body.length).toBeGreaterThanOrEqual(1);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
     });
     it('PUT updates a record', async () => {
       const res = await request(app).put(`/api/${resource}/${id}`).set('Authorization', `Bearer ${token}`).send({ status: payload.status === 'Draft' || payload.status === 'Planned' ? (payload.status === 'Planned' ? 'Completed' : 'Sent') : 'Active' });
