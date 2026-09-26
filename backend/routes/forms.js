@@ -187,8 +187,9 @@ export default function registerFormRoutes(app) {
     const event = result.existing ? updatedEvent(target) : createdEvent(target);
     if (event) triggerWorkflows(target, event, result.record);
     triggerWorkflows(target, 'form.submitted', result.record).catch(() => {});
-    broadcast('record.created', { resource: target, item: result.record });
-    broadcast('form.submitted', { formId: form.id, permalink, recordId: result.id });
+    const workspaceId = form.workspaceId || 'default';
+    broadcast('record.created', { resource: target, item: result.record }, workspaceId);
+    broadcast('form.submitted', { formId: form.id, permalink, recordId: result.id }, workspaceId);
 
     res.status(201).json({ ok: true, recordId: result.id, existing: result.existing, form: permalink });
   });
@@ -229,6 +230,7 @@ export default function registerFormRoutes(app) {
           progressive: f.progressive !== false
         })),
         enabled: true,
+        workspaceId: req.user.workspaceId || 'default',
         submissionCount: 0,
         createdAt: now(),
         createdBy: req.user.name,
@@ -240,7 +242,7 @@ export default function registerFormRoutes(app) {
       return form;
     });
     if (saved.error) return res.status(400).json({ error: saved.error });
-    broadcast('form.created', { id: saved.id });
+    broadcast('form.created', { id: saved.id }, req.user.workspaceId || 'default');
     res.status(201).json(saved);
   });
 
@@ -268,7 +270,7 @@ export default function registerFormRoutes(app) {
       return form;
     });
     if (!saved) return res.status(404).json({ error: 'Form not found' });
-    broadcast('form.updated', { id: saved.id });
+    broadcast('form.updated', { id: saved.id }, req.user.workspaceId || 'default');
     res.json(saved);
   });
 
@@ -281,7 +283,7 @@ export default function registerFormRoutes(app) {
       return true;
     });
     if (!result) return res.status(404).json({ error: 'Form not found' });
-    broadcast('form.deleted', { id: req.params.id });
+    broadcast('form.deleted', { id: req.params.id }, req.user.workspaceId || 'default');
     res.json({ ok: true });
   });
 }

@@ -38,7 +38,7 @@ export default function registerTicketRoutes(app) {
       db.audit.unshift({ id: id('audit'), action: `Opened ticket "${subject}"`, actor: req.user.name, createdAt });
       return item;
     });
-    broadcast('ticket.opened', ticket);
+    broadcast('ticket.opened', ticket, req.user.workspaceId || 'default');
     res.status(201).json(ticket);
   });
 
@@ -56,7 +56,7 @@ export default function registerTicketRoutes(app) {
       return updated;
     });
     if (!saved) return res.status(404).json({ error: 'Ticket not found' });
-    broadcast('ticket.updated', saved);
+    broadcast('ticket.updated', saved, req.user.workspaceId || 'default');
     res.json(saved);
   });
 

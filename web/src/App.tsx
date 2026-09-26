@@ -1,7 +1,22 @@
+import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
+
+import { useForm } from "react-hook-form";
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -26,14 +41,36 @@ import {
   PhotoField,
   Toggle,
   money,
+  CornerBrackets,
+  PixelIndicator,
+  CutButton,
+  RevenueFlowCanvas,
 } from "./components/ui";
+import { AxacrmLogo } from "./components/common/AxacrmLogo";
+import { HomePage } from "./pages/HomePage";
+import { PricingPage } from "./pages/PricingPage";
 import { AppProvider, useApp } from "./context/AppContext";
+import { LayoutGrid, Sun, Moon } from "lucide-react";
+import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { GoalProgress } from "./components/goals/GoalProgress";
+import { CustomReportBuilder } from "./components/reports/CustomReportBuilder";
+import {
+  invitationIsExpired,
+  normalizeInvitations,
+  type PendingInvitation,
+} from "./components/team/invitations";
+import { OnboardingGate } from "./components/onboarding/OnboardingWizard";
+import {
+  GoalProgress,
+  getCrossedGoalMilestone,
+  getGoalProgress,
+  type GoalMilestone,
+} from "./components/goals/GoalProgress";
+import { CornerBrackets } from "./components/CornerBrackets";
+import { QuoteForm } from "./components/quotes/QuoteForm";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
-
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
 type NavItem = { path: string; label: string; icon: string };
@@ -153,7 +190,15 @@ const stages = [
   { id: "won", label: "Won" },
 ];
 
-function AuthScreen() {
+function AuthScreen({
+  onNavigateToHome,
+  onNavigateToPricing,
+  onNavigateToDemo,
+}: {
+  onNavigateToHome?: () => void;
+  onNavigateToPricing?: () => void;
+  onNavigateToDemo?: () => void;
+}) {
   const { setUser, toast } = useApp();
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [mode, setMode] = useState<"login" | "setup">("login");
@@ -204,118 +249,198 @@ function AuthScreen() {
 
   if (needsSetup === null)
     return (
-      <main className="login-page">
-        <section className="login-form-panel">
-          <div className="login-card">
-            <div className="loading-line" />
+      <main className="min-h-screen bg-[#f7f7f7] dark:bg-[#090d13] flex items-center justify-center p-4 tunaxa-grid-texture font-mono">
+        <div className="border border-[#d1d1d1] dark:border-[#21262d] bg-white dark:bg-[#161b22] p-8 text-center relative shadow-sm max-w-sm w-full">
+          <CornerBrackets stroke="#3b82f6" size={8} />
+          <PixelIndicator active pulseColor="blue" className="mx-auto mb-3" />
+          <div className="text-xs text-[#71717a] dark:text-[#8b949e]">
+            INITIALIZING AXA CRM WORKSPACE…
           </div>
-        </section>
+        </div>
       </main>
     );
 
   return (
-    <main className="login-page">
-      <img className="login-bg" src="/crm-dashboard-bg.webp" alt="" />
-      <div className="login-overlay" />
-      <section className="login-hero">
-        <div className="login-hero-inner">
-          <div className="login-brand">
-            <img src={logo} alt="Tunaxa" />
-            <b>Tunaxa</b>
+    <main className="min-h-screen bg-[#f7f7f7] dark:bg-[#090d13] text-[#1e2329] dark:text-[#f3f4f6] font-sans antialiased flex flex-col md:flex-row tunaxa-grid-texture relative selection:bg-[#3b82f6]/20">
+      {/* Left hero section with Revenue Flow Canvas */}
+      <section className="relative w-full md:w-1/2 min-h-[360px] md:min-h-screen flex flex-col justify-between p-8 sm:p-12 border-b md:border-b-0 md:border-r border-[#d1d1d1] dark:border-[#21262d] bg-white/60 dark:bg-[#090d13]/80 backdrop-blur-xs overflow-hidden">
+        {/* Background Canvas Animation */}
+        <div className="absolute inset-0 pointer-events-none opacity-40 dark:opacity-30">
+          <RevenueFlowCanvas active={true} />
+        </div>
+
+        <div className="relative z-10">
+          <div className="flex items-center justify-between gap-4 mb-8">
+            <AxacrmLogo />
+            {onNavigateToHome && (
+              <button
+                type="button"
+                onClick={onNavigateToHome}
+                className="font-mono text-xs text-[#71717a] dark:text-[#8b949e] hover:text-[#3b82f6] dark:hover:text-[#3b82f6] flex items-center gap-1 bg-transparent border-none cursor-pointer transition-colors"
+              >
+                ← RETURN TO HOME
+              </button>
+            )}
           </div>
-          <div className="login-hero-text">
-            <span className="login-hero-label">CRM WORKSPACE</span>
-            <h1>One workspace for every customer relationship.</h1>
-            <p>
-              Manage sales, communication, tasks and revenue from a focused CRM
-              workspace.
-            </p>
+
+          <div className="inline-flex items-center gap-2 mb-3">
+            <PixelIndicator active pulseColor="blue" />
+            <span className="font-mono text-xs text-[#3b82f6] font-bold">
+              / REVENUE COMMAND WORKSPACE
+            </span>
           </div>
-          <div className="login-hero-badges">
-            <span>
-              <Icon name="checkCircle" /> Clean workspace
-            </span>
-            <span>
-              <Icon name="shield" /> Secure access
-            </span>
-            <span>
-              <Icon name="workflow" /> Persistent data
-            </span>
+
+          <h1 className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-[#18181b] dark:text-white uppercase leading-tight mb-4">
+            HIGH-VELOCITY SALES PIPELINES & CUSTOMER RELATIONSHIPS.
+          </h1>
+
+          <p className="text-xs sm:text-sm text-[#52525b] dark:text-[#8b949e] font-mono leading-relaxed max-w-md">
+            Manage inbound leads, visual Kanban deals, multi-channel sequences,
+            quotes, and billing from a single high-performance workspace.
+          </p>
+        </div>
+
+        <div className="relative z-10 pt-8 border-t border-[#d1d1d1]/60 dark:border-[#21262d] space-y-3 font-mono text-xs text-[#52525b] dark:text-[#8b949e]">
+          <div className="flex items-center gap-2">
+            <PixelIndicator active pulseColor="emerald" />
+            <span>Zero-Knowledge AXA PASS Credential Linking</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <PixelIndicator active pulseColor="blue" />
+            <span>Visual Automated Sequences & Webhook Ingestion</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <PixelIndicator active pulseColor="emerald" />
+            <span>75%+ Lower TCO vs Salesforce & HubSpot</span>
+          </div>
+
+          <div className="flex items-center gap-4 pt-3 text-[11px]">
+            {onNavigateToPricing && (
+              <button
+                type="button"
+                onClick={onNavigateToPricing}
+                className="text-[#3b82f6] hover:underline bg-transparent border-none p-0 cursor-pointer"
+              >
+                View Pricing & TCO →
+              </button>
+            )}
+            {onNavigateToDemo && (
+              <button
+                type="button"
+                onClick={onNavigateToDemo}
+                className="text-[#3b82f6] hover:underline bg-transparent border-none p-0 cursor-pointer"
+              >
+                Explore Sales Lab Demo →
+              </button>
+            )}
           </div>
         </div>
       </section>
-      <section className="login-form-panel">
-        <form className="login-card" onSubmit={submit}>
-          <div className="login-card-head">
-            <div className="login-card-icon">N/V</div>
+
+      {/* Right authentication form */}
+      <section className="w-full md:w-1/2 flex items-center justify-center p-6 sm:p-12 relative">
+        <div className="w-full max-w-md border border-[#d1d1d1] dark:border-[#21262d] bg-white dark:bg-[#161b22] p-8 sm:p-10 relative shadow-xl">
+          <CornerBrackets stroke="#3b82f6" size={10} />
+
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#e4e4e7] dark:border-[#21262d]">
             <div>
-              <h2>
-                {mode === "setup"
-                  ? "Create your workspace"
-                  : "Sign in to Tunaxa"}
+              <h2 className="text-xl font-bold font-mono text-[#18181b] dark:text-white">
+                {mode === "setup" ? "CREATE WORKSPACE" : "SIGN IN TO TUNAXA"}
               </h2>
-              <p>
+              <p className="font-mono text-xs text-[#71717a] dark:text-[#8b949e] mt-0.5">
                 {mode === "setup"
-                  ? "Create the first owner account"
-                  : "Open your CRM workspace"}
+                  ? "Initialize owner credentials"
+                  : "Access your CRM revenue command"}
               </p>
             </div>
-            <button
-              className="login-theme-toggle"
-              type="button"
-              onClick={toggleTheme}
-              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
-              title={theme ? "Light mode" : "Dark mode"}
-            >
-              <Icon name={theme ? "sun" : "moon"} />
-            </button>
+            <div className="w-9 h-9 border border-[#3b82f6]/40 bg-[#3b82f6]/10 text-[#3b82f6] font-mono font-bold text-xs flex items-center justify-center">
+              CRM
+            </div>
           </div>
-          <div className="login-card-body">
-            {mode === "setup" ? (
-              <label className="field">
-                <span>Your name</span>
+
+          <form onSubmit={submit} className="space-y-4 font-mono text-xs">
+            {mode === "setup" && (
+              <div>
+                <label className="block text-[#71717a] dark:text-[#8b949e] mb-1 font-bold">
+                  YOUR NAME
+                </label>
                 <input
+                  type="text"
+                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Owner name"
+                  placeholder="e.g. Alex Vance"
+                  className="w-full p-2.5 border border-[#d1d1d1] dark:border-[#21262d] bg-[#f9fafb] dark:bg-[#0d1117] text-[#18181b] dark:text-white focus:outline-none focus:border-[#3b82f6]"
                   autoFocus
                 />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[#71717a] dark:text-[#8b949e] mb-1 font-bold">
+                EMAIL ADDRESS
               </label>
-            ) : null}
-            <label className="field">
-              <span>Email address</span>
               <input
                 type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@company.com"
+                className="w-full p-2.5 border border-[#d1d1d1] dark:border-[#21262d] bg-[#f9fafb] dark:bg-[#0d1117] text-[#18181b] dark:text-white focus:outline-none focus:border-[#3b82f6]"
                 autoFocus={mode === "login"}
               />
-            </label>
-            <label className="field">
-              <span>Password</span>
-              <div className="input-with-action">
-                <input
-                  type={show ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Minimum 6 characters"
-                />
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-[#71717a] dark:text-[#8b949e] font-bold">
+                  PASSWORD
+                </label>
                 <button
                   type="button"
+                  aria-label={show ? "Hide password" : "Show password"}
                   onClick={() => setShow((value) => !value)}
+                  className="text-[#71717a] dark:text-[#8b949e] hover:text-[#18181b] dark:hover:text-white bg-transparent border-none cursor-pointer text-[11px]"
                 >
-                  <Icon name="eye" />
+                  {show ? "HIDE" : "SHOW"}
                 </button>
               </div>
-            </label>
-            {mode === "login" && (
-              <label className="check">
-                <input type="checkbox" /> Remember me
-              </label>
+              <input
+                type={show ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+                className="w-full p-2.5 border border-[#d1d1d1] dark:border-[#21262d] bg-[#f9fafb] dark:bg-[#0d1117] text-[#18181b] dark:text-white focus:outline-none focus:border-[#3b82f6]"
+              />
+            </div>
+
+            <div className="pt-2">
+              <CutButton variant="primary" className="w-full" disabled={busy}>
+                {busy
+                  ? "AUTHENTICATING TELEMETRY…"
+                  : mode === "setup"
+                    ? "CREATE WORKSPACE →"
+                    : "OPEN WORKSPACE →"}
+              </CutButton>
+            </div>
+
+            {needsSetup !== true && (
+              <div className="pt-4 text-center border-t border-[#e4e4e7] dark:border-[#21262d]">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setMode((m) => (m === "login" ? "setup" : "login"))
+                  }
+                  className="text-[#71717a] dark:text-[#8b949e] hover:text-[#3b82f6] bg-transparent border-none cursor-pointer text-xs"
+                >
+                  {mode === "login"
+                    ? "Need to create a new workspace? Set up here"
+                    : "Already have a workspace? Sign in"}
+                </button>
+              </div>
             )}
-            <button className="btn login-submit" type="submit" disabled={busy}>
-              {busy
+            <button className="btn login-submit" type="submit" style={{ marginTop: 4 }} disabled={busy}>{busy
                 ? "Please wait…"
                 : mode === "setup"
                   ? "Create workspace"
@@ -344,6 +469,7 @@ function Shell() {
   const [theme, setTheme] = useState(
     document.documentElement.classList.contains("dark"),
   );
+  const [isEcosystemOpen, setIsEcosystemOpen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("tunaxa.sidebar", collapsed ? "1" : "0");
@@ -383,19 +509,39 @@ function Shell() {
 
   return (
     <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+      {/* Blueprint dot-grid overlay — fixed behind all content */}
+      <div className="blueprint-grid-global" aria-hidden="true" />
       <div
         className={`mobile-overlay ${mobile ? "show" : ""}`}
         onClick={() => setMobile(false)}
       />
       <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
         <div className="sidebar-logo">
-          <button className="brand" onClick={() => navigate("/dashboard")}>
-            <img src={logo} alt="Tunaxa" />
-            <span>Tunaxa</span>
+          <button
+            className="brand"
+            onClick={() => navigate("/dashboard")}
+            title="Tunaxa AXA CRM"
+          >
+            {collapsed ? (
+              <div
+                className="w-7 h-7 bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-mono font-black shrink-0"
+                style={{
+                  clipPath:
+                    "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
+                }}
+              >
+                <span className="text-xs">TX</span>
+              </div>
+            ) : (
+              <AxacrmLogo size="sm" showTunaxaPrefix={true} />
+            )}
           </button>
           <button
             className="collapse-btn"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
             onClick={() => setCollapsed((value) => !value)}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             <Icon name="arrowLeft" />
           </button>
@@ -408,6 +554,7 @@ function Shell() {
                 <NavLink
                   key={item.path}
                   to={item.path}
+                  data-tooltip={t(item.label)}
                   className={({ isActive }) =>
                     `nav-link ${isActive ? "active" : ""}`
                   }
@@ -421,24 +568,35 @@ function Shell() {
         </nav>
         <div className="sidebar-bottom">
           <div className="workspace-mini">
-            <span className="workspace-mark">NX</span>
+            <div
+              className="w-7 h-7 bg-[#3b82f6] text-white flex items-center justify-center font-mono font-bold text-xs shrink-0"
+              style={{
+                clipPath:
+                  "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
+              }}
+            >
+              <span>TX</span>
+            </div>
             <div>
-              <b>Tunaxa</b>
-              <small>Local workspace</small>
+              <b>Tunaxa CRM</b>
+              <small>Enterprise Workspace</small>
             </div>
           </div>
         </div>
       </aside>
       <section className="workspace">
-        <header className="topbar">
+        <header className="topbar topbar-glass">
           <div className="topbar-left">
             <button
               className="icon-btn mobile-menu"
+              aria-label="Open navigation menu"
               onClick={() => setMobile(true)}
+              title="Open Navigation"
             >
               <Icon name="menu" />
             </button>
-            <div className="crumb">
+            <div className="crumb relative px-3 py-1 border border-[#d1d1d1] dark:border-[#263140] bg-white dark:bg-[#121820]">
+              <CornerBrackets stroke="#3b82f6" size={5} />
               <span>{t("nav.workspace")}</span>
               <b>
                 {titles[location.pathname]
@@ -453,21 +611,43 @@ function Shell() {
               onClick={() => setSearchOpen(true)}
             >
               <Icon name="search" />
-              <span>Search everything</span>
+              <span>Search everything…</span>
               <kbd>Ctrl K</kbd>
             </button>
-            <button
-              className="btn primary compact"
+            <CutButton
+              variant="primary"
+              size="sm"
               onClick={() => setQuickOpen(true)}
             >
-              <Icon name="plus" /> New
+              <div className="flex items-center gap-1.5 font-mono text-xs">
+                <Icon name="plus" />
+                <span>NEW</span>
+              </div>
+            </CutButton>
+            <button
+              className="icon-btn"
+              onClick={() => setIsEcosystemOpen(true)}
+              title="Tunaxa Ecosystem Apps"
+              aria-label="Tunaxa Ecosystem Apps"
+            >
+              <LayoutGrid className="w-4 h-4 text-[#3b82f6]" />
             </button>
-            <button className="icon-btn" onClick={toggleTheme}>
-              <Icon name={theme ? "sun" : "moon"} />
+            <button
+              className="icon-btn"
+              onClick={toggleTheme}
+              title={theme ? "Light Blueprint" : "Dark Cyber"}
+            >
+              {theme ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
             </button>
             <button
               className="icon-btn notification-btn"
+              aria-label="Notifications"
               onClick={() => toast("No new notifications")}
+              title="Notifications"
             >
               <Icon name="bell" />
             </button>
@@ -476,7 +656,7 @@ function Shell() {
                 className="profile-trigger"
                 onClick={() => setProfile((value) => !value)}
               >
-                <Avatar name={user?.name || "NX"} />
+                <Avatar name={user?.name || "TX"} />
                 <div>
                   <b>{user?.name}</b>
                   <small>{user?.role}</small>
@@ -486,7 +666,7 @@ function Shell() {
               {profile ? (
                 <div className="profile-menu">
                   <div className="profile-menu-head">
-                    <Avatar name={user?.name || "NX"} size={38} />
+                    <Avatar name={user?.name || "TX"} size={38} />
                     <div>
                       <b>{user?.name}</b>
                       <small>{user?.email}</small>
@@ -500,8 +680,12 @@ function Shell() {
                     {(i18n.language || "en") === "fr" ? "English" : "Français"}
                   </button>
                   <button onClick={toggleTheme}>
-                    <Icon name={theme ? "sun" : "moon"} />{" "}
-                    {theme ? "Light mode" : "Dark mode"}
+                    {theme ? (
+                      <Sun className="w-4 h-4" />
+                    ) : (
+                      <Moon className="w-4 h-4" />
+                    )}{" "}
+                    {theme ? "Light Blueprint" : "Dark Cyber"}
                   </button>
                   <hr />
                   <button className="danger-link" onClick={logout}>
@@ -749,7 +933,10 @@ function Shell() {
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/leave" element={<LeavePage />} />
               <Route path="/attendance" element={<AttendancePage />} />
-              <Route path="/marketing-emails" element={<MarketingEmailsPage />} />
+              <Route
+                path="/marketing-emails"
+                element={<MarketingEmailsPage />}
+              />
               <Route
                 path="/marketing-emails/:id"
                 element={
@@ -804,7 +991,10 @@ function Shell() {
                   />
                 }
               />
-              <Route path="/survey-responses" element={<SurveyResponsesPage />} />
+              <Route
+                path="/survey-responses"
+                element={<SurveyResponsesPage />}
+              />
               <Route
                 path="/survey-responses/:id"
                 element={
@@ -842,6 +1032,10 @@ function Shell() {
       {searchOpen ? (
         <GlobalSearch onClose={() => setSearchOpen(false)} />
       ) : null}
+      <EcosystemMenu
+        isOpen={isEcosystemOpen}
+        onClose={() => setIsEcosystemOpen(false)}
+      />
     </div>
   );
 }
@@ -970,11 +1164,16 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           <Icon name="search" />
           <input
             autoFocus
+            aria-label="Search workspace"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search leads, contacts, deals, tasks..."
           />
-          <button className="icon-btn tiny" onClick={onClose}>
+          <button
+            className="icon-btn tiny"
+            aria-label="Close search"
+            onClick={onClose}
+          >
             <Icon name="close" />
           </button>
         </div>
@@ -1025,10 +1224,10 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             <Empty
               icon="search"
               title="No matches"
-              text="Nothing in your JSON database matches this search."
+              text="No results found for your search."
             />
           )}
-        </div>
+        </div>git
       </div>
     </div>
   );
@@ -1081,7 +1280,8 @@ function DashboardPage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -1090,7 +1290,7 @@ function DashboardPage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -1194,6 +1394,7 @@ const leadFields: FieldSpec[] = [
     options: ["New", "Contacted", "Qualified", "Nurture", "Lost"],
   },
   { key: "owner", label: "Owner" },
+  
   { key: "value", label: "Estimated value", type: "number" },
 ];
 const contactFields: FieldSpec[] = [
@@ -1368,12 +1569,9 @@ const attendanceFields: FieldSpec[] = [
 const quoteFields: FieldSpec[] = [
   { key: "number", label: "Quote number", required: true },
   { key: "customer", label: "Customer / deal" },
-  {
-    key: "items",
-    label: 'Line items (one per line, e.g. "Product x3 = 150")',
-    type: "textarea",
-  },
-  { key: "discount", label: "Discount", type: "number" },
+  { key: "subtotal", label: "Subtotal", type: "number" },
+  { key: "discount", label: "Discount (%)", type: "number" },
+  { key: "tax", label: "Tax (%)", type: "number" },
   { key: "total", label: "Total", type: "number" },
   {
     key: "status",
@@ -1522,6 +1720,7 @@ function CrudTablePage({
   statusTone,
   moneyColumn,
   extraColumn,
+  renderEditor,
 }: {
   resource: string;
   title: string;
@@ -1536,6 +1735,12 @@ function CrudTablePage({
   statusTone?: (value?: string) => BadgeTone;
   moneyColumn?: string[];
   extraColumn?: { title: string; render: (row: Row) => ReactNode };
+  renderEditor?: (props: {
+    title: string;
+    initial: Row | Record<string, any>;
+    onClose: () => void;
+    onSave: (data: Record<string, any>) => Promise<void>;
+  }) => ReactNode;
 }) {
   const { items, loading, load, create, update, remove } =
     useResource<Row>(resource);
@@ -1659,6 +1864,7 @@ function CrudTablePage({
           <div className="header-search">
             <Icon name="search" />
             <input
+              aria-label={`Search ${title.toLowerCase()}`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
@@ -1695,8 +1901,26 @@ function CrudTablePage({
                             src={row.avatar || row.logo}
                           />
                           <div>
-                            <b>{nameOf(row)}</b>
-                            {synopsis ? <small>{synopsis(row)}</small> : null}
+                           <div className="lead-name-row">
+  <b>{nameOf(row)}</b>
+  {resource === "leads" &&
+  typeof row.leadScore === "number" ? (
+  <span title="AI Score — based on engagement signals">
+  <Badge
+    tone={
+      row.leadScore <= 40
+        ? "red"
+        : row.leadScore <= 70
+          ? "amber"
+          : "green"
+    }
+  >
+    {row.leadScore}
+  </Badge>
+</span>
+  ) : null}
+</div>
+{synopsis ? <small>{synopsis(row)}</small> : null}
                           </div>
                         </button>
                       </td>
@@ -1762,16 +1986,28 @@ function CrudTablePage({
         )}
       </section>
       {edit !== undefined ? (
-        <RecordForm
-          title={`${edit ? "Edit" : "Add"} ${singular}`}
-          fields={fields}
-          initial={edit || {}}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
+        renderEditor ? (
+          renderEditor({
+            title: `${edit ? "Edit" : "Add"} ${singular}`,
+            initial: edit || {},
+            onClose: () => setEdit(undefined),
+            onSave: async (data) => {
+              edit ? await update(edit.id, data) : await create(data);
+              setEdit(undefined);
+            },
+          })
+        ) : (
+          <RecordForm
+            title={`${edit ? "Edit" : "Add"} ${singular}`}
+            fields={fields}
+            initial={edit || {}}
+            onClose={() => setEdit(undefined)}
+            onSave={async (data) => {
+              edit ? await update(edit.id, data) : await create(data);
+              setEdit(undefined);
+            }}
+          />
+        )
       ) : null}
     </div>
   );
@@ -1887,10 +2123,7 @@ function PeoplePage({
         >
           <Icon name="upload" /> Import
         </button>
-        <button
-          className="btn secondary"
-          onClick={exportCsv}
-        >
+        <button className="btn secondary" onClick={exportCsv}>
           <Icon name="download" /> Export CSV
         </button>
         <button className="btn primary" onClick={() => setEdit(null)}>
@@ -1902,6 +2135,7 @@ function PeoplePage({
           <div className="header-search">
             <Icon name="search" />
             <input
+              aria-label={`Search ${title.toLowerCase()}`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
@@ -2027,7 +2261,14 @@ function PeoplePage({
 
 const detailTabList = ["Overview", "Activity", "Notes", "Emails"] as const;
 type DetailTab = (typeof detailTabList)[number];
-const activityFilters = ["All", "Emails", "Calls", "Meetings", "Notes", "System"] as const;
+const activityFilters = [
+  "All",
+  "Emails",
+  "Calls",
+  "Meetings",
+  "Notes",
+  "System",
+] as const;
 type ActivityFilter = (typeof activityFilters)[number];
 const activityFilterTypes: Partial<Record<ActivityFilter, string>> = {
   Emails: "Email",
@@ -2062,7 +2303,8 @@ function RecordDetailPage({
   const [noteBusy, setNoteBusy] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
-  const showActivityFilters = resource === "contacts" || resource === "companies";
+  const showActivityFilters =
+    resource === "contacts" || resource === "companies";
 
   const photoKey = resource === "companies" ? "logo" : "avatar";
   const photoField: FieldSpec = {
@@ -2091,9 +2333,12 @@ function RecordDetailPage({
     const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
     if (name) params.set("contact", name);
-    const type = tab === "Notes"
-      ? "Note"
-      : showActivityFilters ? activityFilterTypes[activityFilter] : undefined;
+    const type =
+      tab === "Notes"
+        ? "Note"
+        : showActivityFilters
+          ? activityFilterTypes[activityFilter]
+          : undefined;
     if (type) params.set("type", type);
     const controller = new AbortController();
     setActivities([]);
@@ -2197,13 +2442,33 @@ function RecordDetailPage({
             src={record.avatar || record.logo}
             size={48}
           />
-          <div>
-            <h1>{recordName}</h1>
-            <p>
-              {record.company || record.role || record.industry || ""}
-              {record.email ? ` · ${record.email}` : ""}
-            </p>
-          </div>
+         <div>
+  <div className="lead-detail-name">
+    <h1>{recordName}</h1>
+
+    {resource === "leads" &&
+    typeof record.leadScore === "number" ? (
+      <span title="AI Score — based on engagement signals">
+        <Badge
+          tone={
+            record.leadScore <= 40
+              ? "red"
+              : record.leadScore <= 70
+                ? "amber"
+                : "green"
+          }
+        >
+          {record.leadScore}
+        </Badge>
+      </span>
+    ) : null}
+  </div>
+
+  <p>
+    {record.company || record.role || record.industry || ""}
+    {record.email ? ` · ${record.email}` : ""}
+  </p>
+</div>
           <div className="detail-actions">
             {record.status ? (
               <Badge
@@ -2226,6 +2491,7 @@ function RecordDetailPage({
             </button>
             <button
               className="btn ghost compact danger-link"
+              aria-label={`Delete ${record.name || record.title || "record"}`}
               onClick={deleteRecord}
             >
               <Icon name="trash" />
@@ -2277,7 +2543,11 @@ function RecordDetailPage({
         {tab === "Activity" && (
           <div className="detail-activity">
             {showActivityFilters && (
-              <div className="detail-tabs activity-filter-tabs" role="group" aria-label="Filter activities">
+              <div
+                className="detail-tabs activity-filter-tabs"
+                role="group"
+                aria-label="Filter activities"
+              >
                 {activityFilters.map((filter) => (
                   <button
                     key={filter}
@@ -2294,7 +2564,11 @@ function RecordDetailPage({
             {activityLoading ? (
               <div className="table-loading">Loading activities…</div>
             ) : activityError ? (
-              <Empty icon="activity" title="Could not load activities" text="Try another filter." />
+              <Empty
+                icon="activity"
+                title="Could not load activities"
+                text="Try another filter."
+              />
             ) : activities.length ? (
               activities.map((a) => (
                 <div className="activity-item" key={a.id}>
@@ -2330,6 +2604,7 @@ function RecordDetailPage({
           <div className="detail-notes">
             <div className="note-compose">
               <textarea
+                aria-label="Add a note"
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 placeholder="Write a note…"
@@ -2343,23 +2618,28 @@ function RecordDetailPage({
                 {noteBusy ? "Saving…" : "Add note"}
               </button>
             </div>
-            {!activityLoading && activities
-              .filter((a) => a.type === "Note")
-              .map((n) => (
-                <div className="note-card" key={n.id}>
-                  <div className="note-card-head">
-                    <b>Note</b>
-                    <time>{n.date || n.createdAt || ""}</time>
+            {!activityLoading &&
+              activities
+                .filter((a) => a.type === "Note")
+                .map((n) => (
+                  <div className="note-card" key={n.id}>
+                    <div className="note-card-head">
+                      <b>Note</b>
+                      <time>{n.date || n.createdAt || ""}</time>
+                    </div>
+                    <p>{n.notes || n.title}</p>
                   </div>
-                  <p>{n.notes || n.title}</p>
-                </div>
-              ))}
+                ))}
             {activityLoading ? (
               <div className="table-loading">Loading notes…</div>
             ) : activityError ? (
-              <Empty icon="edit" title="Could not load notes" text="Try reopening this tab." />
+              <Empty
+                icon="edit"
+                title="Could not load notes"
+                text="Try reopening this tab."
+              />
             ) : !activities.filter((a) => a.type === "Note").length &&
-            !noteText ? (
+              !noteText ? (
               <Empty
                 icon="edit"
                 title="No notes yet"
@@ -2442,29 +2722,42 @@ function RecordForm({
   toolbar?: ReactNode;
 }) {
   const { toast } = useApp();
-  const [form, setForm] = useState<Record<string, any>>(
-    Object.fromEntries(
-      fields.map((field) => [
-        field.key,
-        initial[field.key] ??
-          (field.type === "select"
-            ? field.options?.[0] || ""
-            : field.type === "checkbox"
-              ? false
-              : ""),
-      ]),
-    ),
-  );
   const [busy, setBusy] = useState(false);
 
-  async function save() {
+  const defaultValues = Object.fromEntries(
+    fields.map((field) => [
+      field.key,
+      initial[field.key] ??
+        (field.type === "select"
+          ? field.options?.[0] || ""
+          : field.type === "checkbox"
+            ? false
+            : ""),
+    ]),
+  );
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+  } = useForm<Record<string, any>>({
+    defaultValues,
+  });
+
+  async function save(data: Record<string, any>) {
     const missing = fields.find(
-      (field) => field.required && !String(form[field.key] ?? "").trim(),
+      (field) => field.required && !String(data[field.key] ?? "").trim(),
     );
-    if (missing) return toast(`${missing.label} is required`, "error");
+
+    if (missing) {
+      return toast(`${missing.label} is required`, "error");
+    }
+
     setBusy(true);
+
     try {
-      await onSave(form);
+      await onSave(data);
     } catch (error) {
       toast((error as Error).message, "error");
     } finally {
@@ -2482,7 +2775,12 @@ function RecordForm({
           <button className="btn secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn primary" disabled={busy} onClick={save}>
+
+          <button
+            className="btn primary"
+            disabled={busy}
+            onClick={handleSubmit(save)}
+          >
             {busy ? "Saving…" : "Save"}
           </button>
         </>
@@ -2490,47 +2788,32 @@ function RecordForm({
     >
       <div className="drawer-form">
         {toolbar}
+
         {fields.map((field) =>
           field.type === "photo" ? (
             <PhotoField
               key={field.key}
               label={field.label}
-              name={String(form.name || form.title || "")}
-              value={form[field.key]}
-              onChange={(url) =>
-                setForm((current) => ({ ...current, [field.key]: url }))
-              }
+              name={String(watch("name") || watch("title") || "")}
+              value={watch(field.key)}
+              onChange={(url: string) => setValue(field.key, url)}
             />
           ) : field.type === "checkbox" ? (
             <label className="toggle-row" key={field.key}>
-              <input
-                type="checkbox"
-                checked={Boolean(form[field.key])}
-                onChange={(e) =>
-                  setForm((current) => ({
-                    ...current,
-                    [field.key]: e.target.checked,
-                  }))
-                }
-              />
+              <input type="checkbox" {...register(field.key)} />
               <span>{field.label}</span>
             </label>
           ) : (
             <label className="field" key={field.key}>
               <span>
                 {field.label}
-                {field.required ? <em className="required-mark">*</em> : null}
+                {field.required ? (
+                  <em className="required-mark">*</em>
+                ) : null}
               </span>
+
               {field.type === "select" ? (
-                <select
-                  value={form[field.key]}
-                  onChange={(e) =>
-                    setForm((current) => ({
-                      ...current,
-                      [field.key]: e.target.value,
-                    }))
-                  }
-                >
+                <select {...register(field.key)}>
                   {field.options?.map((option) => (
                     <option key={option} value={option}>
                       {option}
@@ -2539,31 +2822,20 @@ function RecordForm({
                 </select>
               ) : field.type === "textarea" ? (
                 <textarea
-                  value={form[field.key]}
-                  onChange={(e) =>
-                    setForm((current) => ({
-                      ...current,
-                      [field.key]: e.target.value,
-                    }))
-                  }
+                  {...register(field.key)}
                   placeholder={field.placeholder}
                   rows={6}
                 />
               ) : (
                 <input
                   type={field.type || "text"}
-                  required={field.required}
-                  value={form[field.key]}
+                  {...register(field.key, {
+                    setValueAs: (value) =>
+                      field.type === "number"
+                        ? Number(value)
+                        : value,
+                  })}
                   placeholder={field.placeholder}
-                  onChange={(e) =>
-                    setForm((current) => ({
-                      ...current,
-                      [field.key]:
-                        field.type === "number"
-                          ? Number(e.target.value)
-                          : e.target.value,
-                    }))
-                  }
                 />
               )}
             </label>
@@ -2573,7 +2845,6 @@ function RecordForm({
     </Drawer>
   );
 }
-
 function CompaniesPage() {
   const fields: FieldSpec[] = [
     { key: "logo", label: "Logo", type: "photo" },
@@ -2644,12 +2915,14 @@ function CompaniesPage() {
                 >
                   <button
                     className="icon-btn tiny"
+                    aria-label={`Edit ${company.name || "company"}`}
                     onClick={() => setEdit(company)}
                   >
                     <Icon name="edit" />
                   </button>
                   <button
                     className="icon-btn tiny danger-link"
+                    aria-label={`Delete ${company.name || "company"}`}
                     onClick={() =>
                       confirm("Delete this company?") && remove(company.id)
                     }
@@ -2713,6 +2986,17 @@ function CompaniesPage() {
 
 function PipelinePage() {
   const { items, create, update, remove } = useResource<Row>("deals");
+  const [pipelineStages, setPipelineStages] = useState<
+    { name: string; probability: number }[]
+  >([]);
+
+  useEffect(() => {
+    api<{
+      stages: { name: string; probability: number }[];
+    }>("/pipeline")
+      .then((data) => setPipelineStages(data.stages))
+      .catch(() => setPipelineStages([]));
+  }, []);
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -2739,6 +3023,24 @@ function PipelinePage() {
     await update(dragging, { stage });
     setDragging(null);
   }
+  const probabilityByStage = Object.fromEntries(
+    pipelineStages.map((stage) => [
+      stage.name.toLowerCase(),
+      stage.probability,
+    ]),
+  );
+
+  const totalPipelineValue = items.reduce(
+    (sum, row) => sum + Number(row.value || 0),
+    0,
+  );
+
+  const weightedPipelineValue = items.reduce((sum, row) => {
+    const probability =
+      probabilityByStage[String(row.stage || "new").toLowerCase()] ?? 0;
+
+    return sum + Number(row.value || 0) * (probability / 100);
+  }, 0);
   return (
     <div className="page pipeline-page">
       <PageHeader
@@ -2749,6 +3051,17 @@ function PipelinePage() {
           <Icon name="plus" /> Add deal
         </button>
       </PageHeader>
+      <div className="pipeline-summary">
+        <div className="summary-card">
+          <span>Total pipeline value</span>
+          <strong>{money(totalPipelineValue)}</strong>
+        </div>
+
+        <div className="summary-card">
+          <span>Weighted value</span>
+          <strong>{money(weightedPipelineValue)}</strong>
+        </div>
+      </div>
       {items.length ? (
         <div className="pipeline-board">
           {stages.map((stage) => {
@@ -2792,12 +3105,14 @@ function PipelinePage() {
                         <div className="row-actions">
                           <button
                             className="icon-btn tiny"
+                            aria-label={`Edit ${row.title || "deal"}`}
                             onClick={() => setEdit(row)}
                           >
                             <Icon name="edit" />
                           </button>
                           <button
                             className="icon-btn tiny danger-link"
+                            aria-label={`Delete ${row.title || "deal"}`}
                             onClick={() =>
                               confirm("Delete this deal?") && remove(row.id)
                             }
@@ -2963,6 +3278,11 @@ function TasksPage() {
                     <div>
                       <button
                         className={`task-check ${status === "Completed" ? "checked" : ""}`}
+                        aria-label={
+                          status === "Completed"
+                            ? `Mark ${task.title || "task"} as open`
+                            : `Mark ${task.title || "task"} as completed`
+                        }
                         onClick={() =>
                           update(task.id, {
                             status:
@@ -2993,12 +3313,14 @@ function TasksPage() {
                       <div className="row-actions">
                         <button
                           className="icon-btn tiny"
+                          aria-label={`Edit ${task.title || "task"}`}
                           onClick={() => setEdit(task)}
                         >
                           <Icon name="edit" />
                         </button>
                         <button
                           className="icon-btn tiny danger-link"
+                          aria-label={`Delete ${task.title || "task"}`}
                           onClick={() =>
                             confirm("Delete this task?") && remove(task.id)
                           }
@@ -3149,6 +3471,7 @@ function CalendarPage() {
         <div className="calendar-top">
           <button
             className="icon-btn"
+            aria-label="Previous month"
             onClick={() =>
               setCursor((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))
             }
@@ -3158,6 +3481,7 @@ function CalendarPage() {
           <h2>{monthLabel}</h2>
           <button
             className="icon-btn"
+            aria-label="Next month"
             onClick={() =>
               setCursor((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))
             }
@@ -3443,6 +3767,7 @@ function WorkflowForm({
           <div className="workflow-action" key={index}>
             <div className="workflow-action-head">
               <select
+                aria-label={`Action ${index + 1} type`}
                 value={action.type}
                 onChange={(e) => setAction(index, { type: e.target.value })}
               >
@@ -3516,12 +3841,17 @@ function WorkflowForm({
 function WorkflowsPage() {
   const { items, create, update, remove } = useResource<Row>("workflows");
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const [meta, setMeta] = useState<WorkflowMeta>({ events: [], actions: [] });
+  const [meta, setMeta] = useState<WorkflowMeta>({
+    events: [],
+    actions: [],
+  });
+
   useEffect(() => {
     api<WorkflowMeta>("/workflows/meta")
       .then(setMeta)
       .catch(() => {});
   }, []);
+
   return (
     <div className="page">
       <PageHeader
@@ -3536,52 +3866,102 @@ function WorkflowsPage() {
           <Icon name="plus" /> New workflow
         </button>
       </PageHeader>
+
       {items.length ? (
-        <div className="workflow-list">
-          {items.map((flow) => (
-            <article className="surface workflow-card" key={flow.id}>
-              <div className="workflow-top">
-                <span className="workflow-icon">
-                  <Icon name="workflow" />
-                </span>
-                <div className="workflow-copy">
-                  <h3>{flow.name || "Untitled workflow"}</h3>
-                  <p className="workflow-path">
-                    <span className="workflow-trigger">
-                      <Icon name="spark" />
-                      {flow.event
-                        ? meta.events.find((e) => e.value === flow.event)
-                            ?.label || flow.event
-                        : "Legacy (text)"}
-                    </span>
-                    <span className="workflow-arrow">
-                      <Icon name="arrowRight" />
-                    </span>
-                    <span className="workflow-action-note">
-                      {flow.actions?.length
-                        ? `${flow.actions.length} action${flow.actions.length > 1 ? "s" : ""}`
-                        : "No actions"}
-                    </span>
-                    {flow.filter?.field ? (
-                      <span className="workflow-filter">
-                        when {flow.filter.field} = {flow.filter.value}
+        <>
+          {/* Workflow visualisation avec React Flow */}
+          <WorkflowCanvas workflow={items[0]} />
+
+          {/* Liste des workflows existants */}
+          <div className="workflow-list">
+            {items.map((flow) => (
+              <article
+                className="surface workflow-card"
+                key={flow.id}
+              >
+                <div className="workflow-top">
+                  <span className="workflow-icon">
+                    <Icon name="workflow" />
+                  </span>
+
+                  <div className="workflow-copy">
+                    <h3>{flow.name || "Untitled workflow"}</h3>
+
+                    <p className="workflow-path">
+                      <span className="workflow-trigger">
+                        <Icon name="spark" />
+
+                        {flow.event
+                          ? meta.events.find(
+                              (e) => e.value === flow.event
+                            )?.label || flow.event
+                          : "Legacy (text)"}
                       </span>
+
+                      <span className="workflow-arrow">
+                        <Icon name="arrowRight" />
+                      </span>
+
+                      <span className="workflow-action-note">
+                        {flow.actions?.length
+                          ? `${flow.actions.length} action${
+                              flow.actions.length > 1 ? "s" : ""
+                            }`
+                          : "No actions"}
+                      </span>
+
+                      {flow.filter?.field ? (
+                        <span className="workflow-filter">
+                          when {flow.filter.field} = {flow.filter.value}
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+
+                  <div className="flow-actions">
+                    <Toggle
+                      value={Boolean(flow.enabled)}
+                      onChange={(enabled) =>
+                        update(flow.id, { enabled })
+                      }
+                    />
+
+                    <button
+                      className="icon-btn tiny"
+                      onClick={() => setEdit(flow)}
+                    >
+                      <Icon name="edit" />
+                    </button>
+
+                    <button
+                      className="icon-btn tiny danger-link"
+                      onClick={() =>
+                        confirm("Delete this workflow?") &&
+                        remove(flow.id)
+                      }
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  </div>
                     ) : null}
                   </p>
                 </div>
                 <div className="flow-actions">
                   <Toggle
+                    label={`${flow.enabled ? "Disable" : "Enable"} ${flow.name || "workflow"}`}
                     value={Boolean(flow.enabled)}
                     onChange={(enabled) => update(flow.id, { enabled })}
                   />
                   <button
                     className="icon-btn tiny"
+                    aria-label={`Edit ${flow.name || "workflow"}`}
                     onClick={() => setEdit(flow)}
                   >
                     <Icon name="edit" />
                   </button>
                   <button
                     className="icon-btn tiny danger-link"
+                    aria-label={`Delete ${flow.name || "workflow"}`}
                     onClick={() =>
                       confirm("Delete this workflow?") && remove(flow.id)
                     }
@@ -3589,10 +3969,10 @@ function WorkflowsPage() {
                     <Icon name="trash" />
                   </button>
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
+              </article>
+            ))}
+          </div>
+        </>
       ) : (
         <Empty
           icon="workflow"
@@ -3608,6 +3988,7 @@ function WorkflowsPage() {
           }
         />
       )}
+
       {edit !== undefined ? (
         <WorkflowForm
           meta={meta}
@@ -3616,7 +3997,11 @@ function WorkflowsPage() {
           onSave={async (data) => {
             edit?.id
               ? await update(edit.id, data)
-              : await create({ ...data, enabled: true });
+              : await create({
+                  ...data,
+                  enabled: true,
+                });
+
             setEdit(undefined);
           }}
         />
@@ -3730,6 +4115,7 @@ function CallsPage() {
           </div>
           <input
             className="dial-input"
+            aria-label="Phone number"
             value={number}
             onChange={(e) => setNumber(e.target.value)}
             placeholder="Enter a number"
@@ -3824,6 +4210,7 @@ function RecordingsPage() {
   const { items, load, remove } = useResource<Row>("recordings");
   const { toast } = useApp();
   const [selected, setSelected] = useState<Row | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
 
   async function summarize(item: Row) {
     try {
@@ -3840,16 +4227,21 @@ function RecordingsPage() {
   }
 
   async function transcribe(item: Row) {
+    setTranscribing(true);
+
     try {
       const result = await api<Row>(
         `/recordings/${item.id}/transcribe`,
         json("POST"),
       );
+
       setSelected(result);
       toast("Transcription ready");
-      load();
+      await load();
     } catch (error) {
       toast((error as Error).message, "error");
+    } finally {
+      setTranscribing(false);
     }
   }
 
@@ -3932,10 +4324,11 @@ function RecordingsPage() {
               </button>
               <button
                 className="btn secondary"
-                disabled={!selected.fileUrl}
+                disabled={!selected.fileUrl || transcribing}
                 onClick={() => transcribe(selected)}
               >
-                <Icon name="ai" /> Transcribe
+                <Icon name="ai" />
+                {transcribing ? "Processing transcript..." : "Transcribe"}
               </button>
               <button
                 className="btn primary"
@@ -3968,9 +4361,24 @@ function RecordingsPage() {
             </h3>
             <p>{selected.summary || "No summary yet."}</p>
             <h3>Transcript</h3>
-            <p className="transcript-text">
-              {selected.transcript || "No transcript is available yet."}
-            </p>
+
+            <div
+              className="transcript-text"
+              style={{
+                maxHeight: "280px",
+                overflowY: "auto",
+                whiteSpace: "pre-wrap",
+                padding: "12px",
+              }}
+            >
+              {transcribing ? (
+                <span>Processing transcript...</span>
+              ) : selected.transcript ? (
+                selected.transcript
+              ) : (
+                <span>No transcript is available yet.</span>
+              )}
+            </div>
           </div>
         </Modal>
       ) : null}
@@ -3979,13 +4387,84 @@ function RecordingsPage() {
 }
 
 function InboxPage() {
-  const { items, update, remove, load } = useResource<Row>("messages");
   const { toast } = useApp();
+
+  const [messages, setMessages] = useState<Row[]>([]);
+  const [selectedThread, setSelectedThread] = useState<Row[]>([]);
+  const [activeFilter, setActiveFilter] = useState<
+    "All" | "Unread" | "Sent" | "Tracked"
+  >("All");
+
+  const [page, setPage] = useState(1);
+  const [limit] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(false);
+
   const [compose, setCompose] = useState(false);
-  const [selected, setSelected] = useState<Row | null>(null);
   const [sending, setSending] = useState(false);
+
   const [templates, setTemplates] = useState<Row[]>([]);
   const [templateId, setTemplateId] = useState("");
+  const {
+  register,
+  handleSubmit,
+  reset,
+  watch,
+  setValue,
+} = useForm<{
+  channel: string;
+  to: string;
+  subject: string;
+  body: string;
+}>({
+  defaultValues: {
+    channel: "Email",
+    to: "",
+    subject: "",
+    body: "",
+  },
+});
+
+  const [draft, setDraft] = useState<Row>({
+    id: "",
+    channel: "Email",
+    to: "",
+    subject: "",
+    body: "",
+  });
+
+  async function loadMessages(targetPage = page) {
+    setLoading(true);
+
+    try {
+      const response = await api<{
+        items: Row[];
+        total: number;
+        page: number;
+        limit: number;
+        hasMore: boolean;
+      }>(
+        `/messages?type=email&page=${targetPage}&limit=${limit}`,
+      );
+
+      setMessages(response.items || []);
+      setTotal(response.total || 0);
+      setHasMore(Boolean(response.hasMore));
+
+      if (response.items?.length && !selectedThread.length) {
+        setSelectedThread([response.items[0]]);
+      }
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadMessages(page);
+  }, [page]);
 
   useEffect(() => {
     api<Row[]>("/templates")
@@ -3995,36 +4474,122 @@ function InboxPage() {
 
   function applyTemplate(id: string) {
     setTemplateId(id);
-    const t = templates.find((x) => x.id === id);
-    if (!t) return;
-    setSelected((prev) =>
-      prev
-        ? {
-            ...prev,
-            subject: t.subject,
-            body: t.body,
-            channel: t.channel || "Email",
-          }
-        : prev,
+
+    const template = templates.find((item) => item.id === id);
+
+    if (!template) return;
+
+    setDraft((prev) => ({
+      ...prev,
+      subject: template.subject || "",
+      body: template.body || "",
+    }));
+  }
+
+  function getThreadKey(message: Row) {
+    return `${String(message.to || "").toLowerCase()}::${String(
+      message.subject || "",
+    )
+      .trim()
+      .toLowerCase()}`;
+  }
+
+  const threads = Array.from(
+    messages.reduce((map, message) => {
+      const key = getThreadKey(message);
+
+      if (!map.has(key)) {
+        map.set(key, []);
+      }
+
+      map.get(key)!.push(message);
+
+      return map;
+    }, new Map<string, Row[]>()),
+  ).map(([key, thread]) => ({
+    key,
+    messages: thread.sort(
+      (a, b) =>
+        new Date(a.createdAt || 0).getTime() -
+        new Date(b.createdAt || 0).getTime(),
+    ),
+  }));
+
+  const filteredThreads = threads.filter(({ messages: thread }) => {
+    if (!thread.length) return false;
+
+    if (activeFilter === "Unread") {
+      return thread.some((message) => !message.read);
+    }
+
+    if (activeFilter === "Sent") {
+      return thread.some(
+        (message) =>
+          message.direction === "Outbound" ||
+          message.status === "Sent",
+      );
+    }
+
+    if (activeFilter === "Tracked") {
+      return thread.some(
+        (message) =>
+          Boolean(message.openedAt) || Boolean(message.clickedAt),
+      );
+    }
+
+    return true;
+  });
+
+  function openThread(thread: Row[]) {
+    setSelectedThread(thread);
+
+    const unread = thread.filter((message) => !message.read);
+
+    unread.forEach((message) => {
+      api(`/messages/${message.id}`, json("PATCH", { read: true })).catch(
+        () => {},
+      );
+    });
+
+    setMessages((current) =>
+      current.map((message) =>
+        thread.some((item) => item.id === message.id)
+          ? { ...message, read: true }
+          : message,
+      ),
     );
   }
 
-  async function send(message: Row) {
+  async function sendMessage(message: Row) {
     setSending(true);
+
     try {
       const saved = await api<Row>(
         "/messages/send",
         json("POST", {
           id: message.id,
-          channel: message.channel,
+          channel: "Email",
           to: message.to,
           subject: message.subject,
           body: message.body,
           contact: message.contact,
         }),
       );
-      setSelected(saved);
-      await load();
+
+      setCompose(false);
+      setTemplateId("");
+      setDraft({
+        id: "",
+        channel: "Email",
+        to: "",
+        subject: "",
+        body: "",
+      });
+
+      await loadMessages(page);
+
+      setSelectedThread([saved]);
+
       toast(
         saved.deliveredAt
           ? "Message sent"
@@ -4039,324 +4604,546 @@ function InboxPage() {
     }
   }
 
-  const statusTone = (status?: string) =>
-    status === "Sent"
-      ? "green"
-      : status === "Failed"
-        ? "red"
-        : status === "Saved"
-          ? "amber"
-          : "blue";
+  async function deleteMessage(message: Row) {
+    if (!confirm("Delete this message?")) return;
+
+    try {
+      await api(`/messages/${message.id}`, json("DELETE"));
+
+      setSelectedThread([]);
+
+      await loadMessages(page);
+
+      toast("Message deleted");
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
+
+  const selectedLastMessage =
+    selectedThread[selectedThread.length - 1] || null;
+
   return (
     <div className="page">
       <PageHeader
-        title="Email & SMS"
-        description="Manage email and SMS conversations from one place."
+        title="Unified Inbox"
+        description="Manage your email conversations from one place."
       >
-        <button className="btn primary" onClick={() => setCompose(true)}>
+        <button
+          className="btn primary"
+          onClick={() => {
+            setDraft({
+              id: "",
+              channel: "Email",
+              to: "",
+              subject: "",
+              body: "",
+            });
+            setTemplateId("");
+            setCompose(true);
+          }}
+        >
           <Icon name="send" /> Compose
         </button>
       </PageHeader>
-      <section className="surface inbox-shell">
-        {items.length ? (
-          <div className="inbox-list">
-            {items.map((message) => (
+
+      <section
+        className="surface"
+        style={{
+          overflow: "hidden",
+          minHeight: "650px",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* FILTERS */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "14px 18px",
+            borderBottom: "1px solid var(--border, #e5e7eb)",
+          }}
+        >
+          {(["All", "Unread", "Sent", "Tracked"] as const).map((filter) => (
+            <button
+              key={filter}
+              className={
+                activeFilter === filter
+                  ? "btn primary compact"
+                  : "btn secondary compact"
+              }
+              onClick={() => setActiveFilter(filter)}
+            >
+              {filter}
+            </button>
+          ))}
+
+          <span
+            style={{
+              marginLeft: "auto",
+              fontSize: "12px",
+              opacity: 0.65,
+            }}
+          >
+            {total} email{total !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        {/* SPLIT PANE */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "360px minmax(0, 1fr)",
+            minHeight: "580px",
+            flex: 1,
+          }}
+        >
+          {/* LEFT PANE */}
+          <aside
+            style={{
+              borderRight: "1px solid var(--border, #e5e7eb)",
+              overflowY: "auto",
+            }}
+          >
+            {loading ? (
+              <div style={{ padding: "30px", textAlign: "center" }}>
+                Loading conversations…
+              </div>
+            ) : filteredThreads.length ? (
+              filteredThreads.map(({ key, messages: thread }) => {
+                const last = thread[thread.length - 1];
+                const unread = thread.some((message) => !message.read);
+                const active = selectedThread.some(
+                  (message) => message.id === last.id,
+                );
+
+                return (
+                  <button
+                    key={key}
+                    onClick={() => openThread(thread)}
+                    style={{
+                      width: "100%",
+                      display: "block",
+                      textAlign: "left",
+                      padding: "16px",
+                      border: "0",
+                      borderBottom:
+                        "1px solid var(--border, #e5e7eb)",
+                      background: active
+                        ? "rgba(59, 130, 246, 0.08)"
+                        : "transparent",
+                      cursor: "pointer",
+                      fontWeight: unread ? 700 : 400,
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                      }}
+                    >
+                      <span>
+                        {last.to || "Unknown recipient"}
+                      </span>
+
+                      <time
+                        style={{
+                          fontSize: "11px",
+                          opacity: 0.6,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {last.createdAt
+                          ? new Date(
+                              last.createdAt,
+                            ).toLocaleDateString()
+                          : ""}
+                      </time>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: "6px",
+                        fontSize: "13px",
+                        fontWeight: unread ? 700 : 500,
+                      }}
+                    >
+                      {last.subject || "No subject"}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: "5px",
+                        fontSize: "12px",
+                        opacity: 0.65,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {last.body || "No content"}
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        marginTop: "9px",
+                        alignItems: "center",
+                      }}
+                    >
+                      {unread ? (
+                        <Badge tone="blue">Unread</Badge>
+                      ) : null}
+
+                      {last.status ? (
+                        <Badge
+                          tone={
+                            last.status === "Sent"
+                              ? "green"
+                              : last.status === "Failed"
+                                ? "red"
+                                : "amber"
+                          }
+                        >
+                          {last.status}
+                        </Badge>
+                      ) : null}
+
+                      {last.openedAt || last.clickedAt ? (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            opacity: 0.7,
+                          }}
+                        >
+                          <Icon name="eye" /> Tracked
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <div style={{ padding: "40px 20px" }}>
+                <Empty
+                  icon="inbox"
+                  title="No conversations"
+                  text="No email conversations match this filter."
+                />
+              </div>
+            )}
+
+            {/* PAGINATION */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "12px",
+                borderTop: "1px solid var(--border, #e5e7eb)",
+                position: "sticky",
+                bottom: 0,
+                background: "var(--surface, white)",
+              }}
+            >
               <button
-                key={message.id}
-                className={selected?.id === message.id ? "active" : ""}
+                className="btn secondary compact"
+                disabled={page <= 1 || loading}
                 onClick={() => {
-                  setSelected(message);
-                  update(message.id, { read: true });
+                  setPage((current) => Math.max(1, current - 1));
+                  setSelectedThread([]);
                 }}
               >
-                <span
-                  className={`message-channel ${message.channel === "SMS" ? "sms" : ""}`}
-                >
-                  <Icon name={message.channel === "SMS" ? "message" : "mail"} />
-                </span>
-                <div>
-                  <b>{message.to || "Unknown recipient"}</b>
-                  <small>
-                    {message.subject ||
-                      message.body?.slice(0, 60) ||
-                      "No content"}
-                  </small>
-                  <div className="message-meta-row">
-                    <Badge tone={statusTone(message.status)}>
-                      {message.status || "Saved"}
-                    </Badge>
-                    {message.openedAt ? (
-                      <span
-                        className="tracking-indicator"
-                        title={`Opened ${message.openCount || 1} time${(message.openCount || 1) > 1 ? "s" : ""}`}
-                      >
-                        <Icon name="eye" /> {message.openCount || 1}
-                      </span>
-                    ) : null}
-                    {message.clickedAt ? (
-                      <span
-                        className="tracking-indicator clicked"
-                        title={`Clicked ${message.clickCount || 1} time${(message.clickCount || 1) > 1 ? "s" : ""}`}
-                      >
-                        <Icon name="arrowRight" /> {message.clickCount || 1}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-                <time>{new Date(message.createdAt).toLocaleDateString()}</time>
+                Previous
               </button>
-            ))}
-          </div>
-        ) : (
-          <Empty
-            icon="inbox"
-            title="No messages"
-            text="Compose your first email or SMS. Messages saved here are ready for provider delivery when an integration is configured."
-            action={
+
+              <span style={{ fontSize: "12px", opacity: 0.65 }}>
+                Page {page}
+              </span>
+
               <button
-                className="btn primary compact"
-                onClick={() => setCompose(true)}
+                className="btn secondary compact"
+                disabled={!hasMore || loading}
+                onClick={() => {
+                  setPage((current) => current + 1);
+                  setSelectedThread([]);
+                }}
               >
-                Compose
+                Next
               </button>
-            }
-          />
-        )}
-        {selected ? (
-          <div className="message-pane">
-            <header>
-              <div>
-                <b>{selected.subject || `${selected.channel} message`}</b>
-                <small>
-                  To {selected.to} ·{" "}
-                  <Badge tone={statusTone(selected.status)}>
-                    {selected.status || "Saved"}
-                  </Badge>
-                  {selected.error ? ` · ${selected.error}` : ""}
-                  {selected.openedAt ? (
-                    <span
-                      className="tracking-badge"
-                      title={`Opened ${new Date(selected.openedAt).toLocaleString()} (${selected.openCount || 1}×)`}
-                    >
-                      {" "}
-                      · Opened {selected.openCount || 1}×
-                    </span>
-                  ) : null}
-                  {selected.clickedAt ? (
-                    <span
-                      className="tracking-badge clicked"
-                      title={`Clicked ${new Date(selected.clickedAt).toLocaleString()} (${selected.clickCount || 1}×)`}
-                    >
-                      {" "}
-                      · Clicked {selected.clickCount || 1}×
-                    </span>
-                  ) : null}
-                </small>
-              </div>
-              <div className="row-actions">
-                <button
-                  className="btn primary compact"
-                  disabled={sending}
-                  onClick={() => send(selected)}
-                >
-                  <Icon name="send" /> {sending ? "Sending…" : "Send"}
-                </button>
-                <button
-                  className="icon-btn danger-link"
-                  onClick={() => {
-                    confirm("Delete this message?") && remove(selected.id);
-                    setSelected(null);
+            </div>
+          </aside>
+
+          {/* RIGHT PANE */}
+          <main
+            style={{
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {selectedThread.length ? (
+              <>
+                <header
+                  style={{
+                    padding: "18px 22px",
+                    borderBottom:
+                      "1px solid var(--border, #e5e7eb)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "16px",
                   }}
                 >
-                  <Icon name="trash" />
-                </button>
-              </div>
-            </header>
-            <div className="message-thread">
-              <article
-                className={
-                  selected.channel === "SMS"
-                    ? "sms-bubble sent"
-                    : "email-message"
-                }
-              >
-                <p>{selected.body}</p>
-              </article>
-            </div>
-          </div>
-        ) : (
-          <div className="message-empty">
-            <Empty
-              icon="inbox"
-              title="Select a message"
-              text="Choose a conversation from the list or compose a new message."
-            />
-          </div>
-        )}
-      </section>
-      {compose ? (
-        <Drawer
-          title="New message"
-          subtitle="Compose an email or SMS."
-          onClose={() => {
-            setCompose(false);
-            setTemplateId("");
-          }}
-          footer={
-            <>
-              <button
-                className="btn secondary"
-                onClick={() => {
-                  setCompose(false);
-                  setTemplateId("");
+                  <div>
+                    <h3 style={{ margin: 0 }}>
+                      {selectedLastMessage?.subject || "No subject"}
+                    </h3>
+
+                    <small style={{ opacity: 0.65 }}>
+                      {selectedLastMessage?.to}
+                    </small>
+                  </div>
+
+                  {selectedLastMessage ? (
+                    <button
+                      className="icon-btn danger-link"
+                      title="Delete message"
+                      onClick={() =>
+                        deleteMessage(selectedLastMessage)
+                      }
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  ) : null}
+                </header>
+
+                <div
+                  style={{
+                    flex: 1,
+                    overflowY: "auto",
+                    padding: "22px",
+                  }}
+                >
+                  {selectedThread.map((message) => {
+                    const outbound =
+                      message.direction === "Outbound";
+
+                    return (
+                      <article
+                        key={message.id}
+                        style={{
+                          marginBottom: "18px",
+                          maxWidth: "85%",
+                          marginLeft: outbound ? "auto" : "0",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: "11px",
+                            opacity: 0.6,
+                            marginBottom: "6px",
+                          }}
+                        >
+                          {outbound ? "You" : message.to} ·{" "}
+                          {message.createdAt
+                            ? new Date(
+                                message.createdAt,
+                              ).toLocaleString()
+                            : ""}
+                        </div>
+
+                        <div
+                          style={{
+                            padding: "16px",
+                            borderRadius: "12px",
+                            background: outbound
+                              ? "rgba(59, 130, 246, 0.10)"
+                              : "var(--surface-muted, #f5f5f5)",
+                            border:
+                              "1px solid var(--border, #e5e7eb)",
+                            whiteSpace: "pre-wrap",
+                          }}
+                        >
+                          {message.body || "No content"}
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: "8px",
+                            marginTop: "6px",
+                            fontSize: "11px",
+                            opacity: 0.65,
+                          }}
+                        >
+                          {message.status ? (
+                            <span>{message.status}</span>
+                          ) : null}
+
+                          {message.openedAt ? (
+                            <span>
+                              <Icon name="eye" /> Opened{" "}
+                              {message.openCount || 1}×
+                            </span>
+                          ) : null}
+
+                          {message.clickedAt ? (
+                            <span>
+                              Clicked {message.clickCount || 1}×
+                            </span>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <footer
+                  style={{
+                    padding: "14px 20px",
+                    borderTop:
+                      "1px solid var(--border, #e5e7eb)",
+                    display: "flex",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <button
+                    className="btn primary"
+                    disabled={sending}
+                    onClick={() =>
+                      sendMessage({
+                        ...selectedLastMessage,
+                        id: "",
+                        body: "",
+                      })
+                    }
+                  >
+                    <Icon name="send" /> Reply
+                  </button>
+                </footer>
+              </>
+            ) : (
+              <div
+                style={{
+                  flex: 1,
+                  display: "grid",
+                  placeItems: "center",
                 }}
               >
-                Cancel
-              </button>
-            </>
+                <Empty
+                  icon="inbox"
+                  title="Select a conversation"
+                  text="Choose an email thread from the list."
+                />
+              </div>
+            )}
+          </main>
+        </div>
+      </section>
+
+      {/* COMPOSE */}
+      {compose ? (
+        <Drawer
+          title="New email"
+          subtitle="Compose a new email message."
+          onClose={() => {
+  setCompose(false);
+  setTemplateId("");
+  reset();
+}}
+          footer={
+            <button
+              className="btn secondary"
+              onClick={() => {
+                setCompose(false);
+                setTemplateId("");
+              }}
+            >
+              Cancel
+            </button>
           }
         >
           <div className="drawer-form">
             {templates.length ? (
               <label className="field">
                 <span>Template</span>
+
                 <select
                   value={templateId}
                   onChange={(e) => applyTemplate(e.target.value)}
                 >
                   <option value="">No template</option>
-                  {templates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
+
+                  {templates.map((template) => (
+                    <option
+                      key={template.id}
+                      value={template.id}
+                    >
+                      {template.name}
                     </option>
                   ))}
                 </select>
               </label>
             ) : null}
-            <label className="field">
-              <span>Channel</span>
-              <select
-                value={selected?.channel || "Email"}
-                onChange={(e) =>
-                  setSelected((prev) =>
-                    prev
-                      ? { ...prev, channel: e.target.value }
-                      : {
-                          channel: e.target.value,
-                          to: "",
-                          subject: "",
-                          body: "",
-                          id: "",
-                        },
-                  )
-                }
-              >
-                <option value="Email">Email</option>
-                <option value="SMS">SMS</option>
-              </select>
-            </label>
+
             <label className="field">
               <span>Recipient *</span>
+
               <input
                 type="email"
-                value={selected?.to || ""}
+                value={draft.to || ""}
                 onChange={(e) =>
-                  setSelected((prev) =>
-                    prev
-                      ? { ...prev, to: e.target.value }
-                      : {
-                          channel: "Email",
-                          to: e.target.value,
-                          subject: "",
-                          body: "",
-                          id: "",
-                        },
-                  )
+                  setDraft((prev) => ({
+                    ...prev,
+                    to: e.target.value,
+                  }))
                 }
                 placeholder="recipient@example.com"
               />
             </label>
-            {selected?.channel !== "SMS" ? (
-              <label className="field">
-                <span>Subject</span>
-                <input
-                  type="text"
-                  value={selected?.subject || ""}
-                  onChange={(e) =>
-                    setSelected((prev) =>
-                      prev
-                        ? { ...prev, subject: e.target.value }
-                        : {
-                            channel: "Email",
-                            to: "",
-                            subject: e.target.value,
-                            body: "",
-                            id: "",
-                          },
-                    )
-                  }
-                  placeholder="Email subject"
-                />
-              </label>
-            ) : null}
+
+            <label className="field">
+              <span>Subject</span>
+
+              <input
+                type="text"
+                value={draft.subject || ""}
+                onChange={(e) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    subject: e.target.value,
+                  }))
+                }
+                placeholder="Email subject"
+              />
+            </label>
+
             <label className="field">
               <span>Message *</span>
+
               <textarea
-                value={selected?.body || ""}
+                value={draft.body || ""}
                 onChange={(e) =>
-                  setSelected((prev) =>
-                    prev
-                      ? { ...prev, body: e.target.value }
-                      : {
-                          channel: "Email",
-                          to: "",
-                          subject: "",
-                          body: e.target.value,
-                          id: "",
-                        },
-                  )
+                  setDraft((prev) => ({
+                    ...prev,
+                    body: e.target.value,
+                  }))
                 }
-                placeholder="Write your message…"
+                placeholder="Write your email…"
                 rows={8}
               />
             </label>
+
             <button
               className="btn primary"
-              disabled={!selected?.to || !selected?.body || sending}
-              onClick={async () => {
-                if (!selected?.to || !selected?.body) return;
-                setSending(true);
-                try {
-                  const saved = await api<Row>(
-                    "/messages/send",
-                    json("POST", {
-                      id: selected.id,
-                      channel: selected.channel || "Email",
-                      to: selected.to,
-                      subject: selected.subject,
-                      body: selected.body,
-                      contact: selected.contact,
-                    }),
-                  );
-                  await load();
-                  setCompose(false);
-                  setSelected(saved);
-                  setTemplateId("");
-                  toast(
-                    saved.deliveredAt
-                      ? "Message sent"
-                      : saved.status === "Failed"
-                        ? "Delivery failed"
-                        : "Saved for later",
-                  );
-                } catch (error) {
-                  toast((error as Error).message, "error");
-                } finally {
-                  setSending(false);
-                }
-              }}
+              disabled={!draft.to || !draft.body || sending}
+              onClick={() => sendMessage(draft)}
             >
-              {sending ? "Sending…" : "Send"}
+              {sending ? "Sending…" : "Send email"}
             </button>
           </div>
         </Drawer>
@@ -4389,6 +5176,7 @@ function SequencesPage() {
               {item.enabled ? "Active" : "Paused"}
             </Badge>
             <Toggle
+              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "sequence"}`}
               value={Boolean(item.enabled)}
               onChange={(enabled) => update(item.id, { enabled })}
             />
@@ -4575,10 +5363,16 @@ function QuotesPage() {
       description="Generate and track quotes (estimate-to-contract)."
       icon="quote"
       fields={quoteFields}
+      columns={quoteFields.filter((field) =>
+        ["number", "customer", "total", "status", "expiryDate"].includes(
+          field.key,
+        ),
+      )}
       nameKey="number"
       statusField="status"
       synopsis={(r) => r.customer || r.deal || ""}
-      moneyColumn={["total", "discount"]}
+      moneyColumn={["total"]}
+      renderEditor={(props) => <QuoteForm {...props} />}
     />
   );
 }
@@ -4630,28 +5424,340 @@ function EventsPage() {
   );
 }
 function GoalsPage() {
+  const { items, loading, load, create, update, remove } =
+    useResource<Row>("goals");
+  const { toast } = useApp();
+  const navigate = useNavigate();
+  const importRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const [quickName, setQuickName] = useState("");
+  const [quickMetric, setQuickMetric] = useState("Revenue");
+  const [quickTarget, setQuickTarget] = useState("");
+  const [quickPeriod, setQuickPeriod] = useState("Monthly");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [celebration, setCelebration] = useState<{
+    goalName: string;
+    milestone: GoalMilestone;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!celebration) return;
+    const timer = window.setTimeout(() => setCelebration(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [celebration]);
+
+  async function quickAddGoal(event: FormEvent) {
+    event.preventDefault();
+    const target = Number(quickTarget);
+    if (!quickName.trim()) return toast("Goal name is required", "error");
+    if (!Number.isFinite(target) || target <= 0)
+      return toast("Target must be greater than zero", "error");
+
+    setQuickBusy(true);
+    try {
+      await create({
+        name: quickName.trim(),
+        metric: quickMetric,
+        period: quickPeriod,
+        target,
+        current: 0,
+      });
+      setQuickName("");
+      setQuickTarget("");
+      nameRef.current?.focus();
+    } catch {
+      // useResource displays the API error.
+    } finally {
+      setQuickBusy(false);
+    }
+  }
+
+  async function importCsv(file: File) {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return toast("CSV has no rows", "error");
+      const headers = lines[0]
+        .split(",")
+        .map((value) => value.trim().replace(/^"|"$/g, ""));
+      const records = lines.slice(1).map((line) => {
+        const values = line
+          .split(",")
+          .map((value) => value.trim().replace(/^"|"$/g, ""));
+        return Object.fromEntries(
+          headers.map((key, index) => [key, values[index] || ""]),
+        );
+      });
+      await api("/goals/batch", json("POST", records));
+      await load();
+      toast(`${records.length} goals imported`);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
+  }
+
+  async function exportGoals() {
+    try {
+      await downloadResourceCsv("goals");
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
+
+  async function saveGoal(data: Record<string, any>) {
+    const target = Number(data.target);
+    const current = Number(data.current);
+    if (!Number.isFinite(target) || target <= 0)
+      throw new Error("Target must be greater than zero");
+    if (!Number.isFinite(current) || current < 0)
+      throw new Error("Current value cannot be negative");
+
+    if (edit) {
+      const milestone = getCrossedGoalMilestone(
+        edit.current,
+        edit.target,
+        current,
+        target,
+      );
+      const saved = await update(edit.id, { ...data, current, target });
+      if (milestone) {
+        setCelebration({
+          goalName: String(saved.name || edit.name || "Goal"),
+          milestone,
+        });
+      }
+    } else {
+      const saved = await create({ ...data, current, target });
+      const milestone = getCrossedGoalMilestone(0, target, current, target);
+      if (milestone) {
+        setCelebration({
+          goalName: String(saved.name || data.name || "Goal"),
+          milestone,
+        });
+      }
+    }
+    setEdit(undefined);
+  }
+
   return (
-    <CrudTablePage
-      resource="goals"
-      title="Goals"
-      description="Time-bound targets and progress across teams."
-      icon="goal"
-      fields={goalFields}
-      columns={goalFields.slice(0, 4)}
-      nameKey="name"
-      statusField="period"
-      synopsis={(r) => `${r.metric || ""}${r.owner ? " · " + r.owner : ""}`}
-      extraColumn={{
-        title: "Progress",
-        render: (goal) => (
-          <GoalProgress
-            name={String(goal.name || "Goal")}
-            current={goal.current}
-            target={goal.target}
+    <div className="page goals-page">
+      <PageHeader
+        title="Goals"
+        description="Time-bound targets and progress across teams."
+      >
+        <input
+          ref={importRef}
+          hidden
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(event) =>
+            event.target.files?.[0] && importCsv(event.target.files[0])
+          }
+        />
+        <button
+          className="btn secondary"
+          onClick={() => importRef.current?.click()}
+        >
+          <Icon name="upload" /> Import
+        </button>
+        <button
+          className="btn secondary"
+          disabled={!items.length}
+          onClick={exportGoals}
+        >
+          <Icon name="download" /> Export CSV
+        </button>
+        <button className="btn secondary" onClick={() => setEdit(null)}>
+          <Icon name="plus" /> Full goal form
+        </button>
+      </PageHeader>
+
+      <form className="surface goal-quick-add" onSubmit={quickAddGoal}>
+        <div className="goal-quick-add-heading">
+          <span className="goal-quick-add-icon">
+            <Icon name="goal" />
+          </span>
+          <div>
+            <h2>Quick-add goal</h2>
+            <p>Create a goal now and fill in optional details later.</p>
+          </div>
+        </div>
+        <label className="field">
+          <span>Goal name</span>
+          <input
+            ref={nameRef}
+            value={quickName}
+            placeholder="e.g. Close 20 deals"
+            onChange={(event) => setQuickName(event.target.value)}
           />
-        ),
-      }}
-    />
+        </label>
+        <label className="field">
+          <span>Metric</span>
+          <select
+            value={quickMetric}
+            onChange={(event) => setQuickMetric(event.target.value)}
+          >
+            {goalFields[1].options?.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Target</span>
+          <input
+            type="number"
+            min="0.01"
+            step="any"
+            value={quickTarget}
+            placeholder="100"
+            onChange={(event) => setQuickTarget(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Period</span>
+          <select
+            value={quickPeriod}
+            onChange={(event) => setQuickPeriod(event.target.value)}
+          >
+            {goalFields[3].options?.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="btn primary goal-quick-add-submit"
+          disabled={quickBusy}
+          type="submit"
+        >
+          <Icon name="plus" /> {quickBusy ? "Adding…" : "Add goal"}
+        </button>
+      </form>
+
+      {loading ? (
+        <div className="table-loading">Loading goals…</div>
+      ) : items.length ? (
+        <div className="goal-card-grid">
+          {items.map((goal) => {
+            const progress = getGoalProgress(goal.current, goal.target);
+            return (
+              <article
+                className={`surface goal-card goal-card--${progress.tone}`}
+                key={goal.id}
+              >
+                <header>
+                  <button
+                    className="goal-card-title"
+                    onClick={() => navigate(`/goals/${goal.id}`)}
+                  >
+                    <span>{goal.metric || "Goal"}</span>
+                    <strong>{goal.name || "Untitled goal"}</strong>
+                  </button>
+                  <Badge tone={progress.tone}>{goal.period || "Monthly"}</Badge>
+                </header>
+                <GoalProgress
+                  name={String(goal.name || "Goal")}
+                  current={goal.current}
+                  target={goal.target}
+                />
+                <div className="goal-card-meta">
+                  <span>
+                    <b>Owner</b> {goal.owner || "Unassigned"}
+                  </span>
+                  <span>
+                    <b>Dates</b>{" "}
+                    {goal.startDate || goal.endDate
+                      ? `${goal.startDate || "Open"} – ${goal.endDate || "Open"}`
+                      : "No date range"}
+                  </span>
+                </div>
+                <footer>
+                  <button
+                    className="btn ghost compact"
+                    onClick={() => navigate(`/goals/${goal.id}`)}
+                  >
+                    View details
+                  </button>
+                  <div className="row-actions">
+                    <button
+                      className="icon-btn tiny"
+                      title="Edit goal"
+                      aria-label={`Edit ${goal.name || "goal"}`}
+                      onClick={() => setEdit(goal)}
+                    >
+                      <Icon name="edit" />
+                    </button>
+                    <button
+                      className="icon-btn tiny danger-link"
+                      title="Delete goal"
+                      aria-label={`Delete ${goal.name || "goal"}`}
+                      onClick={() =>
+                        confirm(`Delete ${goal.name || "goal"}?`) && remove(goal.id)
+                      }
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  </div>
+                </footer>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty
+          icon="goal"
+          title="No goals yet"
+          text="Use the quick-add form to create your first measurable goal."
+          action={
+            <button
+              className="btn primary compact"
+              onClick={() => nameRef.current?.focus()}
+            >
+              Add a goal
+            </button>
+          }
+        />
+      )}
+
+      {edit !== undefined ? (
+        <RecordForm
+          title={`${edit ? "Edit" : "Add"} goal`}
+          fields={goalFields}
+          initial={edit || {}}
+          onClose={() => setEdit(undefined)}
+          onSave={saveGoal}
+        />
+      ) : null}
+
+      {celebration ? (
+        <div className="goal-celebration" aria-live="polite">
+          <div className="goal-confetti" aria-hidden="true">
+            {Array.from({ length: 36 }, (_, index) => (
+              <i
+                key={index}
+                style={
+                  {
+                    left: `${(index * 37) % 100}%`,
+                    animationDelay: `${(index % 9) * 0.08}s`,
+                    animationDuration: `${1.8 + (index % 5) * 0.18}s`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+          <div className="goal-celebration-message">
+            <strong>{celebration.milestone}% milestone reached!</strong>
+            <span>{celebration.goalName}</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 function SurveysPage() {
@@ -4690,27 +5796,25 @@ function DuplicatesPage() {
   const [scope, setScope] = useState<"contacts" | "companies">("contacts");
   const [data, setData] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
   const load = () =>
     api<any>(`/duplicates?resource=${scope}`)
       .then(setData)
       .catch((err) => toast(err.message, "error"));
   useEffect(() => {
+    setSkipped([]);
     load();
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, [scope]);
-  async function mergeGroup(group: any) {
+  async function mergePair(group: any, keep: Row, merge: Row) {
     setBusy(true);
     try {
       await api(
         `/duplicates/merge`,
-        json("POST", {
-          resource: scope,
-          keepId: group.ids[0],
-          mergeIds: group.ids.slice(1),
-        }),
+        json("POST", { resource: scope, keepId: keep.id, mergeId: merge.id }),
       );
-      toast("Duplicates merged");
+      toast("Duplicate merged");
       load();
       window.dispatchEvent(new Event("tunaxa:resource-changed"));
     } catch (error) {
@@ -4719,7 +5823,46 @@ function DuplicatesPage() {
       setBusy(false);
     }
   }
-  const groups = data?.duplicates || [];
+  function skipPair(key: string) {
+    setSkipped((current) => [...current, key]);
+  }
+  const groups = (data?.duplicates || [])
+    .map((group: any) => ({
+      ...group,
+      records:
+        group.records ||
+        group.ids.map((id: string, index: number) => ({
+          id,
+          name: group.names[index],
+        })),
+    }))
+    .flatMap((group: any) =>
+      group.records.slice(1).map((merge: Row) => ({
+        group,
+        keep: group.records[0] as Row,
+        merge,
+        key: `${group.records[0].id}:${merge.id}`,
+      })),
+    )
+    .filter((pair: any) => !skipped.includes(pair.key));
+  const pair = groups[0];
+  const comparisonKeys = pair
+    ? [
+        ...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)]),
+      ].filter((key) => key !== "id")
+    : [];
+  const displayName = (record: Row) =>
+    String(record.name || record.email || record.id || "Untitled");
+  const displayValue = (value: unknown) => {
+    if (value === undefined || value === null || value === "") return "—";
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+  const labelFor = (key: string) =>
+    key
+      .replace(/([A-Z])/g, " $1")
+      .replace(/^./, (value) => value.toUpperCase());
   return (
     <div className="page">
       <PageHeader
@@ -4747,59 +5890,69 @@ function DuplicatesPage() {
           Companies
         </button>
       </PageHeader>
-      <section className="surface table-surface">
-        {groups.length ? (
-          groups.map((group: any, idx: number) => (
-            <div className="dupe-group" key={idx}>
-              <div className="dupe-group-head">
-                <div className="dupe-member">
-                  <Avatar name={group.names[0]} />
-                  <div>
-                    <b>{group.names[0]}</b>
-                    <small>Primary record (kept)</small>
-                  </div>
-                </div>
-                <div className="row-actions">
-                  <button
-                    className="btn secondary compact"
-                    disabled={busy}
-                    onClick={() => mergeGroup(group)}
-                  >
-                    <Icon name="check" /> Merge into primary
-                  </button>
-                </div>
+      <section className="surface duplicate-comparison">
+        {pair ? (
+          <>
+            <div className="duplicate-comparison-head">
+              <div>
+                <span className="eyebrow">Potential duplicate</span>
+                <h2>Review these records</h2>
               </div>
-              {group.names.slice(1).map((name: string, j: number) => {
-                const sc = group.matches?.[j]?.score ?? null;
-                return (
-                  <div className="dupe-member" key={j}>
-                    <Avatar name={name} />
-                    <div>
-                      <b>{name}</b>
-                      <small>Duplicate (will be merged)</small>
-                    </div>
-                    <div className="row-actions">
-                      <Badge
-                        tone={
-                          sc == null
-                            ? "neutral"
-                            : sc >= 0.8
-                              ? "green"
-                              : sc >= 0.6
-                                ? "amber"
-                                : "red"
-                        }
-                      >
-                        {sc == null
-                          ? "n/a"
-                          : `${Math.round(sc * 100)}% match to primary`}
-                      </Badge>
-                    </div>
-                  </div>
-                );
-              })}
+              <Badge tone="blue">{pair.group.confidence ?? 0}% match</Badge>
             </div>
-          ))
+            <div className="duplicate-columns">
+              <article className="duplicate-record keep">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.keep)} />
+                  <div>
+                    <small>Record to keep</small>
+                    <h3>{displayName(pair.keep)}</h3>
+                  </div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => (
+                    <div className="duplicate-field" key={key}>
+                      <span>{labelFor(key)}</span>
+                      <b>{displayValue(pair.keep[key])}</b>
+                    </div>
+                  ))}
+                </div>
+              </article>
+              <article className="duplicate-record merge">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.merge)} />
+                  <div>
+                    <small>Record to merge and delete</small>
+                    <h3>{displayName(pair.merge)}</h3>
+                  </div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => (
+                    <div className="duplicate-field" key={key}>
+                      <span>{labelFor(key)}</span>
+                      <b>{displayValue(pair.merge[key])}</b>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </div>
+            <div className="duplicate-actions">
+              <button
+                className="btn secondary"
+                disabled={busy}
+                onClick={() => skipPair(pair.key)}
+              >
+                <Icon name="close" /> Skip
+              </button>
+              <button
+                className="btn primary"
+                disabled={busy}
+                onClick={() => mergePair(pair.group, pair.keep, pair.merge)}
+              >
+                <Icon name="check" /> Merge
+              </button>
+            </div>
+          </>
         ) : (
           <Empty
             icon="duplicate"
@@ -4909,6 +6062,7 @@ function PortalView({
             <div className="portal-access-form">
               <input
                 type="email"
+                aria-label="Account email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
@@ -5032,7 +6186,8 @@ function FinancePage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -5041,7 +6196,7 @@ function FinancePage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -5108,93 +6263,338 @@ function FinancePage() {
 
 function ForecastPage() {
   const navigate = useNavigate();
-  const [finance, setFinance] = useState<any>(null);
+  const [deals, setDeals] = useState<Row[]>([]);
+  const [pipeline, setPipeline] = useState<any[]>([]);
+  const [range, setRange] = useState<"6" | "12" | "custom">("6");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
   useEffect(() => {
-    const load = () =>
-      api("/finance/summary")
-        .then(setFinance)
-        .catch(() => {});
-    load();
-    window.addEventListener("tunaxa:resource-changed", load);
-    return () => window.removeEventListener("tunaxa:resource-changed", load);
+    Promise.all([api<any>("/deals?limit=1000"), api<any>("/pipeline")])
+      .then(([dealResult, pipelineResult]) => {
+        const dealItems = Array.isArray(dealResult)
+          ? dealResult
+          : dealResult?.items || [];
+        setDeals(dealItems);
+
+        const pipelineItems = Array.isArray(pipelineResult)
+          ? pipelineResult
+          : pipelineResult?.stages || [];
+        setPipeline(pipelineItems);
+      })
+      .catch(() => {});
   }, []);
-  const max = Math.max(
-    1,
-    ...(finance?.monthly || []).flatMap((m: any) => [m.revenue, m.expenses]),
+
+  const stageProbability = new Map<string, number>();
+
+  pipeline.forEach((stage: any) => {
+    const name = String(stage.name || stage.id || "").toLowerCase();
+    const probability = Number(stage.probability);
+
+    if (name) {
+      stageProbability.set(
+        name,
+        Number.isFinite(probability) ? probability : 0,
+      );
+    }
+  });
+
+  const probabilityFor = (stage: string) => {
+    const normalized = String(stage || "").toLowerCase();
+
+    if (stageProbability.has(normalized)) {
+      return stageProbability.get(normalized) || 0;
+    }
+
+    if (normalized === "won") return 100;
+    if (normalized === "lost") return 0;
+
+    return 0;
+  };
+
+  const now = new Date();
+
+  function monthKey(date: Date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function monthLabel(key: string) {
+    const [year, month] = key.split("-").map(Number);
+
+    return new Intl.DateTimeFormat("en", {
+      month: "short",
+      year: "numeric",
+    }).format(new Date(year, month - 1, 1));
+  }
+
+  function addMonths(date: Date, amount: number) {
+    return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+  }
+
+  const defaultMonths = range === "12" ? 12 : 6;
+
+  let fromDate =
+    range === "custom" && customFrom
+      ? new Date(`${customFrom}T00:00:00`)
+      : addMonths(
+          new Date(now.getFullYear(), now.getMonth(), 1),
+          -defaultMonths + 1,
+        );
+
+  let toDate =
+    range === "custom" && customTo
+      ? new Date(`${customTo}T23:59:59`)
+      : new Date(
+          now.getFullYear(),
+          now.getMonth() + defaultMonths,
+          0,
+          23,
+          59,
+          59,
+        );
+
+  if (Number.isNaN(fromDate.getTime())) {
+    fromDate = addMonths(new Date(now.getFullYear(), now.getMonth(), 1), -5);
+  }
+
+  if (Number.isNaN(toDate.getTime())) {
+    toDate = new Date(now.getFullYear(), now.getMonth() + 6, 0, 23, 59, 59);
+  }
+
+  const months: string[] = [];
+  let cursor = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+  const end = new Date(toDate.getFullYear(), toDate.getMonth(), 1);
+
+  while (cursor <= end && months.length < 36) {
+    months.push(monthKey(cursor));
+    cursor = addMonths(cursor, 1);
+  }
+
+  const chartData = months.map((month) => {
+    const historicalWon = deals
+      .filter((deal) => {
+        if (String(deal.stage || "").toLowerCase() !== "won") {
+          return false;
+        }
+
+        const date = new Date(deal.updatedAt || deal.createdAt || "");
+        return !Number.isNaN(date.getTime()) && monthKey(date) === month;
+      })
+      .reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+
+    const pipelineDeals = deals.filter((deal) => {
+      const stage = String(deal.stage || "").toLowerCase();
+
+      if (stage === "won" || stage === "lost") {
+        return false;
+      }
+
+      if (!deal.closeDate) {
+        return false;
+      }
+
+      const date = new Date(`${String(deal.closeDate).slice(0, 10)}T00:00:00`);
+
+      return !Number.isNaN(date.getTime()) && monthKey(date) === month;
+    });
+
+    const pipelineValue = pipelineDeals.reduce(
+      (sum, deal) => sum + Number(deal.value || 0),
+      0,
+    );
+
+    const weightedPipeline = pipelineDeals.reduce((sum, deal) => {
+      const value = Number(deal.value || 0);
+      const probability = probabilityFor(deal.stage);
+
+      return sum + value * (probability / 100);
+    }, 0);
+
+    const averageProbability =
+      pipelineValue > 0 ? (weightedPipeline / pipelineValue) * 100 : 0;
+
+    return {
+      month,
+      label: monthLabel(month),
+      historical: historicalWon,
+      pipeline: weightedPipeline,
+      rawPipeline: pipelineValue,
+      probability: averageProbability,
+    };
+  });
+
+  const totalHistorical = chartData.reduce(
+    (sum, item) => sum + item.historical,
+    0,
   );
+
+  const totalForecast = chartData.reduce((sum, item) => sum + item.pipeline, 0);
+
   return (
     <div className="page">
       <PageHeader
         title="Revenue Forecast"
-        description="Projected revenue based on recent cash flow."
+        description="Historical won revenue and probability-weighted pipeline forecast."
       />
-      <section className="surface report-table">
-        <div className="section-head">
+
+      <section className="surface">
+        <div
+          className="section-head"
+          style={{
+            alignItems: "flex-start",
+            gap: "16px",
+            flexWrap: "wrap",
+          }}
+        >
           <div>
-            <h2>Monthly cash flow</h2>
-            <p>Revenue vs expenses</p>
+            <h2>Revenue forecast</h2>
+            <p>Won revenue vs probability-weighted pipeline by month.</p>
           </div>
-          <b className="section-kpi">
-            {money(finance?.avgMonthlyRevenue || 0)} <small>avg / month</small>
-          </b>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            {(["6", "12", "custom"] as const).map((value) => (
+              <button
+                key={value}
+                className={`btn ${range === value ? "primary" : "secondary"}`}
+                onClick={() => setRange(value)}
+              >
+                {value === "6"
+                  ? "Last 6 months"
+                  : value === "12"
+                    ? "Last 12 months"
+                    : "Custom"}
+              </button>
+            ))}
+          </div>
         </div>
-        {(finance?.monthly || []).map((m: any) =>
-          m.revenue + m.expenses > 0 ? (
-            <div className="report-row" key={m.month}>
-              <span>{m.label}</span>
-              <div className="bar-track dual">
-                <i
-                  className="rev"
-                  style={{ width: `${Math.max(2, (m.revenue / max) * 100)}%` }}
+
+        {range === "custom" ? (
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              flexWrap: "wrap",
+              marginBottom: "20px",
+            }}
+          >
+            <label>
+              <span>From</span>
+              <input
+                className="input"
+                type="date"
+                value={customFrom}
+                onChange={(event) => setCustomFrom(event.target.value)}
+              />
+            </label>
+
+            <label>
+              <span>To</span>
+              <input
+                className="input"
+                type="date"
+                value={customTo}
+                onChange={(event) => setCustomTo(event.target.value)}
+              />
+            </label>
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "12px",
+            marginBottom: "20px",
+          }}
+        >
+          <div className="surface">
+            <small>Historical won revenue</small>
+            <h3>{money(totalHistorical)}</h3>
+          </div>
+
+          <div className="surface">
+            <small>Weighted pipeline</small>
+            <h3>{money(totalForecast)}</h3>
+          </div>
+        </div>
+
+        {chartData.length > 0 ? (
+          <div style={{ width: "100%", height: 420 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={chartData}
+                margin={{
+                  top: 20,
+                  right: 20,
+                  left: 10,
+                  bottom: 10,
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+
+                <XAxis dataKey="label" />
+
+                <YAxis tickFormatter={(value) => money(value)} />
+
+                <Tooltip
+                  formatter={(value: any, name: any, item: any) => {
+                    if (name === "pipeline") {
+                      return [
+                        money(Number(value)),
+                        `Weighted pipeline (${Number(item?.payload?.probability || 0).toFixed(0)}%)`,
+                      ];
+                    }
+
+                    return [
+                      money(Number(value)),
+                      name === "historical" ? "Historical won revenue" : name,
+                    ];
+                  }}
                 />
-                <i
-                  className="exp"
-                  style={{ width: `${Math.max(2, (m.expenses / max) * 100)}%` }}
+
+                <Legend />
+
+                <Bar
+                  dataKey="pipeline"
+                  name="Pipeline forecast"
+                  fill="#8b5cf6"
+                  fillOpacity={0.65}
+                  radius={[4, 4, 0, 0]}
                 />
-              </div>
-              <b>{money(m.profit)}</b>
-              <strong>{money(m.revenue)}</strong>
-            </div>
-          ) : null,
-        )}
-        {!finance?.monthly?.length ||
-        finance.monthly.every((m: any) => m.revenue + m.expenses === 0) ? (
+
+                <Line
+                  type="monotone"
+                  dataKey="historical"
+                  name="Historical won revenue"
+                  stroke="#10b981"
+                  strokeWidth={3}
+                  dot={{ r: 4 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
           <Empty
             icon="trend"
-            title="No finance data"
-            text="Add paid invoices and expenses to see cash flow and forecast."
+            title="No forecast data"
+            text="Add deals with values and close dates to build the revenue forecast."
             action={
               <button
                 className="btn primary compact"
-                onClick={() => navigate("/invoices")}
+                onClick={() => navigate("/pipeline")}
               >
-                Add invoice
+                Open pipeline
               </button>
             }
           />
-        ) : null}
-      </section>
-      <section className="surface report-table">
-        <div className="section-head">
-          <div>
-            <h2>Next 3 months (projected)</h2>
-            <p>Based on rolling average revenue</p>
-          </div>
-        </div>
-        {(finance?.forecast || []).map((f: any) => (
-          <div className="report-row" key={f.month}>
-            <span>{f.label}</span>
-            <div className="bar-track">
-              <i
-                style={{
-                  width: `${Math.min(100, (f.projected / Math.max(1, finance?.avgMonthlyRevenue || 1) / 4) * 100)}%`,
-                }}
-              />
-            </div>
-            <b>projected</b>
-            <strong>{money(f.projected)}</strong>
-          </div>
-        ))}
+        )}
       </section>
     </div>
   );
@@ -5250,8 +6650,10 @@ function ReportsPage() {
           <Icon name="download" /> Export CSV
         </button>
       </PageHeader>
+      <CustomReportBuilder />
       <div className="stats-grid">
-        <article className="stat-card">
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-blue">
             <Icon name="lead" />
           </div>
@@ -5260,8 +6662,9 @@ function ReportsPage() {
             <strong>{leads.items.length}</strong>
             <span>All lead records</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-green">
             <Icon name="pipeline" />
           </div>
@@ -5273,8 +6676,9 @@ function ReportsPage() {
               total value
             </span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-purple">
             <Icon name="phone" />
           </div>
@@ -5283,8 +6687,9 @@ function ReportsPage() {
             <strong>{calls.items.length}</strong>
             <span>Inbound and outbound</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-amber">
             <Icon name="tasks" />
           </div>
@@ -5295,7 +6700,7 @@ function ReportsPage() {
             </strong>
             <span>Needs attention</span>
           </div>
-        </article>
+        </div>
       </div>
       <section className="surface report-table">
         <div className="section-head">
@@ -5396,8 +6801,18 @@ function AuditPage() {
 }
 
 function TeamPage() {
-  const { items, create, update, remove } = useResource<Row>("team");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const { toast } = useApp();
+  const { items, loading, update, remove } = useResource<Row>("team");
+  const [edit, setEdit] = useState<Row | undefined>();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteSent, setInviteSent] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(true);
+  const [invitationsError, setInvitationsError] = useState("");
+  const [resending, setResending] = useState("");
   const fields: FieldSpec[] = [
     { key: "avatar", label: "Photo", type: "photo" },
     { key: "name", label: "Name" },
@@ -5417,18 +6832,162 @@ function TeamPage() {
   ];
   const fieldsForForm = fields.filter((f) => f.key !== "avatar");
   const avatarField = fields.find((f) => f.key === "avatar")!;
+
+  async function loadInvitations() {
+    setInvitationsLoading(true);
+    setInvitationsError("");
+    try {
+      const response = await api<unknown>("/users/invites");
+      setInvitations(normalizeInvitations(response));
+    } catch (error) {
+      setInvitationsError((error as Error).message);
+    } finally {
+      setInvitationsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadInvitations();
+  }, []);
+
+  function openInvite() {
+    setInviteEmail("");
+    setInviteSent("");
+    setInviteError("");
+    setInviteOpen(true);
+  }
+
+  async function sendInvitation(event: FormEvent) {
+    event.preventDefault();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setInviteError("Enter a valid email address.");
+      return;
+    }
+
+    setInviteBusy(true);
+    setInviteError("");
+    try {
+      await api("/users/invite", json("POST", { email }));
+      setInviteSent(email);
+      toast("Invitation sent");
+      await loadInvitations();
+    } catch (error) {
+      setInviteError((error as Error).message);
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function resendInvitation(invitation: PendingInvitation) {
+    setResending(invitation.id);
+    setInvitationsError("");
+    try {
+      await api(
+        "/users/invite",
+        json("POST", { email: invitation.email }),
+      );
+      toast(`Invitation resent to ${invitation.email}`);
+      await loadInvitations();
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      setResending("");
+    }
+  }
+
   return (
     <div className="page">
       <PageHeader
         title="Team & Roles"
         description="Workspace members and role assignments."
       >
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add member
+        <button className="btn primary" onClick={openInvite}>
+          <Icon name="send" /> Invite member
         </button>
       </PageHeader>
+
+      <section className="surface team-invitations" aria-labelledby="pending-invitations-title">
+        <header className="team-invitations-head">
+          <div>
+            <h2 id="pending-invitations-title">Pending invitations</h2>
+            <p>Invitations that have not been accepted yet.</p>
+          </div>
+          <Badge tone="blue">{invitations.length} pending</Badge>
+        </header>
+
+        {invitationsLoading ? (
+          <div className="team-invitations-state" aria-live="polite">
+            Loading invitations…
+          </div>
+        ) : invitationsError ? (
+          <div className="team-invitations-error" role="alert">
+            <div>
+              <b>Could not load pending invitations</b>
+              <span>{invitationsError}</span>
+            </div>
+            <button
+              className="btn secondary compact"
+              type="button"
+              onClick={() => void loadInvitations()}
+            >
+              Try again
+            </button>
+          </div>
+        ) : invitations.length ? (
+          <div className="team-invitation-list">
+            {invitations.map((invitation) => {
+              const expired = invitationIsExpired(invitation.expiresAt);
+              const expiry = invitation.expiresAt
+                ? new Date(invitation.expiresAt)
+                : null;
+              const validExpiry = expiry && !Number.isNaN(expiry.getTime());
+              return (
+                <article className="team-invitation-row" key={invitation.id}>
+                  <span className="team-invitation-icon">
+                    <Icon name="mail" />
+                  </span>
+                  <div className="team-invitation-copy">
+                    <b>{invitation.email}</b>
+                    <span>
+                      <Icon name="clock" size={13} />
+                      {validExpiry ? (
+                        <time dateTime={invitation.expiresAt}>
+                          {expired ? "Expired " : "Expires "}
+                          {expiry.toLocaleString()}
+                        </time>
+                      ) : (
+                        "Expiry unavailable"
+                      )}
+                    </span>
+                  </div>
+                  <Badge tone={expired ? "amber" : "blue"}>
+                    {expired ? "Expired" : "Pending"}
+                  </Badge>
+                  <button
+                    className="btn secondary compact"
+                    type="button"
+                    disabled={resending === invitation.id}
+                    onClick={() => void resendInvitation(invitation)}
+                  >
+                    {resending === invitation.id ? "Sending…" : "Resend"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="team-invitations-state empty">
+            <Icon name="checkCircle" size={21} />
+            <span>No pending invitations</span>
+          </div>
+        )}
+      </section>
+
       <section className="surface table-surface">
-        {items.length ? (
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : items.length ? (
           <table>
             <thead>
               <tr>
@@ -5466,6 +7025,7 @@ function TeamPage() {
                     <div className="row-actions">
                       <button
                         className="icon-btn tiny"
+                        aria-label={`Edit ${member.name || member.email || "team member"}`}
                         onClick={() => setEdit(member)}
                       >
                         <Icon name="edit" />
@@ -5473,6 +7033,7 @@ function TeamPage() {
                       {member.role !== "Owner" ? (
                         <button
                           className="icon-btn tiny danger-link"
+                          aria-label={`Remove ${member.name || member.email || "team member"}`}
                           onClick={() =>
                             confirm("Remove this member?") && remove(member.id)
                           }
@@ -5494,25 +7055,120 @@ function TeamPage() {
             action={
               <button
                 className="btn primary compact"
-                onClick={() => setEdit(null)}
+                onClick={openInvite}
               >
-                Add member
+                Invite member
               </button>
             }
           />
         )}
       </section>
+
       {edit !== undefined ? (
         <RecordForm
-          title={`${edit ? "Edit" : "Add"} team member`}
+          title="Edit team member"
           fields={[avatarField, ...fieldsForForm]}
-          initial={edit || { status: "Invited", role: "Sales rep" }}
+          initial={edit}
           onClose={() => setEdit(undefined)}
           onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
+            await update(edit.id, data);
             setEdit(undefined);
           }}
         />
+      ) : null}
+
+      {inviteOpen ? (
+        <Modal
+          title={inviteSent ? "Invitation sent" : "Invite a team member"}
+          onClose={() => !inviteBusy && setInviteOpen(false)}
+          footer={
+            inviteSent ? (
+              <>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={() => {
+                    setInviteEmail("");
+                    setInviteSent("");
+                    setInviteError("");
+                  }}
+                >
+                  Invite another
+                </button>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => setInviteOpen(false)}
+                >
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  disabled={inviteBusy}
+                  onClick={() => setInviteOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn primary"
+                  type="submit"
+                  form="team-invite-form"
+                  disabled={inviteBusy}
+                >
+                  <Icon name="send" />
+                  {inviteBusy ? "Sending…" : "Send invitation"}
+                </button>
+              </>
+            )
+          }
+        >
+          {inviteSent ? (
+            <div className="team-invite-success" role="status">
+              <span>
+                <Icon name="check" size={27} />
+              </span>
+              <h4>Invitation sent</h4>
+              <p>
+                An invitation was sent to <b>{inviteSent}</b>.
+              </p>
+            </div>
+          ) : (
+            <form id="team-invite-form" className="team-invite-form" onSubmit={sendInvitation}>
+              <div className="team-invite-intro">
+                <span>
+                  <Icon name="mail" size={22} />
+                </span>
+                <div>
+                  <b>Invite by email</b>
+                  <p>The new member will receive a link to join this workspace.</p>
+                </div>
+              </div>
+              <label className="field">
+                <span>Email address</span>
+                <input
+                  autoFocus
+                  type="email"
+                  value={inviteEmail}
+                  placeholder="teammate@company.com"
+                  autoComplete="email"
+                  onChange={(event) => {
+                    setInviteEmail(event.target.value);
+                    setInviteError("");
+                  }}
+                />
+              </label>
+              {inviteError ? (
+                <p className="inline-alert error" role="alert">
+                  <Icon name="warning" /> {inviteError}
+                </p>
+              ) : null}
+            </form>
+          )}
+        </Modal>
       ) : null}
     </div>
   );
@@ -5581,6 +7237,7 @@ function FieldsPage() {
                   <td>{item.type}</td>
                   <td>
                     <Toggle
+                      label={`Make ${item.name || "field"} ${item.required ? "optional" : "required"}`}
                       value={Boolean(item.required)}
                       onChange={(required) => update(item.id, { required })}
                     />
@@ -5589,12 +7246,14 @@ function FieldsPage() {
                     <div className="row-actions">
                       <button
                         className="icon-btn tiny"
+                        aria-label={`Edit ${item.name || "custom field"}`}
                         onClick={() => setEdit(item)}
                       >
                         <Icon name="edit" />
                       </button>
                       <button
                         className="icon-btn tiny danger-link"
+                        aria-label={`Delete ${item.name || "custom field"}`}
                         onClick={() =>
                           confirm("Delete this custom field?") &&
                           remove(item.id)
@@ -5703,11 +7362,16 @@ function TemplatesManager() {
                 <small>{t.subject}</small>
               </div>
               <div className="row-actions">
-                <button className="icon-btn tiny" onClick={() => setEdit(t)}>
+                <button
+                  className="icon-btn tiny"
+                  aria-label={`Edit ${t.name || "template"}`}
+                  onClick={() => setEdit(t)}
+                >
                   <Icon name="edit" />
                 </button>
                 <button
                   className="icon-btn tiny danger-link"
+                  aria-label={`Delete ${t.name || "template"}`}
                   onClick={() => removeTemplate(t)}
                 >
                   <Icon name="trash" />
@@ -5751,11 +7415,23 @@ function SettingsPage() {
   const { toast } = useApp();
   const [tab, setTab] = useState("Workspace");
   const [settings, setSettings] = useState<Record<string, any> | null>(null);
+  const {
+  register,
+  handleSubmit,
+  reset,
+  watch,
+  setValue,
+} = useForm<Record<string, any>>({
+  defaultValues: {},
+});
   useEffect(() => {
-    api<Record<string, any>>("/settings")
-      .then(setSettings)
-      .catch((error) => toast(error.message, "error"));
-  }, []);
+  api<Record<string, any>>("/settings")
+    .then((data) => {
+      setSettings(data);
+      reset(data);
+    })
+    .catch((error) => toast(error.message, "error"));
+}, [reset]);
   if (!settings)
     return (
       <div className="page">
@@ -5768,18 +7444,19 @@ function SettingsPage() {
       current ? { ...current, [key]: value } : current,
     );
   }
-  async function save() {
-    try {
-      const saved = await api<Record<string, any>>(
-        "/settings",
-        json("PUT", settings),
-      );
-      setSettings(saved);
-      toast("Settings saved");
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
+ async function save(data: Record<string, any>) {
+  try {
+    const saved = await api<Record<string, any>>(
+      "/settings",
+      json("PUT", data),
+    );
+    setSettings(saved);
+    reset(saved);
+    toast("Settings saved");
+  } catch (error) {
+    toast((error as Error).message, "error");
   }
+}
   const tabs = [
     "Workspace",
     "Calling",
@@ -5789,20 +7466,19 @@ function SettingsPage() {
     "Data & security",
   ];
   const input = (
-    key: string,
-    label: string,
-    options?: { type?: string; placeholder?: string; span2?: boolean },
-  ) => (
-    <label className={`field ${options?.span2 ? "span-2" : ""}`}>
-      <span>{label}</span>
-      <input
-        type={options?.type || "text"}
-        value={settings[key] || ""}
-        placeholder={options?.placeholder}
-        onChange={(e) => set(key, e.target.value)}
-      />
-    </label>
-  );
+  key: string,
+  label: string,
+  options?: { type?: string; placeholder?: string; span2?: boolean },
+) => (
+  <label className={`field ${options?.span2 ? "span-2" : ""}`}>
+    <span>{label}</span>
+    <input
+      type={options?.type || "text"}
+      {...register(key)}
+      placeholder={options?.placeholder}
+    />
+  </label>
+);
 
   return (
     <div className="page">
@@ -5810,9 +7486,9 @@ function SettingsPage() {
         title="Settings"
         description="Manage your workspace preferences and integrations."
       >
-        <button className="btn primary" onClick={save}>
-          Save changes
-        </button>
+        <button className="btn primary" onClick={handleSubmit(save)}>
+  Save changes
+</button>
       </PageHeader>
       <div className="settings-layout">
         <aside className="settings-nav">
@@ -5871,10 +7547,7 @@ function SettingsPage() {
                   </label>
                   <label className="field">
                     <span>Currency</span>
-                    <select
-                      value={settings.currency || "USD"}
-                      onChange={(e) => set("currency", e.target.value)}
-                    >
+                    <select {...register("currency")}>
                       <option>USD</option>
                       <option>EUR</option>
                       <option>TND</option>
@@ -5883,10 +7556,7 @@ function SettingsPage() {
                   {input("timezone", "Timezone")}
                   <label className="field">
                     <span>Week starts</span>
-                    <select
-                      value={settings.weekStarts || "Monday"}
-                      onChange={(e) => set("weekStarts", e.target.value)}
-                    >
+                    <select {...register("weekStarts")}>
                       <option>Monday</option>
                       <option>Sunday</option>
                     </select>
@@ -5897,23 +7567,23 @@ function SettingsPage() {
             {tab === "Calling" ? (
               <>
                 <Setting
-                  title="Automatic call recording"
-                  text="Default recording preference for new calls."
-                  value={settings.callRecording}
-                  onChange={(v) => set("callRecording", v)}
+                 title="Automatic call recording"
+                 text="Default recording preference for new calls."
+                 value={Boolean(watch("callRecording"))}
+                 onChange={(v) => setValue("callRecording", v)}
                 />
                 <Setting
-                  title="Local presence"
-                  text="Use a matching local outbound number when your provider supports it."
-                  value={settings.localPresence}
-                  onChange={(v) => set("localPresence", v)}
-                />
-                <Setting
-                  title="Voicemail detection"
-                  text="Enable voicemail detection for a connected provider."
-                  value={settings.voicemailDetection}
-                  onChange={(v) => set("voicemailDetection", v)}
-                />
+  title="Local presence"
+  text="Use a matching local outbound number when your provider supports it."
+  value={Boolean(watch("localPresence"))}
+  onChange={(v) => setValue("localPresence", v)}
+/>
+               <Setting
+  title="Voicemail detection"
+  text="Enable voicemail detection for a connected provider."
+  value={Boolean(watch("voicemailDetection"))}
+  onChange={(v) => setValue("voicemailDetection", v)}
+/>
                 <h3 className="settings-section">Twilio telephony</h3>
                 <div className="form-grid">
                   {input("twilioSid", "Account SID", { placeholder: "AC…" })}
@@ -5939,14 +7609,14 @@ function SettingsPage() {
                 <Setting
                   title="Email tracking"
                   text="Track opens and clicks when supported by your provider."
-                  value={settings.emailTracking}
-                  onChange={(v) => set("emailTracking", v)}
+                  value={Boolean(watch("emailTracking"))}
+                  onChange={(v) => setValue("emailTracking", v)}
                 />
                 <Setting
                   title="Two-way SMS"
                   text="Allow replies through a connected SMS provider."
-                  value={settings.twoWaySms}
-                  onChange={(v) => set("twoWaySms", v)}
+                 value={Boolean(watch("twoWaySms"))}
+                 onChange={(v) => setValue("twoWaySms", v)}
                 />
                 <h3 className="settings-section">SMTP server</h3>
                 <div className="form-grid">
@@ -5957,11 +7627,10 @@ function SettingsPage() {
                   <label className="field">
                     <span>Connection security</span>
                     <select
-                      value={String(settings.smtpSecure)}
-                      onChange={(e) =>
-                        set("smtpSecure", e.target.value === "true")
-                      }
-                    >
+                  {...register("smtpSecure", {
+                  setValueAs: (value) => value === "true",
+               })}
+                >
                       <option value="false">STARTTLS (port 587)</option>
                       <option value="true">Direct SSL (port 465)</option>
                     </select>
@@ -5972,36 +7641,36 @@ function SettingsPage() {
             ) : null}
             {tab === "AI & coaching" ? (
               <>
+               <Setting
+  title="AI transcription"
+  text="Enable transcription through a connected AI provider."
+  value={Boolean(watch("aiTranscription"))}
+  onChange={(v) => setValue("aiTranscription", v)}
+/>
                 <Setting
-                  title="AI transcription"
-                  text="Enable transcription through a connected AI provider."
-                  value={settings.aiTranscription}
-                  onChange={(v) => set("aiTranscription", v)}
-                />
+  title="Automatic summaries"
+  text="Generate call summaries with AI after transcription."
+  value={Boolean(watch("aiSummaries"))}
+  onChange={(v) => setValue("aiSummaries", v)}
+/>
                 <Setting
-                  title="Automatic summaries"
-                  text="Generate call summaries with AI after transcription."
-                  value={settings.aiSummaries}
-                  onChange={(v) => set("aiSummaries", v)}
-                />
-                <Setting
-                  title="Auto-transcribe Twilio recordings"
-                  text="Transcribe incoming call recordings automatically."
-                  value={settings.autoTranscribeRecordings}
-                  onChange={(v) => set("autoTranscribeRecordings", v)}
-                />
-                <Setting
-                  title="Deal risk"
-                  text="Enable deal-risk analysis."
-                  value={settings.dealRisk}
-                  onChange={(v) => set("dealRisk", v)}
-                />
-                <Setting
-                  title="Real-time coaching"
-                  text="Enable live coaching integrations."
-                  value={settings.realTimeCoaching}
-                  onChange={(v) => set("realTimeCoaching", v)}
-                />
+  title="Auto-transcribe Twilio recordings"
+  text="Transcribe incoming call recordings automatically."
+  value={Boolean(watch("autoTranscribeRecordings"))}
+  onChange={(v) => setValue("autoTranscribeRecordings", v)}
+/>
+               <Setting
+  title="Deal risk"
+  text="Enable deal-risk analysis."
+  value={Boolean(watch("dealRisk"))}
+  onChange={(v) => setValue("dealRisk", v)}
+/>
+               <Setting
+  title="Real-time coaching"
+  text="Enable live coaching integrations."
+  value={Boolean(watch("realTimeCoaching"))}
+  onChange={(v) => setValue("realTimeCoaching", v)}
+/>
                 <h3 className="settings-section">Ollama (local AI)</h3>
                 <div className="form-grid">
                   {input("ollamaBaseUrl", "Server URL", {
@@ -6127,7 +7796,7 @@ function Setting({
         <b>{title}</b>
         <p>{text}</p>
       </div>
-      <Toggle value={Boolean(value)} onChange={onChange} />
+      <Toggle label={title} value={Boolean(value)} onChange={onChange} />
     </div>
   );
 }
@@ -6163,7 +7832,7 @@ function FormsPage() {
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, []);
-  const publicBase = "http://127.0.0.1:3001";
+  const publicBase = "http://127.0.0.1:3000";
   return (
     <SimpleCards
       title="Forms"
@@ -6364,14 +8033,18 @@ function FormEditor({
             <b>Enable form</b>
             <p>Visitors can see and submit this form.</p>
           </div>
-          <Toggle value={enabled} onChange={setEnabled} />
+          <Toggle label="Enable form" value={enabled} onChange={setEnabled} />
         </div>
         <div className="setting-toggle">
           <div>
             <b>Progressive profiling</b>
             <p>Hide fields the visitor has already answered.</p>
           </div>
-          <Toggle value={progressive} onChange={setProgressive} />
+          <Toggle
+            label="Progressive profiling"
+            value={progressive}
+            onChange={setProgressive}
+          />
         </div>
         <h4>Form fields</h4>
         {fields.map((field, i) => (
@@ -6408,6 +8081,7 @@ function FormEditor({
             <div className="toggle-row">
               <input
                 type="checkbox"
+                aria-label={`${field.name || `Field ${i + 1}`} required`}
                 checked={Boolean(field.required)}
                 onChange={(e) => setField(i, { required: e.target.checked })}
               />
@@ -6456,6 +8130,7 @@ function WebhooksPage() {
               {item.enabled ? "Active" : "Disabled"}
             </Badge>
             <Toggle
+              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "webhook endpoint"}`}
               value={Boolean(item.enabled)}
               onChange={(enabled) => update(item.id, { enabled })}
             />
@@ -6568,7 +8243,7 @@ function WebhookEditor({
             <b>Enabled</b>
             <p>Accept inbound deliveries at this endpoint.</p>
           </div>
-          <Toggle value={enabled} onChange={setEnabled} />
+          <Toggle label="Enable webhook endpoint" value={enabled} onChange={setEnabled} />
         </div>
       </div>
     </Drawer>
@@ -6651,6 +8326,53 @@ function AppInner() {
   const location = useLocation();
   const [checking, setChecking] = useState(Boolean(getToken()));
   const isPortal = location.pathname === "/portal/access";
+
+  const getInitialUnauthView = (): "home" | "pricing" | "demo" | "login" => {
+    const hash = window.location.hash.toLowerCase();
+    if (hash.includes("pricing")) return "pricing";
+    if (hash.includes("demo") || hash.includes("lab")) return "demo";
+    if (
+      hash.includes("login") ||
+      hash.includes("signin") ||
+      hash.includes("setup")
+    )
+      return "login";
+    return "home";
+  };
+
+  const [unauthView, setUnauthView] = useState<
+    "home" | "pricing" | "demo" | "login"
+  >(getInitialUnauthView);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setUnauthView(getInitialUnauthView());
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const navigateToHome = () => {
+    window.location.hash = "#/home";
+    setUnauthView("home");
+    window.scrollTo(0, 0);
+  };
+  const navigateToPricing = () => {
+    window.location.hash = "#/pricing";
+    setUnauthView("pricing");
+    window.scrollTo(0, 0);
+  };
+  const navigateToDemo = () => {
+    window.location.hash = "#/demo";
+    setUnauthView("demo");
+    window.scrollTo(0, 0);
+  };
+  const navigateToLogin = () => {
+    window.location.hash = "#/login";
+    setUnauthView("login");
+    window.scrollTo(0, 0);
+  };
+
   useEffect(() => {
     if (isPortal || !getToken()) {
       setChecking(false);
@@ -6661,17 +8383,58 @@ function AppInner() {
       .catch(() => setToken(""))
       .finally(() => setChecking(false));
   }, []);
+
   if (isPortal) return <PortalView />;
   if (checking)
     return (
-      <main className="login-page">
-        <section className="login-form-panel">
-          <div className="login-card">Loading Tunaxa…</div>
-        </section>
+      <main className="min-h-screen bg-[#f7f7f7] dark:bg-[#090d13] flex items-center justify-center p-4 tunaxa-grid-texture font-mono">
+        <div className="border border-[#d1d1d1] dark:border-[#21262d] bg-white dark:bg-[#161b22] p-8 text-center relative shadow-sm max-w-sm w-full">
+          <CornerBrackets stroke="#3b82f6" size={8} />
+          <PixelIndicator active pulseColor="blue" className="mx-auto mb-3" />
+          <div className="text-xs text-[#71717a] dark:text-[#8b949e]">
+            LOADING TUNAXA AXA CRM…
+          </div>
+        </div>
       </main>
     );
-  return user ? <Shell /> : <AuthScreen />;
-}
+  return user ? (
+    <OnboardingGate userId={user.id}>
+      <Shell />
+    </OnboardingGate>
+  ) : (
+
+  if (user) return <Shell />;
+
+  if (unauthView === "pricing") {
+    return (
+      <PricingPage
+        onNavigateToHome={navigateToHome}
+        onNavigateToLogin={navigateToLogin}
+        onNavigateToDemo={navigateToDemo}
+        onNavigateToSetup={navigateToLogin}
+      />
+    );
+  }
+
+  if (unauthView === "login") {
+    return (
+      <AuthScreen
+        onNavigateToHome={navigateToHome}
+        onNavigateToPricing={navigateToPricing}
+        onNavigateToDemo={navigateToDemo}
+      />
+    );
+  }
+
+  return (
+    <HomePage
+      onNavigateToLogin={navigateToLogin}
+      onNavigateToPricing={navigateToPricing}
+      onNavigateToDemo={navigateToDemo}
+      onNavigateToSetup={navigateToLogin}
+    />
+  );
+});
 
 export default function App() {
   return (

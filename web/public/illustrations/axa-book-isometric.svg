@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" width="100%" height="100%" fill="none">
+  <defs>
+    <!-- Calendar Gradients -->
+    <linearGradient id="cal_base_grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#F1F5F9" />
+    </linearGradient>
+
+    <linearGradient id="slot_active_grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+
+    <filter id="book_iso_glow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#38BDF8" flood-opacity="0.22" />
+    </filter>
+  </defs>
+
+  <g filter="url(#book_iso_glow)">
+    <!-- 1. BASE CALENDAR GRID PLATFORM (Isometric Desk / Calendar Plane) -->
+    <polygon points="300,90 490,200 300,310 110,200" fill="url(#cal_base_grad)" stroke="#CBD5E1" stroke-width="1.5" />
+    <polygon points="110,200 300,310 300,324 110,214" fill="#94A3B8" />
+    <polygon points="300,310 490,200 490,214 300,324" fill="#64748B" />
+
+    <!-- Calendar Month Header Bar -->
+    <polygon points="300,90 460,182 420,205 260,113" fill="#EFF6FF" />
+    <text x="290" y="116" transform="rotate(30 290 116)" font-family="'Geist Mono', monospace" font-size="11" font-weight="800" fill="#1D4ED8">/ AUG 2026 // TIME-ZONE: UTC-5</text>
+
+    <!-- 2. ISOMETRIC TIME-SLOT MATRIX TILES -->
+    <!-- Tile 1 (Available) -->
+    <g transform="translate(180, 160)">
+      <polygon points="30,5 60,22 30,39 0,22" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1" />
+      <text x="30" y="24" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="7" font-weight="700" fill="#64748B">09:00</text>
+    </g>
+
+    <!-- Tile 2 (Active Booked Slot) -->
+    <g transform="translate(250, 200)">
+      <polygon points="36,6 72,26 36,46 0,26" fill="url(#slot_active_grad)" stroke="#BFDBFE" stroke-width="1.5" />
+      <polygon points="0,26 36,46 36,54 0,34" fill="#1D4ED8" />
+      <polygon points="36,46 72,26 72,34 36,54" fill="#1E40AF" />
+      <text x="36" y="27" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="8" font-weight="800" fill="#FFFFFF">10:30 AM</text>
+      <text x="36" y="38" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="6" font-weight="700" fill="#EFF6FF">CONFIRMED</text>
+    </g>
+
+    <!-- Tile 3 (Available) -->
+    <g transform="translate(320, 160)">
+      <polygon points="30,5 60,22 30,39 0,22" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1" />
+      <text x="30" y="24" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="7" font-weight="700" fill="#64748B">14:00</text>
+    </g>
+
+    <!-- Tile 4 (Available) -->
+    <g transform="translate(380, 195)">
+      <polygon points="30,5 60,22 30,39 0,22" fill="#FFFFFF" stroke="#93C5FD" stroke-width="1" />
+      <text x="30" y="24" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="7" font-weight="700" fill="#64748B">16:30</text>
+    </g>
+
+    <!-- 3. FLOATING SYNC CLOUD REMINDER CARD -->
+    <g transform="translate(320, 60)">
+      <polygon points="50,6 100,35 50,64 0,35" fill="#FFFFFF" stroke="#38BDF8" stroke-width="1.5" />
+      <polygon points="0,35 50,64 50,72 0,43" fill="#CBD5E1" />
+      <polygon points="50,64 100,35 100,43 50,72" fill="#94A3B8" />
+      <text x="50" y="34" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="8" font-weight="800" fill="#0F172A">2-WAY SYNC</text>
+      <text x="50" y="46" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="7" font-weight="600" fill="#2563EB">GOOGLE • OUTLOOK</text>
+    </g>
+
+    <!-- 4. TELEMETRY BADGE -->
+    <text x="300" y="360" text-anchor="middle" font-family="'Geist Mono', monospace" font-size="10" font-weight="700" fill="#0284C7" letter-spacing="2">REAL-TIME AUTO-SCHEDULER</text>
+  </g>
+</svg>
