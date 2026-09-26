@@ -7,7 +7,7 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
-
+- Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
 - Email-based team invitations with a sent confirmation, pending invitation list, expiry display, retry state, and resend action. The frontend uses `POST /api/users/invite` and `GET /api/users/invites` without directly creating user accounts.
 - A first-login onboarding gate for empty workspaces with a resumable four-step wizard for company profile, contact CSV import, pipeline stages, and team invitations. Progress and completion are stored per user, and every step or the full setup can be skipped.
