@@ -64,7 +64,7 @@ export default function registerLifecycleRoutes(app) {
     });
     if (!saved) return res.status(404).json({ error: 'Record not found' });
     if (saved.error) return res.status(400).json({ error: saved.error });
-    broadcast('lifecycle.transitioned', { recordId, stage });
+    broadcast('lifecycle.transitioned', { recordId, stage }, req.user.workspaceId || 'default');
     res.json(saved);
   });
 
