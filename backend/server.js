@@ -51,6 +51,7 @@ import registerDataOpsRoutes from "./routes/dataops.js";
 import registerWebhookEndpointRoutes from "./routes/webhookendpoints.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { processExecutionQueue } from "./services/queue.js";
+import { startEmailSync, stopEmailSync } from "./services/emailSync.js";
 import { createRateLimiter } from "./services/rateLimit.js";
 import { initCache } from "./services/cache.js";
 import { seedPlaybooks } from "./services/seedPlaybooks.js";
@@ -245,6 +246,7 @@ if (process.env.VITEST !== "true") {
   app.listen(3001, "127.0.0.1", () => {
     console.log("Tunaxa API running on http://127.0.0.1:3001");
     startWebhookWorker();
+    startEmailSync();
   });
   setInterval(
     () =>
@@ -253,4 +255,11 @@ if (process.env.VITEST !== "true") {
       ),
     30_000,
   ).unref();
+
+  const shutdown = () => {
+    stopEmailSync();
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
