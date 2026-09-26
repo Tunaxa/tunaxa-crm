@@ -186,7 +186,7 @@ const resolvers = {
 export default function registerGraphQLRoutes(app) {
   const yoga = createYoga({
     schema: createSchema({ typeDefs, resolvers }),
-    context: () => ({ user: null }),
+    context: ({ user }) => ({ user: user || null }),
     graphiql: true,
     graphqlEndpoint: "/api/graphql",
   });
