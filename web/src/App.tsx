@@ -2,6 +2,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -26,11 +27,34 @@ import {
   PhotoField,
   Toggle,
   money,
+  CornerBrackets,
+  PixelIndicator,
+  CutButton,
+  RevenueFlowCanvas,
 } from "./components/ui";
+import { AxacrmLogo } from "./components/common/AxacrmLogo";
+import { HomePage } from "./pages/HomePage";
+import { PricingPage } from "./pages/PricingPage";
 import { AppProvider, useApp } from "./context/AppContext";
+import { LayoutGrid, Sun, Moon } from "lucide-react";
+import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { GoalProgress } from "./components/goals/GoalProgress";
+import { CustomReportBuilder } from "./components/reports/CustomReportBuilder";
+import {
+  invitationIsExpired,
+  normalizeInvitations,
+  type PendingInvitation,
+} from "./components/team/invitations";
+import { OnboardingGate } from "./components/onboarding/OnboardingWizard";
+import {
+  GoalProgress,
+  getCrossedGoalMilestone,
+  getGoalProgress,
+  type GoalMilestone,
+} from "./components/goals/GoalProgress";
+import { CornerBrackets } from "./components/CornerBrackets";
+import { QuoteForm } from "./components/quotes/QuoteForm";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";
 
@@ -153,7 +177,15 @@ const stages = [
   { id: "won", label: "Won" },
 ];
 
-function AuthScreen() {
+function AuthScreen({
+  onNavigateToHome,
+  onNavigateToPricing,
+  onNavigateToDemo,
+}: {
+  onNavigateToHome?: () => void;
+  onNavigateToPricing?: () => void;
+  onNavigateToDemo?: () => void;
+}) {
   const { setUser, toast } = useApp();
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
   const [mode, setMode] = useState<"login" | "setup">("login");
@@ -204,118 +236,199 @@ function AuthScreen() {
 
   if (needsSetup === null)
     return (
-      <main className="login-page">
-        <section className="login-form-panel">
-          <div className="login-card">
-            <div className="loading-line" />
+      <main className="min-h-screen bg-[#f7f7f7] dark:bg-[#090d13] flex items-center justify-center p-4 tunaxa-grid-texture font-mono">
+        <div className="border border-[#d1d1d1] dark:border-[#21262d] bg-white dark:bg-[#161b22] p-8 text-center relative shadow-sm max-w-sm w-full">
+          <CornerBrackets stroke="#3b82f6" size={8} />
+          <PixelIndicator active pulseColor="blue" className="mx-auto mb-3" />
+          <div className="text-xs text-[#71717a] dark:text-[#8b949e]">
+            INITIALIZING AXA CRM WORKSPACE…
           </div>
-        </section>
+        </div>
       </main>
     );
 
   return (
-    <main className="login-page">
-      <img className="login-bg" src="/crm-dashboard-bg.webp" alt="" />
-      <div className="login-overlay" />
-      <section className="login-hero">
-        <div className="login-hero-inner">
-          <div className="login-brand">
-            <img src={logo} alt="Tunaxa" />
-            <b>Tunaxa</b>
+    <main className="min-h-screen bg-[#f7f7f7] dark:bg-[#090d13] text-[#1e2329] dark:text-[#f3f4f6] font-sans antialiased flex flex-col md:flex-row tunaxa-grid-texture relative selection:bg-[#3b82f6]/20">
+      {/* Left hero section with Revenue Flow Canvas */}
+      <section className="relative w-full md:w-1/2 min-h-[360px] md:min-h-screen flex flex-col justify-between p-8 sm:p-12 border-b md:border-b-0 md:border-r border-[#d1d1d1] dark:border-[#21262d] bg-white/60 dark:bg-[#090d13]/80 backdrop-blur-xs overflow-hidden">
+        {/* Background Canvas Animation */}
+        <div className="absolute inset-0 pointer-events-none opacity-40 dark:opacity-30">
+          <RevenueFlowCanvas active={true} />
+        </div>
+
+        <div className="relative z-10">
+          <div className="flex items-center justify-between gap-4 mb-8">
+            <AxacrmLogo />
+            {onNavigateToHome && (
+              <button
+                type="button"
+                onClick={onNavigateToHome}
+                className="font-mono text-xs text-[#71717a] dark:text-[#8b949e] hover:text-[#3b82f6] dark:hover:text-[#3b82f6] flex items-center gap-1 bg-transparent border-none cursor-pointer transition-colors"
+              >
+                ← RETURN TO HOME
+              </button>
+            )}
           </div>
-          <div className="login-hero-text">
-            <span className="login-hero-label">CRM WORKSPACE</span>
-            <h1>One workspace for every customer relationship.</h1>
-            <p>
-              Manage sales, communication, tasks and revenue from a focused CRM
-              workspace.
-            </p>
+
+          <div className="inline-flex items-center gap-2 mb-3">
+            <PixelIndicator active pulseColor="blue" />
+            <span className="font-mono text-xs text-[#3b82f6] font-bold">
+              / REVENUE COMMAND WORKSPACE
+            </span>
           </div>
-          <div className="login-hero-badges">
-            <span>
-              <Icon name="checkCircle" /> Clean workspace
-            </span>
-            <span>
-              <Icon name="shield" /> Secure access
-            </span>
-            <span>
-              <Icon name="workflow" /> Persistent data
-            </span>
+
+          <h1 className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-[#18181b] dark:text-white uppercase leading-tight mb-4">
+            HIGH-VELOCITY SALES PIPELINES & CUSTOMER RELATIONSHIPS.
+          </h1>
+
+          <p className="text-xs sm:text-sm text-[#52525b] dark:text-[#8b949e] font-mono leading-relaxed max-w-md">
+            Manage inbound leads, visual Kanban deals, multi-channel sequences, quotes, and billing from a single high-performance workspace.
+          </p>
+        </div>
+
+        <div className="relative z-10 pt-8 border-t border-[#d1d1d1]/60 dark:border-[#21262d] space-y-3 font-mono text-xs text-[#52525b] dark:text-[#8b949e]">
+          <div className="flex items-center gap-2">
+            <PixelIndicator active pulseColor="emerald" />
+            <span>Zero-Knowledge AXA PASS Credential Linking</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <PixelIndicator active pulseColor="blue" />
+            <span>Visual Automated Sequences & Webhook Ingestion</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <PixelIndicator active pulseColor="emerald" />
+            <span>75%+ Lower TCO vs Salesforce & HubSpot</span>
+          </div>
+
+          <div className="flex items-center gap-4 pt-3 text-[11px]">
+            {onNavigateToPricing && (
+              <button
+                type="button"
+                onClick={onNavigateToPricing}
+                className="text-[#3b82f6] hover:underline bg-transparent border-none p-0 cursor-pointer"
+              >
+                View Pricing & TCO →
+              </button>
+            )}
+            {onNavigateToDemo && (
+              <button
+                type="button"
+                onClick={onNavigateToDemo}
+                className="text-[#3b82f6] hover:underline bg-transparent border-none p-0 cursor-pointer"
+              >
+                Explore Sales Lab Demo →
+              </button>
+            )}
           </div>
         </div>
       </section>
-      <section className="login-form-panel">
-        <form className="login-card" onSubmit={submit}>
-          <div className="login-card-head">
-            <div className="login-card-icon">N/V</div>
+
+      {/* Right authentication form */}
+      <section className="w-full md:w-1/2 flex items-center justify-center p-6 sm:p-12 relative">
+        <div className="w-full max-w-md border border-[#d1d1d1] dark:border-[#21262d] bg-white dark:bg-[#161b22] p-8 sm:p-10 relative shadow-xl">
+          <CornerBrackets stroke="#3b82f6" size={10} />
+
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#e4e4e7] dark:border-[#21262d]">
             <div>
-              <h2>
-                {mode === "setup"
-                  ? "Create your workspace"
-                  : "Sign in to Tunaxa"}
+              <h2 className="text-xl font-bold font-mono text-[#18181b] dark:text-white">
+                {mode === "setup" ? "CREATE WORKSPACE" : "SIGN IN TO TUNAXA"}
               </h2>
-              <p>
+              <p className="font-mono text-xs text-[#71717a] dark:text-[#8b949e] mt-0.5">
                 {mode === "setup"
-                  ? "Create the first owner account"
-                  : "Open your CRM workspace"}
+                  ? "Initialize owner credentials"
+                  : "Access your CRM revenue command"}
               </p>
             </div>
-            <button
-              className="login-theme-toggle"
-              type="button"
-              onClick={toggleTheme}
-              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
-              title={theme ? "Light mode" : "Dark mode"}
-            >
-              <Icon name={theme ? "sun" : "moon"} />
-            </button>
+            <div className="w-9 h-9 border border-[#3b82f6]/40 bg-[#3b82f6]/10 text-[#3b82f6] font-mono font-bold text-xs flex items-center justify-center">
+              CRM
+            </div>
           </div>
-          <div className="login-card-body">
-            {mode === "setup" ? (
-              <label className="field">
-                <span>Your name</span>
+
+          <form onSubmit={submit} className="space-y-4 font-mono text-xs">
+            {mode === "setup" && (
+              <div>
+                <label className="block text-[#71717a] dark:text-[#8b949e] mb-1 font-bold">
+                  YOUR NAME
+                </label>
                 <input
+                  type="text"
+                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Owner name"
+                  placeholder="e.g. Alex Vance"
+                  className="w-full p-2.5 border border-[#d1d1d1] dark:border-[#21262d] bg-[#f9fafb] dark:bg-[#0d1117] text-[#18181b] dark:text-white focus:outline-none focus:border-[#3b82f6]"
                   autoFocus
                 />
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[#71717a] dark:text-[#8b949e] mb-1 font-bold">
+                EMAIL ADDRESS
               </label>
-            ) : null}
-            <label className="field">
-              <span>Email address</span>
               <input
                 type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@company.com"
+                className="w-full p-2.5 border border-[#d1d1d1] dark:border-[#21262d] bg-[#f9fafb] dark:bg-[#0d1117] text-[#18181b] dark:text-white focus:outline-none focus:border-[#3b82f6]"
                 autoFocus={mode === "login"}
               />
-            </label>
-            <label className="field">
-              <span>Password</span>
-              <div className="input-with-action">
-                <input
-                  type={show ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Minimum 6 characters"
-                />
+            </div>
+
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-[#71717a] dark:text-[#8b949e] font-bold">
+                  PASSWORD
+                </label>
                 <button
                   type="button"
+                  aria-label={show ? "Hide password" : "Show password"}
                   onClick={() => setShow((value) => !value)}
+                  className="text-[#71717a] dark:text-[#8b949e] hover:text-[#18181b] dark:hover:text-white bg-transparent border-none cursor-pointer text-[11px]"
                 >
-                  <Icon name="eye" />
+                  {show ? "HIDE" : "SHOW"}
                 </button>
               </div>
-            </label>
-            {mode === "login" && (
-              <label className="check">
-                <input type="checkbox" /> Remember me
-              </label>
+              <input
+                type={show ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+                className="w-full p-2.5 border border-[#d1d1d1] dark:border-[#21262d] bg-[#f9fafb] dark:bg-[#0d1117] text-[#18181b] dark:text-white focus:outline-none focus:border-[#3b82f6]"
+              />
+            </div>
+
+            <div className="pt-2">
+              <CutButton
+                variant="primary"
+                className="w-full"
+                disabled={busy}
+              >
+                {busy
+                  ? "AUTHENTICATING TELEMETRY…"
+                  : mode === "setup"
+                  ? "CREATE WORKSPACE →"
+                  : "OPEN WORKSPACE →"}
+              </CutButton>
+            </div>
+
+            {needsSetup !== true && (
+              <div className="pt-4 text-center border-t border-[#e4e4e7] dark:border-[#21262d]">
+                <button
+                  type="button"
+                  onClick={() => setMode((m) => (m === "login" ? "setup" : "login"))}
+                  className="text-[#71717a] dark:text-[#8b949e] hover:text-[#3b82f6] bg-transparent border-none cursor-pointer text-xs"
+                >
+                  {mode === "login"
+                    ? "Need to create a new workspace? Set up here"
+                    : "Already have a workspace? Sign in"}
+                </button>
+              </div>
             )}
-            <button className="btn login-submit" type="submit" disabled={busy}>
-              {busy
+            <button className="btn login-submit" type="submit" style={{ marginTop: 4 }} disabled={busy}>{busy
                 ? "Please wait…"
                 : mode === "setup"
                   ? "Create workspace"
@@ -344,6 +457,7 @@ function Shell() {
   const [theme, setTheme] = useState(
     document.documentElement.classList.contains("dark"),
   );
+  const [isEcosystemOpen, setIsEcosystemOpen] = useState(false);
 
   useEffect(() => {
     localStorage.setItem("tunaxa.sidebar", collapsed ? "1" : "0");
@@ -383,19 +497,35 @@ function Shell() {
 
   return (
     <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
+      {/* Blueprint dot-grid overlay — fixed behind all content */}
+      <div className="blueprint-grid-global" aria-hidden="true" />
       <div
         className={`mobile-overlay ${mobile ? "show" : ""}`}
         onClick={() => setMobile(false)}
       />
       <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
         <div className="sidebar-logo">
-          <button className="brand" onClick={() => navigate("/dashboard")}>
-            <img src={logo} alt="Tunaxa" />
-            <span>Tunaxa</span>
+          <button className="brand" onClick={() => navigate("/dashboard")} title="Tunaxa AXA CRM">
+            {collapsed ? (
+              <div
+                className="w-7 h-7 bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-mono font-black shrink-0"
+                style={{
+                  clipPath:
+                    'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+                }}
+              >
+                <span className="text-xs">TX</span>
+              </div>
+            ) : (
+              <AxacrmLogo size="sm" showTunaxaPrefix={true} />
+            )}
           </button>
           <button
             className="collapse-btn"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
             onClick={() => setCollapsed((value) => !value)}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             <Icon name="arrowLeft" />
           </button>
@@ -408,6 +538,7 @@ function Shell() {
                 <NavLink
                   key={item.path}
                   to={item.path}
+                  data-tooltip={t(item.label)}
                   className={({ isActive }) =>
                     `nav-link ${isActive ? "active" : ""}`
                   }
@@ -421,24 +552,35 @@ function Shell() {
         </nav>
         <div className="sidebar-bottom">
           <div className="workspace-mini">
-            <span className="workspace-mark">NX</span>
+            <div
+              className="w-7 h-7 bg-[#3b82f6] text-white flex items-center justify-center font-mono font-bold text-xs shrink-0"
+              style={{
+                clipPath:
+                  'polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)',
+              }}
+            >
+              <span>TX</span>
+            </div>
             <div>
-              <b>Tunaxa</b>
-              <small>Local workspace</small>
+              <b>Tunaxa CRM</b>
+              <small>Enterprise Workspace</small>
             </div>
           </div>
         </div>
       </aside>
       <section className="workspace">
-        <header className="topbar">
+        <header className="topbar topbar-glass">
           <div className="topbar-left">
             <button
               className="icon-btn mobile-menu"
+              aria-label="Open navigation menu"
               onClick={() => setMobile(true)}
+              title="Open Navigation"
             >
               <Icon name="menu" />
             </button>
-            <div className="crumb">
+            <div className="crumb relative px-3 py-1 border border-[#d1d1d1] dark:border-[#263140] bg-white dark:bg-[#121820]">
+              <CornerBrackets stroke="#3b82f6" size={5} />
               <span>{t("nav.workspace")}</span>
               <b>
                 {titles[location.pathname]
@@ -453,21 +595,39 @@ function Shell() {
               onClick={() => setSearchOpen(true)}
             >
               <Icon name="search" />
-              <span>Search everything</span>
+              <span>Search everything…</span>
               <kbd>Ctrl K</kbd>
             </button>
-            <button
-              className="btn primary compact"
+            <CutButton
+              variant="primary"
+              size="sm"
               onClick={() => setQuickOpen(true)}
             >
-              <Icon name="plus" /> New
+              <div className="flex items-center gap-1.5 font-mono text-xs">
+                <Icon name="plus" />
+                <span>NEW</span>
+              </div>
+            </CutButton>
+            <button
+              className="icon-btn"
+              onClick={() => setIsEcosystemOpen(true)}
+              title="Tunaxa Ecosystem Apps"
+              aria-label="Tunaxa Ecosystem Apps"
+            >
+              <LayoutGrid className="w-4 h-4 text-[#3b82f6]" />
             </button>
-            <button className="icon-btn" onClick={toggleTheme}>
+            <button
+              className="icon-btn"
+              aria-label={theme ? "Switch to light mode" : "Switch to dark mode"}
+              onClick={toggleTheme}
+            >
               <Icon name={theme ? "sun" : "moon"} />
             </button>
             <button
               className="icon-btn notification-btn"
+              aria-label="Notifications"
               onClick={() => toast("No new notifications")}
+              title="Notifications"
             >
               <Icon name="bell" />
             </button>
@@ -476,7 +636,7 @@ function Shell() {
                 className="profile-trigger"
                 onClick={() => setProfile((value) => !value)}
               >
-                <Avatar name={user?.name || "NX"} />
+                <Avatar name={user?.name || "TX"} />
                 <div>
                   <b>{user?.name}</b>
                   <small>{user?.role}</small>
@@ -486,7 +646,7 @@ function Shell() {
               {profile ? (
                 <div className="profile-menu">
                   <div className="profile-menu-head">
-                    <Avatar name={user?.name || "NX"} size={38} />
+                    <Avatar name={user?.name || "TX"} size={38} />
                     <div>
                       <b>{user?.name}</b>
                       <small>{user?.email}</small>
@@ -500,8 +660,8 @@ function Shell() {
                     {(i18n.language || "en") === "fr" ? "English" : "Français"}
                   </button>
                   <button onClick={toggleTheme}>
-                    <Icon name={theme ? "sun" : "moon"} />{" "}
-                    {theme ? "Light mode" : "Dark mode"}
+                    {theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}{" "}
+                    {theme ? "Light Blueprint" : "Dark Cyber"}
                   </button>
                   <hr />
                   <button className="danger-link" onClick={logout}>
@@ -842,6 +1002,10 @@ function Shell() {
       {searchOpen ? (
         <GlobalSearch onClose={() => setSearchOpen(false)} />
       ) : null}
+      <EcosystemMenu
+        isOpen={isEcosystemOpen}
+        onClose={() => setIsEcosystemOpen(false)}
+      />
     </div>
   );
 }
@@ -970,11 +1134,16 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           <Icon name="search" />
           <input
             autoFocus
+            aria-label="Search workspace"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search leads, contacts, deals, tasks..."
           />
-          <button className="icon-btn tiny" onClick={onClose}>
+          <button
+            className="icon-btn tiny"
+            aria-label="Close search"
+            onClick={onClose}
+          >
             <Icon name="close" />
           </button>
         </div>
@@ -1081,7 +1250,8 @@ function DashboardPage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -1090,7 +1260,7 @@ function DashboardPage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -1368,12 +1538,9 @@ const attendanceFields: FieldSpec[] = [
 const quoteFields: FieldSpec[] = [
   { key: "number", label: "Quote number", required: true },
   { key: "customer", label: "Customer / deal" },
-  {
-    key: "items",
-    label: 'Line items (one per line, e.g. "Product x3 = 150")',
-    type: "textarea",
-  },
-  { key: "discount", label: "Discount", type: "number" },
+  { key: "subtotal", label: "Subtotal", type: "number" },
+  { key: "discount", label: "Discount (%)", type: "number" },
+  { key: "tax", label: "Tax (%)", type: "number" },
   { key: "total", label: "Total", type: "number" },
   {
     key: "status",
@@ -1522,6 +1689,7 @@ function CrudTablePage({
   statusTone,
   moneyColumn,
   extraColumn,
+  renderEditor,
 }: {
   resource: string;
   title: string;
@@ -1536,6 +1704,12 @@ function CrudTablePage({
   statusTone?: (value?: string) => BadgeTone;
   moneyColumn?: string[];
   extraColumn?: { title: string; render: (row: Row) => ReactNode };
+  renderEditor?: (props: {
+    title: string;
+    initial: Row | Record<string, any>;
+    onClose: () => void;
+    onSave: (data: Record<string, any>) => Promise<void>;
+  }) => ReactNode;
 }) {
   const { items, loading, load, create, update, remove } =
     useResource<Row>(resource);
@@ -1659,6 +1833,7 @@ function CrudTablePage({
           <div className="header-search">
             <Icon name="search" />
             <input
+              aria-label={`Search ${title.toLowerCase()}`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
@@ -1762,16 +1937,28 @@ function CrudTablePage({
         )}
       </section>
       {edit !== undefined ? (
-        <RecordForm
-          title={`${edit ? "Edit" : "Add"} ${singular}`}
-          fields={fields}
-          initial={edit || {}}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
+        renderEditor ? (
+          renderEditor({
+            title: `${edit ? "Edit" : "Add"} ${singular}`,
+            initial: edit || {},
+            onClose: () => setEdit(undefined),
+            onSave: async (data) => {
+              edit ? await update(edit.id, data) : await create(data);
+              setEdit(undefined);
+            },
+          })
+        ) : (
+          <RecordForm
+            title={`${edit ? "Edit" : "Add"} ${singular}`}
+            fields={fields}
+            initial={edit || {}}
+            onClose={() => setEdit(undefined)}
+            onSave={async (data) => {
+              edit ? await update(edit.id, data) : await create(data);
+              setEdit(undefined);
+            }}
+          />
+        )
       ) : null}
     </div>
   );
@@ -1902,6 +2089,7 @@ function PeoplePage({
           <div className="header-search">
             <Icon name="search" />
             <input
+              aria-label={`Search ${title.toLowerCase()}`}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
@@ -2226,6 +2414,7 @@ function RecordDetailPage({
             </button>
             <button
               className="btn ghost compact danger-link"
+              aria-label={`Delete ${record.name || record.title || "record"}`}
               onClick={deleteRecord}
             >
               <Icon name="trash" />
@@ -2330,6 +2519,7 @@ function RecordDetailPage({
           <div className="detail-notes">
             <div className="note-compose">
               <textarea
+                aria-label="Add a note"
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 placeholder="Write a note…"
@@ -2644,12 +2834,14 @@ function CompaniesPage() {
                 >
                   <button
                     className="icon-btn tiny"
+                    aria-label={`Edit ${company.name || "company"}`}
                     onClick={() => setEdit(company)}
                   >
                     <Icon name="edit" />
                   </button>
                   <button
                     className="icon-btn tiny danger-link"
+                    aria-label={`Delete ${company.name || "company"}`}
                     onClick={() =>
                       confirm("Delete this company?") && remove(company.id)
                     }
@@ -2792,12 +2984,14 @@ function PipelinePage() {
                         <div className="row-actions">
                           <button
                             className="icon-btn tiny"
+                            aria-label={`Edit ${row.title || "deal"}`}
                             onClick={() => setEdit(row)}
                           >
                             <Icon name="edit" />
                           </button>
                           <button
                             className="icon-btn tiny danger-link"
+                            aria-label={`Delete ${row.title || "deal"}`}
                             onClick={() =>
                               confirm("Delete this deal?") && remove(row.id)
                             }
@@ -2963,6 +3157,11 @@ function TasksPage() {
                     <div>
                       <button
                         className={`task-check ${status === "Completed" ? "checked" : ""}`}
+                        aria-label={
+                          status === "Completed"
+                            ? `Mark ${task.title || "task"} as open`
+                            : `Mark ${task.title || "task"} as completed`
+                        }
                         onClick={() =>
                           update(task.id, {
                             status:
@@ -2993,12 +3192,14 @@ function TasksPage() {
                       <div className="row-actions">
                         <button
                           className="icon-btn tiny"
+                          aria-label={`Edit ${task.title || "task"}`}
                           onClick={() => setEdit(task)}
                         >
                           <Icon name="edit" />
                         </button>
                         <button
                           className="icon-btn tiny danger-link"
+                          aria-label={`Delete ${task.title || "task"}`}
                           onClick={() =>
                             confirm("Delete this task?") && remove(task.id)
                           }
@@ -3149,6 +3350,7 @@ function CalendarPage() {
         <div className="calendar-top">
           <button
             className="icon-btn"
+            aria-label="Previous month"
             onClick={() =>
               setCursor((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))
             }
@@ -3158,6 +3360,7 @@ function CalendarPage() {
           <h2>{monthLabel}</h2>
           <button
             className="icon-btn"
+            aria-label="Next month"
             onClick={() =>
               setCursor((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))
             }
@@ -3443,6 +3646,7 @@ function WorkflowForm({
           <div className="workflow-action" key={index}>
             <div className="workflow-action-head">
               <select
+                aria-label={`Action ${index + 1} type`}
                 value={action.type}
                 onChange={(e) => setAction(index, { type: e.target.value })}
               >
@@ -3571,17 +3775,20 @@ function WorkflowsPage() {
                 </div>
                 <div className="flow-actions">
                   <Toggle
+                    label={`${flow.enabled ? "Disable" : "Enable"} ${flow.name || "workflow"}`}
                     value={Boolean(flow.enabled)}
                     onChange={(enabled) => update(flow.id, { enabled })}
                   />
                   <button
                     className="icon-btn tiny"
+                    aria-label={`Edit ${flow.name || "workflow"}`}
                     onClick={() => setEdit(flow)}
                   >
                     <Icon name="edit" />
                   </button>
                   <button
                     className="icon-btn tiny danger-link"
+                    aria-label={`Delete ${flow.name || "workflow"}`}
                     onClick={() =>
                       confirm("Delete this workflow?") && remove(flow.id)
                     }
@@ -3730,6 +3937,7 @@ function CallsPage() {
           </div>
           <input
             className="dial-input"
+            aria-label="Phone number"
             value={number}
             onChange={(e) => setNumber(e.target.value)}
             placeholder="Enter a number"
@@ -4163,6 +4371,7 @@ function InboxPage() {
                 </button>
                 <button
                   className="icon-btn danger-link"
+                  aria-label="Delete message"
                   onClick={() => {
                     confirm("Delete this message?") && remove(selected.id);
                     setSelected(null);
@@ -4389,6 +4598,7 @@ function SequencesPage() {
               {item.enabled ? "Active" : "Paused"}
             </Badge>
             <Toggle
+              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "sequence"}`}
               value={Boolean(item.enabled)}
               onChange={(enabled) => update(item.id, { enabled })}
             />
@@ -4575,10 +4785,16 @@ function QuotesPage() {
       description="Generate and track quotes (estimate-to-contract)."
       icon="quote"
       fields={quoteFields}
+      columns={quoteFields.filter((field) =>
+        ["number", "customer", "total", "status", "expiryDate"].includes(
+          field.key,
+        ),
+      )}
       nameKey="number"
       statusField="status"
       synopsis={(r) => r.customer || r.deal || ""}
-      moneyColumn={["total", "discount"]}
+      moneyColumn={["total"]}
+      renderEditor={(props) => <QuoteForm {...props} />}
     />
   );
 }
@@ -4630,28 +4846,340 @@ function EventsPage() {
   );
 }
 function GoalsPage() {
+  const { items, loading, load, create, update, remove } =
+    useResource<Row>("goals");
+  const { toast } = useApp();
+  const navigate = useNavigate();
+  const importRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const [quickName, setQuickName] = useState("");
+  const [quickMetric, setQuickMetric] = useState("Revenue");
+  const [quickTarget, setQuickTarget] = useState("");
+  const [quickPeriod, setQuickPeriod] = useState("Monthly");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [celebration, setCelebration] = useState<{
+    goalName: string;
+    milestone: GoalMilestone;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!celebration) return;
+    const timer = window.setTimeout(() => setCelebration(null), 3200);
+    return () => window.clearTimeout(timer);
+  }, [celebration]);
+
+  async function quickAddGoal(event: FormEvent) {
+    event.preventDefault();
+    const target = Number(quickTarget);
+    if (!quickName.trim()) return toast("Goal name is required", "error");
+    if (!Number.isFinite(target) || target <= 0)
+      return toast("Target must be greater than zero", "error");
+
+    setQuickBusy(true);
+    try {
+      await create({
+        name: quickName.trim(),
+        metric: quickMetric,
+        period: quickPeriod,
+        target,
+        current: 0,
+      });
+      setQuickName("");
+      setQuickTarget("");
+      nameRef.current?.focus();
+    } catch {
+      // useResource displays the API error.
+    } finally {
+      setQuickBusy(false);
+    }
+  }
+
+  async function importCsv(file: File) {
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) return toast("CSV has no rows", "error");
+      const headers = lines[0]
+        .split(",")
+        .map((value) => value.trim().replace(/^"|"$/g, ""));
+      const records = lines.slice(1).map((line) => {
+        const values = line
+          .split(",")
+          .map((value) => value.trim().replace(/^"|"$/g, ""));
+        return Object.fromEntries(
+          headers.map((key, index) => [key, values[index] || ""]),
+        );
+      });
+      await api("/goals/batch", json("POST", records));
+      await load();
+      toast(`${records.length} goals imported`);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
+  }
+
+  async function exportGoals() {
+    try {
+      await downloadResourceCsv("goals");
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
+  }
+
+  async function saveGoal(data: Record<string, any>) {
+    const target = Number(data.target);
+    const current = Number(data.current);
+    if (!Number.isFinite(target) || target <= 0)
+      throw new Error("Target must be greater than zero");
+    if (!Number.isFinite(current) || current < 0)
+      throw new Error("Current value cannot be negative");
+
+    if (edit) {
+      const milestone = getCrossedGoalMilestone(
+        edit.current,
+        edit.target,
+        current,
+        target,
+      );
+      const saved = await update(edit.id, { ...data, current, target });
+      if (milestone) {
+        setCelebration({
+          goalName: String(saved.name || edit.name || "Goal"),
+          milestone,
+        });
+      }
+    } else {
+      const saved = await create({ ...data, current, target });
+      const milestone = getCrossedGoalMilestone(0, target, current, target);
+      if (milestone) {
+        setCelebration({
+          goalName: String(saved.name || data.name || "Goal"),
+          milestone,
+        });
+      }
+    }
+    setEdit(undefined);
+  }
+
   return (
-    <CrudTablePage
-      resource="goals"
-      title="Goals"
-      description="Time-bound targets and progress across teams."
-      icon="goal"
-      fields={goalFields}
-      columns={goalFields.slice(0, 4)}
-      nameKey="name"
-      statusField="period"
-      synopsis={(r) => `${r.metric || ""}${r.owner ? " · " + r.owner : ""}`}
-      extraColumn={{
-        title: "Progress",
-        render: (goal) => (
-          <GoalProgress
-            name={String(goal.name || "Goal")}
-            current={goal.current}
-            target={goal.target}
+    <div className="page goals-page">
+      <PageHeader
+        title="Goals"
+        description="Time-bound targets and progress across teams."
+      >
+        <input
+          ref={importRef}
+          hidden
+          type="file"
+          accept=".csv,text/csv"
+          onChange={(event) =>
+            event.target.files?.[0] && importCsv(event.target.files[0])
+          }
+        />
+        <button
+          className="btn secondary"
+          onClick={() => importRef.current?.click()}
+        >
+          <Icon name="upload" /> Import
+        </button>
+        <button
+          className="btn secondary"
+          disabled={!items.length}
+          onClick={exportGoals}
+        >
+          <Icon name="download" /> Export CSV
+        </button>
+        <button className="btn secondary" onClick={() => setEdit(null)}>
+          <Icon name="plus" /> Full goal form
+        </button>
+      </PageHeader>
+
+      <form className="surface goal-quick-add" onSubmit={quickAddGoal}>
+        <div className="goal-quick-add-heading">
+          <span className="goal-quick-add-icon">
+            <Icon name="goal" />
+          </span>
+          <div>
+            <h2>Quick-add goal</h2>
+            <p>Create a goal now and fill in optional details later.</p>
+          </div>
+        </div>
+        <label className="field">
+          <span>Goal name</span>
+          <input
+            ref={nameRef}
+            value={quickName}
+            placeholder="e.g. Close 20 deals"
+            onChange={(event) => setQuickName(event.target.value)}
           />
-        ),
-      }}
-    />
+        </label>
+        <label className="field">
+          <span>Metric</span>
+          <select
+            value={quickMetric}
+            onChange={(event) => setQuickMetric(event.target.value)}
+          >
+            {goalFields[1].options?.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Target</span>
+          <input
+            type="number"
+            min="0.01"
+            step="any"
+            value={quickTarget}
+            placeholder="100"
+            onChange={(event) => setQuickTarget(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Period</span>
+          <select
+            value={quickPeriod}
+            onChange={(event) => setQuickPeriod(event.target.value)}
+          >
+            {goalFields[3].options?.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="btn primary goal-quick-add-submit"
+          disabled={quickBusy}
+          type="submit"
+        >
+          <Icon name="plus" /> {quickBusy ? "Adding…" : "Add goal"}
+        </button>
+      </form>
+
+      {loading ? (
+        <div className="table-loading">Loading goals…</div>
+      ) : items.length ? (
+        <div className="goal-card-grid">
+          {items.map((goal) => {
+            const progress = getGoalProgress(goal.current, goal.target);
+            return (
+              <article
+                className={`surface goal-card goal-card--${progress.tone}`}
+                key={goal.id}
+              >
+                <header>
+                  <button
+                    className="goal-card-title"
+                    onClick={() => navigate(`/goals/${goal.id}`)}
+                  >
+                    <span>{goal.metric || "Goal"}</span>
+                    <strong>{goal.name || "Untitled goal"}</strong>
+                  </button>
+                  <Badge tone={progress.tone}>{goal.period || "Monthly"}</Badge>
+                </header>
+                <GoalProgress
+                  name={String(goal.name || "Goal")}
+                  current={goal.current}
+                  target={goal.target}
+                />
+                <div className="goal-card-meta">
+                  <span>
+                    <b>Owner</b> {goal.owner || "Unassigned"}
+                  </span>
+                  <span>
+                    <b>Dates</b>{" "}
+                    {goal.startDate || goal.endDate
+                      ? `${goal.startDate || "Open"} – ${goal.endDate || "Open"}`
+                      : "No date range"}
+                  </span>
+                </div>
+                <footer>
+                  <button
+                    className="btn ghost compact"
+                    onClick={() => navigate(`/goals/${goal.id}`)}
+                  >
+                    View details
+                  </button>
+                  <div className="row-actions">
+                    <button
+                      className="icon-btn tiny"
+                      title="Edit goal"
+                      aria-label={`Edit ${goal.name || "goal"}`}
+                      onClick={() => setEdit(goal)}
+                    >
+                      <Icon name="edit" />
+                    </button>
+                    <button
+                      className="icon-btn tiny danger-link"
+                      title="Delete goal"
+                      aria-label={`Delete ${goal.name || "goal"}`}
+                      onClick={() =>
+                        confirm(`Delete ${goal.name || "goal"}?`) && remove(goal.id)
+                      }
+                    >
+                      <Icon name="trash" />
+                    </button>
+                  </div>
+                </footer>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty
+          icon="goal"
+          title="No goals yet"
+          text="Use the quick-add form to create your first measurable goal."
+          action={
+            <button
+              className="btn primary compact"
+              onClick={() => nameRef.current?.focus()}
+            >
+              Add a goal
+            </button>
+          }
+        />
+      )}
+
+      {edit !== undefined ? (
+        <RecordForm
+          title={`${edit ? "Edit" : "Add"} goal`}
+          fields={goalFields}
+          initial={edit || {}}
+          onClose={() => setEdit(undefined)}
+          onSave={saveGoal}
+        />
+      ) : null}
+
+      {celebration ? (
+        <div className="goal-celebration" aria-live="polite">
+          <div className="goal-confetti" aria-hidden="true">
+            {Array.from({ length: 36 }, (_, index) => (
+              <i
+                key={index}
+                style={
+                  {
+                    left: `${(index * 37) % 100}%`,
+                    animationDelay: `${(index % 9) * 0.08}s`,
+                    animationDuration: `${1.8 + (index % 5) * 0.18}s`,
+                  } as CSSProperties
+                }
+              />
+            ))}
+          </div>
+          <div className="goal-celebration-message">
+            <strong>{celebration.milestone}% milestone reached!</strong>
+            <span>{celebration.goalName}</span>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 function SurveysPage() {
@@ -4690,27 +5218,25 @@ function DuplicatesPage() {
   const [scope, setScope] = useState<"contacts" | "companies">("contacts");
   const [data, setData] = useState<any>(null);
   const [busy, setBusy] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
   const load = () =>
     api<any>(`/duplicates?resource=${scope}`)
       .then(setData)
       .catch((err) => toast(err.message, "error"));
   useEffect(() => {
+    setSkipped([]);
     load();
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, [scope]);
-  async function mergeGroup(group: any) {
+  async function mergePair(group: any, keep: Row, merge: Row) {
     setBusy(true);
     try {
       await api(
         `/duplicates/merge`,
-        json("POST", {
-          resource: scope,
-          keepId: group.ids[0],
-          mergeIds: group.ids.slice(1),
-        }),
+        json("POST", { resource: scope, keepId: keep.id, mergeId: merge.id }),
       );
-      toast("Duplicates merged");
+      toast("Duplicate merged");
       load();
       window.dispatchEvent(new Event("tunaxa:resource-changed"));
     } catch (error) {
@@ -4719,7 +5245,42 @@ function DuplicatesPage() {
       setBusy(false);
     }
   }
-  const groups = data?.duplicates || [];
+  function skipPair(key: string) {
+    setSkipped((current) => [...current, key]);
+  }
+  const groups = (data?.duplicates || [])
+    .map((group: any) => ({
+      ...group,
+      records: group.records || group.ids.map((id: string, index: number) => ({
+        id,
+        name: group.names[index],
+      })),
+    }))
+    .flatMap((group: any) =>
+      group.records.slice(1).map((merge: Row) => ({
+        group,
+        keep: group.records[0] as Row,
+        merge,
+        key: `${group.records[0].id}:${merge.id}`,
+      })),
+    )
+    .filter((pair: any) => !skipped.includes(pair.key));
+  const pair = groups[0];
+  const comparisonKeys = pair
+    ? [...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)])].filter(
+        (key) => key !== "id",
+      )
+    : [];
+  const displayName = (record: Row) =>
+    String(record.name || record.email || record.id || "Untitled");
+  const displayValue = (value: unknown) => {
+    if (value === undefined || value === null || value === "") return "—";
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "object") return JSON.stringify(value);
+    return String(value);
+  };
+  const labelFor = (key: string) =>
+    key.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
   return (
     <div className="page">
       <PageHeader
@@ -4747,59 +5308,41 @@ function DuplicatesPage() {
           Companies
         </button>
       </PageHeader>
-      <section className="surface table-surface">
-        {groups.length ? (
-          groups.map((group: any, idx: number) => (
-            <div className="dupe-group" key={idx}>
-              <div className="dupe-group-head">
-                <div className="dupe-member">
-                  <Avatar name={group.names[0]} />
-                  <div>
-                    <b>{group.names[0]}</b>
-                    <small>Primary record (kept)</small>
-                  </div>
-                </div>
-                <div className="row-actions">
-                  <button
-                    className="btn secondary compact"
-                    disabled={busy}
-                    onClick={() => mergeGroup(group)}
-                  >
-                    <Icon name="check" /> Merge into primary
-                  </button>
-                </div>
+      <section className="surface duplicate-comparison">
+        {pair ? (
+          <>
+            <div className="duplicate-comparison-head">
+              <div>
+                <span className="eyebrow">Potential duplicate</span>
+                <h2>Review these records</h2>
               </div>
-              {group.names.slice(1).map((name: string, j: number) => {
-                const sc = group.matches?.[j]?.score ?? null;
-                return (
-                  <div className="dupe-member" key={j}>
-                    <Avatar name={name} />
-                    <div>
-                      <b>{name}</b>
-                      <small>Duplicate (will be merged)</small>
-                    </div>
-                    <div className="row-actions">
-                      <Badge
-                        tone={
-                          sc == null
-                            ? "neutral"
-                            : sc >= 0.8
-                              ? "green"
-                              : sc >= 0.6
-                                ? "amber"
-                                : "red"
-                        }
-                      >
-                        {sc == null
-                          ? "n/a"
-                          : `${Math.round(sc * 100)}% match to primary`}
-                      </Badge>
-                    </div>
-                  </div>
-                );
-              })}
+              <Badge tone="blue">{pair.group.confidence ?? 0}% match</Badge>
             </div>
-          ))
+            <div className="duplicate-columns">
+              <article className="duplicate-record keep">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.keep)} />
+                  <div><small>Record to keep</small><h3>{displayName(pair.keep)}</h3></div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.keep[key])}</b></div>)}
+                </div>
+              </article>
+              <article className="duplicate-record merge">
+                <div className="duplicate-record-head">
+                  <Avatar name={displayName(pair.merge)} />
+                  <div><small>Record to merge and delete</small><h3>{displayName(pair.merge)}</h3></div>
+                </div>
+                <div className="duplicate-fields">
+                  {comparisonKeys.map((key) => <div className="duplicate-field" key={key}><span>{labelFor(key)}</span><b>{displayValue(pair.merge[key])}</b></div>)}
+                </div>
+              </article>
+            </div>
+            <div className="duplicate-actions">
+              <button className="btn secondary" disabled={busy} onClick={() => skipPair(pair.key)}><Icon name="close" /> Skip</button>
+              <button className="btn primary" disabled={busy} onClick={() => mergePair(pair.group, pair.keep, pair.merge)}><Icon name="check" /> Merge</button>
+            </div>
+          </>
         ) : (
           <Empty
             icon="duplicate"
@@ -4909,6 +5452,7 @@ function PortalView({
             <div className="portal-access-form">
               <input
                 type="email"
+                aria-label="Account email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
@@ -5032,7 +5576,8 @@ function FinancePage() {
       </PageHeader>
       <div className="stats-grid">
         {cards.map((card) => (
-          <article className="stat-card" key={card[0]}>
+          <div className="stat-card hover-crm-card relative" key={card[0]}>
+            <CornerBrackets stroke="#3b82f6" size="sm" />
             <div className={`stat-icon tone-${card[4]}`}>
               <Icon name={card[3]} />
             </div>
@@ -5041,7 +5586,7 @@ function FinancePage() {
               <strong>{card[1]}</strong>
               <span>{card[2]}</span>
             </div>
-          </article>
+          </div>
         ))}
       </div>
       <div className="dashboard-grid">
@@ -5250,8 +5795,10 @@ function ReportsPage() {
           <Icon name="download" /> Export CSV
         </button>
       </PageHeader>
+      <CustomReportBuilder />
       <div className="stats-grid">
-        <article className="stat-card">
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-blue">
             <Icon name="lead" />
           </div>
@@ -5260,8 +5807,9 @@ function ReportsPage() {
             <strong>{leads.items.length}</strong>
             <span>All lead records</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-green">
             <Icon name="pipeline" />
           </div>
@@ -5273,8 +5821,9 @@ function ReportsPage() {
               total value
             </span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-purple">
             <Icon name="phone" />
           </div>
@@ -5283,8 +5832,9 @@ function ReportsPage() {
             <strong>{calls.items.length}</strong>
             <span>Inbound and outbound</span>
           </div>
-        </article>
-        <article className="stat-card">
+        </div>
+        <div className="stat-card hover-crm-card relative">
+          <CornerBrackets stroke="#3b82f6" size="sm" />
           <div className="stat-icon tone-amber">
             <Icon name="tasks" />
           </div>
@@ -5295,7 +5845,7 @@ function ReportsPage() {
             </strong>
             <span>Needs attention</span>
           </div>
-        </article>
+        </div>
       </div>
       <section className="surface report-table">
         <div className="section-head">
@@ -5396,8 +5946,18 @@ function AuditPage() {
 }
 
 function TeamPage() {
-  const { items, create, update, remove } = useResource<Row>("team");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const { toast } = useApp();
+  const { items, loading, update, remove } = useResource<Row>("team");
+  const [edit, setEdit] = useState<Row | undefined>();
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteSent, setInviteSent] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(true);
+  const [invitationsError, setInvitationsError] = useState("");
+  const [resending, setResending] = useState("");
   const fields: FieldSpec[] = [
     { key: "avatar", label: "Photo", type: "photo" },
     { key: "name", label: "Name" },
@@ -5417,18 +5977,162 @@ function TeamPage() {
   ];
   const fieldsForForm = fields.filter((f) => f.key !== "avatar");
   const avatarField = fields.find((f) => f.key === "avatar")!;
+
+  async function loadInvitations() {
+    setInvitationsLoading(true);
+    setInvitationsError("");
+    try {
+      const response = await api<unknown>("/users/invites");
+      setInvitations(normalizeInvitations(response));
+    } catch (error) {
+      setInvitationsError((error as Error).message);
+    } finally {
+      setInvitationsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadInvitations();
+  }, []);
+
+  function openInvite() {
+    setInviteEmail("");
+    setInviteSent("");
+    setInviteError("");
+    setInviteOpen(true);
+  }
+
+  async function sendInvitation(event: FormEvent) {
+    event.preventDefault();
+    const email = inviteEmail.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setInviteError("Enter a valid email address.");
+      return;
+    }
+
+    setInviteBusy(true);
+    setInviteError("");
+    try {
+      await api("/users/invite", json("POST", { email }));
+      setInviteSent(email);
+      toast("Invitation sent");
+      await loadInvitations();
+    } catch (error) {
+      setInviteError((error as Error).message);
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function resendInvitation(invitation: PendingInvitation) {
+    setResending(invitation.id);
+    setInvitationsError("");
+    try {
+      await api(
+        "/users/invite",
+        json("POST", { email: invitation.email }),
+      );
+      toast(`Invitation resent to ${invitation.email}`);
+      await loadInvitations();
+    } catch (error) {
+      toast((error as Error).message, "error");
+    } finally {
+      setResending("");
+    }
+  }
+
   return (
     <div className="page">
       <PageHeader
         title="Team & Roles"
         description="Workspace members and role assignments."
       >
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add member
+        <button className="btn primary" onClick={openInvite}>
+          <Icon name="send" /> Invite member
         </button>
       </PageHeader>
+
+      <section className="surface team-invitations" aria-labelledby="pending-invitations-title">
+        <header className="team-invitations-head">
+          <div>
+            <h2 id="pending-invitations-title">Pending invitations</h2>
+            <p>Invitations that have not been accepted yet.</p>
+          </div>
+          <Badge tone="blue">{invitations.length} pending</Badge>
+        </header>
+
+        {invitationsLoading ? (
+          <div className="team-invitations-state" aria-live="polite">
+            Loading invitations…
+          </div>
+        ) : invitationsError ? (
+          <div className="team-invitations-error" role="alert">
+            <div>
+              <b>Could not load pending invitations</b>
+              <span>{invitationsError}</span>
+            </div>
+            <button
+              className="btn secondary compact"
+              type="button"
+              onClick={() => void loadInvitations()}
+            >
+              Try again
+            </button>
+          </div>
+        ) : invitations.length ? (
+          <div className="team-invitation-list">
+            {invitations.map((invitation) => {
+              const expired = invitationIsExpired(invitation.expiresAt);
+              const expiry = invitation.expiresAt
+                ? new Date(invitation.expiresAt)
+                : null;
+              const validExpiry = expiry && !Number.isNaN(expiry.getTime());
+              return (
+                <article className="team-invitation-row" key={invitation.id}>
+                  <span className="team-invitation-icon">
+                    <Icon name="mail" />
+                  </span>
+                  <div className="team-invitation-copy">
+                    <b>{invitation.email}</b>
+                    <span>
+                      <Icon name="clock" size={13} />
+                      {validExpiry ? (
+                        <time dateTime={invitation.expiresAt}>
+                          {expired ? "Expired " : "Expires "}
+                          {expiry.toLocaleString()}
+                        </time>
+                      ) : (
+                        "Expiry unavailable"
+                      )}
+                    </span>
+                  </div>
+                  <Badge tone={expired ? "amber" : "blue"}>
+                    {expired ? "Expired" : "Pending"}
+                  </Badge>
+                  <button
+                    className="btn secondary compact"
+                    type="button"
+                    disabled={resending === invitation.id}
+                    onClick={() => void resendInvitation(invitation)}
+                  >
+                    {resending === invitation.id ? "Sending…" : "Resend"}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="team-invitations-state empty">
+            <Icon name="checkCircle" size={21} />
+            <span>No pending invitations</span>
+          </div>
+        )}
+      </section>
+
       <section className="surface table-surface">
-        {items.length ? (
+        {loading ? (
+          <div className="table-loading">Loading…</div>
+        ) : items.length ? (
           <table>
             <thead>
               <tr>
@@ -5466,6 +6170,7 @@ function TeamPage() {
                     <div className="row-actions">
                       <button
                         className="icon-btn tiny"
+                        aria-label={`Edit ${member.name || member.email || "team member"}`}
                         onClick={() => setEdit(member)}
                       >
                         <Icon name="edit" />
@@ -5473,6 +6178,7 @@ function TeamPage() {
                       {member.role !== "Owner" ? (
                         <button
                           className="icon-btn tiny danger-link"
+                          aria-label={`Remove ${member.name || member.email || "team member"}`}
                           onClick={() =>
                             confirm("Remove this member?") && remove(member.id)
                           }
@@ -5494,25 +6200,120 @@ function TeamPage() {
             action={
               <button
                 className="btn primary compact"
-                onClick={() => setEdit(null)}
+                onClick={openInvite}
               >
-                Add member
+                Invite member
               </button>
             }
           />
         )}
       </section>
+
       {edit !== undefined ? (
         <RecordForm
-          title={`${edit ? "Edit" : "Add"} team member`}
+          title="Edit team member"
           fields={[avatarField, ...fieldsForForm]}
-          initial={edit || { status: "Invited", role: "Sales rep" }}
+          initial={edit}
           onClose={() => setEdit(undefined)}
           onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
+            await update(edit.id, data);
             setEdit(undefined);
           }}
         />
+      ) : null}
+
+      {inviteOpen ? (
+        <Modal
+          title={inviteSent ? "Invitation sent" : "Invite a team member"}
+          onClose={() => !inviteBusy && setInviteOpen(false)}
+          footer={
+            inviteSent ? (
+              <>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  onClick={() => {
+                    setInviteEmail("");
+                    setInviteSent("");
+                    setInviteError("");
+                  }}
+                >
+                  Invite another
+                </button>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => setInviteOpen(false)}
+                >
+                  Done
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="btn secondary"
+                  type="button"
+                  disabled={inviteBusy}
+                  onClick={() => setInviteOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn primary"
+                  type="submit"
+                  form="team-invite-form"
+                  disabled={inviteBusy}
+                >
+                  <Icon name="send" />
+                  {inviteBusy ? "Sending…" : "Send invitation"}
+                </button>
+              </>
+            )
+          }
+        >
+          {inviteSent ? (
+            <div className="team-invite-success" role="status">
+              <span>
+                <Icon name="check" size={27} />
+              </span>
+              <h4>Invitation sent</h4>
+              <p>
+                An invitation was sent to <b>{inviteSent}</b>.
+              </p>
+            </div>
+          ) : (
+            <form id="team-invite-form" className="team-invite-form" onSubmit={sendInvitation}>
+              <div className="team-invite-intro">
+                <span>
+                  <Icon name="mail" size={22} />
+                </span>
+                <div>
+                  <b>Invite by email</b>
+                  <p>The new member will receive a link to join this workspace.</p>
+                </div>
+              </div>
+              <label className="field">
+                <span>Email address</span>
+                <input
+                  autoFocus
+                  type="email"
+                  value={inviteEmail}
+                  placeholder="teammate@company.com"
+                  autoComplete="email"
+                  onChange={(event) => {
+                    setInviteEmail(event.target.value);
+                    setInviteError("");
+                  }}
+                />
+              </label>
+              {inviteError ? (
+                <p className="inline-alert error" role="alert">
+                  <Icon name="warning" /> {inviteError}
+                </p>
+              ) : null}
+            </form>
+          )}
+        </Modal>
       ) : null}
     </div>
   );
@@ -5581,6 +6382,7 @@ function FieldsPage() {
                   <td>{item.type}</td>
                   <td>
                     <Toggle
+                      label={`Make ${item.name || "field"} ${item.required ? "optional" : "required"}`}
                       value={Boolean(item.required)}
                       onChange={(required) => update(item.id, { required })}
                     />
@@ -5589,12 +6391,14 @@ function FieldsPage() {
                     <div className="row-actions">
                       <button
                         className="icon-btn tiny"
+                        aria-label={`Edit ${item.name || "custom field"}`}
                         onClick={() => setEdit(item)}
                       >
                         <Icon name="edit" />
                       </button>
                       <button
                         className="icon-btn tiny danger-link"
+                        aria-label={`Delete ${item.name || "custom field"}`}
                         onClick={() =>
                           confirm("Delete this custom field?") &&
                           remove(item.id)
@@ -5703,11 +6507,16 @@ function TemplatesManager() {
                 <small>{t.subject}</small>
               </div>
               <div className="row-actions">
-                <button className="icon-btn tiny" onClick={() => setEdit(t)}>
+                <button
+                  className="icon-btn tiny"
+                  aria-label={`Edit ${t.name || "template"}`}
+                  onClick={() => setEdit(t)}
+                >
                   <Icon name="edit" />
                 </button>
                 <button
                   className="icon-btn tiny danger-link"
+                  aria-label={`Delete ${t.name || "template"}`}
                   onClick={() => removeTemplate(t)}
                 >
                   <Icon name="trash" />
@@ -6127,7 +6936,7 @@ function Setting({
         <b>{title}</b>
         <p>{text}</p>
       </div>
-      <Toggle value={Boolean(value)} onChange={onChange} />
+      <Toggle label={title} value={Boolean(value)} onChange={onChange} />
     </div>
   );
 }
@@ -6163,7 +6972,7 @@ function FormsPage() {
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, []);
-  const publicBase = "http://127.0.0.1:3001";
+  const publicBase = "http://127.0.0.1:3000";
   return (
     <SimpleCards
       title="Forms"
@@ -6364,14 +7173,18 @@ function FormEditor({
             <b>Enable form</b>
             <p>Visitors can see and submit this form.</p>
           </div>
-          <Toggle value={enabled} onChange={setEnabled} />
+          <Toggle label="Enable form" value={enabled} onChange={setEnabled} />
         </div>
         <div className="setting-toggle">
           <div>
             <b>Progressive profiling</b>
             <p>Hide fields the visitor has already answered.</p>
           </div>
-          <Toggle value={progressive} onChange={setProgressive} />
+          <Toggle
+            label="Progressive profiling"
+            value={progressive}
+            onChange={setProgressive}
+          />
         </div>
         <h4>Form fields</h4>
         {fields.map((field, i) => (
@@ -6408,6 +7221,7 @@ function FormEditor({
             <div className="toggle-row">
               <input
                 type="checkbox"
+                aria-label={`${field.name || `Field ${i + 1}`} required`}
                 checked={Boolean(field.required)}
                 onChange={(e) => setField(i, { required: e.target.checked })}
               />
@@ -6456,6 +7270,7 @@ function WebhooksPage() {
               {item.enabled ? "Active" : "Disabled"}
             </Badge>
             <Toggle
+              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "webhook endpoint"}`}
               value={Boolean(item.enabled)}
               onChange={(enabled) => update(item.id, { enabled })}
             />
@@ -6568,7 +7383,7 @@ function WebhookEditor({
             <b>Enabled</b>
             <p>Accept inbound deliveries at this endpoint.</p>
           </div>
-          <Toggle value={enabled} onChange={setEnabled} />
+          <Toggle label="Enable webhook endpoint" value={enabled} onChange={setEnabled} />
         </div>
       </div>
     </Drawer>
@@ -6651,6 +7466,46 @@ function AppInner() {
   const location = useLocation();
   const [checking, setChecking] = useState(Boolean(getToken()));
   const isPortal = location.pathname === "/portal/access";
+
+  const getInitialUnauthView = (): "home" | "pricing" | "demo" | "login" => {
+    const hash = window.location.hash.toLowerCase();
+    if (hash.includes("pricing")) return "pricing";
+    if (hash.includes("demo") || hash.includes("lab")) return "demo";
+    if (hash.includes("login") || hash.includes("signin") || hash.includes("setup")) return "login";
+    return "home";
+  };
+
+  const [unauthView, setUnauthView] = useState<"home" | "pricing" | "demo" | "login">(getInitialUnauthView);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setUnauthView(getInitialUnauthView());
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const navigateToHome = () => {
+    window.location.hash = "#/home";
+    setUnauthView("home");
+    window.scrollTo(0, 0);
+  };
+  const navigateToPricing = () => {
+    window.location.hash = "#/pricing";
+    setUnauthView("pricing");
+    window.scrollTo(0, 0);
+  };
+  const navigateToDemo = () => {
+    window.location.hash = "#/demo";
+    setUnauthView("demo");
+    window.scrollTo(0, 0);
+  };
+  const navigateToLogin = () => {
+    window.location.hash = "#/login";
+    setUnauthView("login");
+    window.scrollTo(0, 0);
+  };
+
   useEffect(() => {
     if (isPortal || !getToken()) {
       setChecking(false);
@@ -6661,17 +7516,58 @@ function AppInner() {
       .catch(() => setToken(""))
       .finally(() => setChecking(false));
   }, []);
+
   if (isPortal) return <PortalView />;
   if (checking)
     return (
-      <main className="login-page">
-        <section className="login-form-panel">
-          <div className="login-card">Loading Tunaxa…</div>
-        </section>
+      <main className="min-h-screen bg-[#f7f7f7] dark:bg-[#090d13] flex items-center justify-center p-4 tunaxa-grid-texture font-mono">
+        <div className="border border-[#d1d1d1] dark:border-[#21262d] bg-white dark:bg-[#161b22] p-8 text-center relative shadow-sm max-w-sm w-full">
+          <CornerBrackets stroke="#3b82f6" size={8} />
+          <PixelIndicator active pulseColor="blue" className="mx-auto mb-3" />
+          <div className="text-xs text-[#71717a] dark:text-[#8b949e]">
+            LOADING TUNAXA AXA CRM…
+          </div>
+        </div>
       </main>
     );
-  return user ? <Shell /> : <AuthScreen />;
-}
+  return user ? (
+    <OnboardingGate userId={user.id}>
+      <Shell />
+    </OnboardingGate>
+  ) : (
+
+  if (user) return <Shell />;
+
+  if (unauthView === "pricing") {
+    return (
+      <PricingPage
+        onNavigateToHome={navigateToHome}
+        onNavigateToLogin={navigateToLogin}
+        onNavigateToDemo={navigateToDemo}
+        onNavigateToSetup={navigateToLogin}
+      />
+    );
+  }
+
+  if (unauthView === "login") {
+    return (
+      <AuthScreen
+        onNavigateToHome={navigateToHome}
+        onNavigateToPricing={navigateToPricing}
+        onNavigateToDemo={navigateToDemo}
+      />
+    );
+  }
+
+  return (
+    <HomePage
+      onNavigateToLogin={navigateToLogin}
+      onNavigateToPricing={navigateToPricing}
+      onNavigateToDemo={navigateToDemo}
+      onNavigateToSetup={navigateToLogin}
+    />
+  );
+});
 
 export default function App() {
   return (
