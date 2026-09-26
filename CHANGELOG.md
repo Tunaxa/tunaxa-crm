@@ -8,6 +8,17 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Quote Share Token Service (`backend/services/quoteToken.js`):**
+  - Implemented secure HMAC-SHA256 time-limited signing tokens (`createQuoteSignToken`) with constant-time verification (`crypto.timingSafeEqual`) to prevent timing attacks.
+  - Added share link generator (`createQuoteShareLink`) formatting client signing URLs with token query parameters.
+- **E-Signature Capture & Contract Auto-Creation (`backend/routes/quotes.js`):**
+  - Added public `POST /api/quotes/:id/sign` endpoint validating time-limited signature tokens, base64 signature image URLs, and signer details.
+  - Recorded signature audit trail in `custom_fields.signature` (capturing `signerName`, `signerEmail`, `signatureDataUrl`, `signedAt`, `signerIp`, and `userAgent`).
+  - Added double-signing guard returning `409 Conflict` if the quote is already signed.
+  - Transitions quote status to `'Signed'` and automatically instantiates an active `Contract` record in PostgreSQL linked by `quote_id` with financial totals and terms preserved.
+  - Added authenticated `POST /api/quotes/:id/share-link` endpoint to generate valid signing links for sales representatives.
+- **Quote E-Signature Test Suite (`backend/__tests__/quote-sign.test.js`):**
+  - Added 14 unit and integration tests covering token generation, tampering and expiration rejection, payload validation, 404 missing quote handling, double-signing protection, and PostgreSQL quote/contract state verification.
 - **Quote PDF Generation Service (`backend/services/quotePdf.js`):**
   - Added `@react-pdf/renderer` server-side rendering for PDF generation in Node.js ESM using `React.createElement`.
   - Designed professional quote template featuring Tunaxa brand badge, quote reference metadata, customer/company details grid, styled line items table, financial totals (subtotal, discount, tax, grand total), terms/notes, and dual signature block (Prepared By & Accepted By).
