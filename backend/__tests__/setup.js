@@ -17,7 +17,11 @@ beforeAll(async () => {
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const testDbDir = path.join(root, "__tests__");
-const testDbFile = path.join(testDbDir, "test-db.json");
+const workerId = (process.env.VITEST_POOL_ID || "1").replace(
+  /[^a-zA-Z0-9_-]/g,
+  "_",
+);
+const testDbFile = path.join(testDbDir, `test-db-${workerId}.json`);
 
 const emptyDb = {
   users: [],
