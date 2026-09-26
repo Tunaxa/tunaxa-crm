@@ -157,7 +157,7 @@ const resolvers = {
         properties,
         ctx.user?.workspaceId || "default",
       );
-      broadcast("v1object.created", { type, item: obj });
+      broadcast("v1object.created", { type, item: obj }, ctx.user?.workspaceId || "default");
       return obj;
     },
     updateObject: async (_parent, { type, id, properties }, ctx) => {
@@ -167,7 +167,7 @@ const resolvers = {
         throw new Error(`Object ${id} not found in type ${type}`);
       }
       const updated = await updateObject(id, properties);
-      broadcast("v1object.updated", { type, item: updated });
+      broadcast("v1object.updated", { type, item: updated }, ctx.user?.workspaceId || "default");
       return updated;
     },
     deleteObject: async (_parent, { type, id }, ctx) => {
@@ -177,7 +177,7 @@ const resolvers = {
         throw new Error(`Object ${id} not found in type ${type}`);
       }
       await deleteObject(id);
-      broadcast("v1object.deleted", { type, id });
+      broadcast("v1object.deleted", { type, id }, ctx.user?.workspaceId || "default");
       return { ok: true, id };
     },
   },

@@ -18,7 +18,7 @@ export default function registerExecutionRoutes(app) {
   // Manually drain due queued actions
   app.post('/api/executions/process', auth, requireRole('admin', 'member'), async (req, res) => {
     const result = await processExecutionQueue();
-    if (result.executed > 0) broadcast('execution.processed', result);
+    if (result.executed > 0) broadcast('execution.processed', result, req.user.workspaceId || 'default');
     res.json(result);
   });
 

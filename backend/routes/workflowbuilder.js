@@ -47,7 +47,7 @@ export default function registerWorkflowBuilderRoutes(app) {
       db.audit.unshift({ id: id('audit'), action: `Created workflow "${item.name}"`, actor: req.user.name, createdAt: now() });
       return item;
     });
-    broadcast('workflow.created', { id: saved.id });
+    broadcast('workflow.created', { id: saved.id }, req.user.workspaceId || 'default');
     res.status(201).json(saved);
   });
 
@@ -71,7 +71,7 @@ export default function registerWorkflowBuilderRoutes(app) {
       return flow;
     });
     if (!saved) return res.status(404).json({ error: 'Workflow not found' });
-    broadcast('workflow.updated', { id: saved.id });
+    broadcast('workflow.updated', { id: saved.id }, req.user.workspaceId || 'default');
     res.json(saved);
   });
 
@@ -85,7 +85,7 @@ export default function registerWorkflowBuilderRoutes(app) {
       return true;
     });
     if (!result) return res.status(404).json({ error: 'Workflow not found' });
-    broadcast('workflow.deleted', { id: req.params.id });
+    broadcast('workflow.deleted', { id: req.params.id }, req.user.workspaceId || 'default');
     res.json({ ok: true });
   });
 
@@ -103,7 +103,7 @@ export default function registerWorkflowBuilderRoutes(app) {
       return flow;
     });
     if (!saved) return res.status(404).json({ error: 'Workflow not found' });
-    broadcast('workflow.graph_saved', { id: saved.id });
+    broadcast('workflow.graph_saved', { id: saved.id }, req.user.workspaceId || 'default');
     res.json(saved);
   });
 

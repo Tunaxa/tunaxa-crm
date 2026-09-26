@@ -7,6 +7,7 @@ import {
 } from "../../services/cache.js";
 
 const RESOURCE = "activities";
+
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
