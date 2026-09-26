@@ -32,6 +32,8 @@ and this project adheres to Semantic Versioning.
 - Per-route `ErrorBoundary` instances now get `key={location.pathname}`, so client-side navigation remounts a fresh boundary instead of carrying over a previously caught error's fallback UI.
 
 ### Fixed
+
+- Secured Server-Sent Events by requiring authentication and restricting event delivery to the authenticated user's workspace.
 - Search: updated empty search result message
 - Login: lower Sign In button spacing next to Remember me
 - Cleared critical and serious accessibility findings by naming icon-only buttons and form controls, raising muted text to WCAG AA contrast in light and dark themes, and enforcing a visible keyboard focus ring across interactive elements.
