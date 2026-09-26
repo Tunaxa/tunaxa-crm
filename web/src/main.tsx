@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./i18n";
 import "./styles/fonts.css";
 import "./styles/app.css";
+import "./styles/blueprint.css";
 
 if (localStorage.getItem("tunaxa.theme") === "dark")
   document.documentElement.classList.add("dark");
