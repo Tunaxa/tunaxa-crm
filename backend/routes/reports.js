@@ -1,6 +1,8 @@
 import { readDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
+import { requireRole } from '../middleware/rbac.js';
 import { cacheGet, cacheSet } from '../services/cache.js';
+import { runReportQuery, ReportQueryError } from '../services/reports.js';
 
 export default function registerReportRoutes(app) {
   app.get('/api/reports/pipeline', auth, async (req, res) => {
@@ -111,4 +113,43 @@ export default function registerReportRoutes(app) {
     }
     res.json({ sources: Object.values(sources).sort((a, b) => b.count - a.count) });
   });
+
+  app.post(
+    '/api/reports/query',
+    auth,
+    requireRole('admin', 'member'),
+    async (req, res, next) => {
+      try {
+        const { entity, groupBy, metric, field, dateRange, dateField } = req.body || {};
+
+        if (!entity || typeof entity !== 'string' || !entity.trim()) {
+          return res.status(400).json({ error: 'entity is required' });
+        }
+        if (!groupBy || typeof groupBy !== 'string' || !groupBy.trim()) {
+          return res.status(400).json({ error: 'groupBy is required' });
+        }
+        if (!metric || typeof metric !== 'string' || !metric.trim()) {
+          return res.status(400).json({ error: 'metric is required' });
+        }
+
+        const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
+        const data = await runReportQuery({
+          entity: entity.trim(),
+          groupBy: groupBy.trim(),
+          metric: metric.trim(),
+          field: typeof field === 'string' ? field.trim() : field,
+          dateRange,
+          dateField: typeof dateField === 'string' ? dateField.trim() : dateField,
+          workspaceId,
+        });
+
+        res.json(data);
+      } catch (err) {
+        if (err.isValidationError || err.status === 400 || err.statusCode === 400) {
+          return res.status(400).json({ error: err.message });
+        }
+        next(err);
+      }
+    }
+  );
 }
