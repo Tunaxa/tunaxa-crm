@@ -28,6 +28,8 @@ and this project adheres to Semantic Versioning.
 - Inbound IMAP email sync worker polling every 5 minutes and linking matching contact activities.
 - PostgreSQL repository layer for Companies, Deals, Tasks, and Activities with CRUD, pagination, search, sorting whitelists, and pipeline aggregation.
 - Parameterized PostgreSQL repository layer for Contacts and Leads with CRUD, pagination, search, and validated sorting.
+- PostgreSQL repository layer for Companies, Deals, Tasks, and Activities with CRUD, pagination, search, sorting whitelists, and pipeline aggregation.
+- Redis query caching with 60s TTL and pattern-based invalidation across core repository findAll queries.
 
 ### Changed
 

@@ -1,5 +1,12 @@
 import { query } from "../pg.js";
+import {
+  cacheFlush,
+  cacheGet,
+  cacheSet,
+  hashParams,
+} from "../../services/cache.js";
 
+const RESOURCE = "contacts";
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
@@ -49,12 +56,17 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll({
-  page = 1,
-  limit = 20,
-  sortBy = "created_at:desc",
-  q = "",
-} = {}) {
+export async function findAll(params = {}) {
+  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const {
+    page = 1,
+    limit = 20,
+    sortBy = "created_at:desc",
+    q = "",
+  } = params;
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -85,13 +97,15 @@ export async function findAll({
       : [normalizedLimit, offset],
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  return {
+  const result = {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
+  await cacheSet(cacheKey, result, 60);
+  return result;
 }
 
 export async function findById(id) {
@@ -118,6 +132,7 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
@@ -141,6 +156,7 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
@@ -149,6 +165,7 @@ async function remove(id) {
     "DELETE FROM contacts WHERE id = $1 RETURNING id",
     [id],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rowCount > 0;
 }
 
