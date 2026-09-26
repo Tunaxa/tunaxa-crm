@@ -9,3 +9,13 @@ on:
 jobs:
   ci:
     uses: Tunaxa/.github/.github/workflows/reusable-lint-test.yml@main
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - run: npm run lint
+      - run: npm test
