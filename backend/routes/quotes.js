@@ -2,8 +2,12 @@ import { auth } from '../middleware/auth.js';
 import { repoFor } from '../db/repositories/index.js';
 import { pgToLegacy } from '../db/legacy-shape.js';
 import { readDb, mutateDb } from '../store.js';
+import { id } from '../helpers.js';
 import { renderQuotePdfStream } from '../services/quotePdf.js';
 import { createQuoteSignToken, verifyQuoteSignToken, createQuoteShareLink } from '../services/quoteToken.js';
+import { triggerWorkflows } from '../services/workflows.js';
+import { getSettings } from '../services/config.js';
+import { sendEmail } from '../services/smtp.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATA_URL_REGEX = /^data:image\/(png|jpeg|svg\+xml);base64,[A-Za-z0-9+/=]+$/;
@@ -166,7 +170,13 @@ export default function registerQuoteRoutes(app) {
         return res.status(409).json({ error: 'Quote has already been signed' });
       }
 
-      const signerIp = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
+      const xForwardedFor = req.headers['x-forwarded-for'];
+      const forwardedIp = Array.isArray(xForwardedFor)
+        ? xForwardedFor[0]
+        : typeof xForwardedFor === 'string'
+        ? xForwardedFor.split(',')[0].trim()
+        : null;
+      const signerIp = forwardedIp || req.ip || req.socket?.remoteAddress || '127.0.0.1';
       const userAgent = req.headers['user-agent'] || 'Unknown';
       const signedAt = new Date().toISOString();
 
@@ -247,6 +257,177 @@ export default function registerQuoteRoutes(app) {
           db.contracts.push(newContract);
           contract = newContract;
         });
+      }
+
+      // 1. Trigger Workflow Engine (quote.signed)
+      const finalQuote = updatedQuote || quoteObj;
+      const workflowPayload = {
+        ...finalQuote,
+        status: 'Signed',
+        contractId: contract?.id,
+        signerName: signerName.trim(),
+        signerEmail: signerEmail.trim().toLowerCase(),
+        signedAt,
+      };
+
+      try {
+        await triggerWorkflows('quote.signed', workflowPayload, {
+          workspaceId: finalQuote.workspace_id || finalQuote.workspaceId || 'default',
+          event: 'quote.signed',
+          contractId: contract?.id,
+          signerEmail: signerEmail.trim().toLowerCase(),
+          signerName: signerName.trim(),
+          resource: 'quotes',
+        });
+      } catch (wfErr) {
+        console.error('[quotes] Error triggering quote.signed workflow:', wfErr);
+      }
+
+      // 2. Deal Owner Email Notification
+      try {
+        const dealId = finalQuote.dealId || finalQuote.deal_id;
+        let deal = null;
+        if (dealId) {
+          const dealsRepo = repoFor('deals');
+          if (dealsRepo && typeof dealsRepo.findById === 'function') {
+            try {
+              const dealRow = await dealsRepo.findById(dealId);
+              if (dealRow) deal = pgToLegacy(dealRow, 'deals');
+            } catch (_) {}
+          }
+          if (!deal) {
+            const db = await readDb();
+            deal = (db.deals || []).find((d) => d.id === dealId) || null;
+          }
+        }
+
+        const ownerIdentifier =
+          deal?.owner_id ||
+          deal?.ownerId ||
+          deal?.assignedTo ||
+          deal?.userId ||
+          deal?.owner ||
+          finalQuote.owner_id ||
+          finalQuote.ownerId ||
+          finalQuote.owner ||
+          finalQuote.created_by ||
+          finalQuote.createdBy;
+
+        let ownerEmail = null;
+        let ownerName = null;
+        if (ownerIdentifier) {
+          const db = await readDb();
+          const user = (db.users || []).find(
+            (u) =>
+              u.id === ownerIdentifier ||
+              (u.email && u.email.toLowerCase() === String(ownerIdentifier).toLowerCase()) ||
+              u.name === ownerIdentifier
+          );
+          if (user) {
+            ownerEmail = user.email;
+            ownerName = user.name;
+          } else if (typeof ownerIdentifier === 'string' && ownerIdentifier.includes('@')) {
+            ownerEmail = ownerIdentifier;
+            ownerName = ownerIdentifier.split('@')[0];
+          }
+        }
+
+        if (ownerEmail) {
+          const quoteRef = finalQuote.quoteNumber || finalQuote.quote_number || finalQuote.title || finalQuote.id;
+          const subject = `Quote Signed: ${finalQuote.quoteNumber || finalQuote.quote_number || finalQuote.title || 'Quote'}`;
+          const dealInfo = deal ? `${deal.title || deal.name || deal.id}` : (dealId || 'N/A');
+          const totalValue = finalQuote.total !== undefined ? finalQuote.total : (contract?.value || 0);
+          const contractId = contract?.id || 'N/A';
+
+          const text = `Quote ${quoteRef} has been electronically signed by ${signerName.trim()} (${signerEmail.trim().toLowerCase()}).\n\nDeal: ${dealInfo}\nTotal Value: $${totalValue}\nContract ID: ${contractId}\nSigned At: ${signedAt}`;
+
+          const html = `<p>Quote <strong>${quoteRef}</strong> has been electronically signed by <strong>${signerName.trim()}</strong> (<a href="mailto:${signerEmail.trim().toLowerCase()}">${signerEmail.trim().toLowerCase()}</a>).</p>
+<ul>
+  <li><strong>Deal:</strong> ${dealInfo}</li>
+  <li><strong>Total Value:</strong> $${totalValue}</li>
+  <li><strong>Contract ID:</strong> ${contractId}</li>
+  <li><strong>Signed At:</strong> ${signedAt}</li>
+</ul>`;
+
+          const settings = await getSettings();
+          const sendResult = await sendEmail(settings, {
+            to: ownerEmail,
+            subject,
+            text,
+            html,
+          });
+
+          const msgRecord = {
+            id: id('msg'),
+            channel: 'email',
+            to: ownerEmail,
+            subject,
+            body: text,
+            direction: 'Outbound',
+            status: sendResult?.status || 'Sent',
+            createdAt: signedAt,
+            updatedAt: signedAt,
+          };
+
+          const notificationRecord = {
+            id: id('notif'),
+            type: 'quote.signed',
+            recipientEmail: ownerEmail,
+            recipientName: ownerName || ownerEmail,
+            subject,
+            body: text,
+            quoteId: finalQuote.id,
+            contractId,
+            dealId: deal?.id || dealId || null,
+            createdAt: signedAt,
+          };
+
+          await mutateDb((db) => {
+            if (!Array.isArray(db.messages)) db.messages = [];
+            db.messages.unshift(msgRecord);
+
+            if (!Array.isArray(db.notifications)) db.notifications = [];
+            db.notifications.unshift(notificationRecord);
+          });
+        }
+      } catch (notifyErr) {
+        console.error('[quotes] Error sending deal owner notification:', notifyErr);
+      }
+
+      // 3. Audit Trail Logging
+      try {
+        const auditRecord = {
+          id: id('audit'),
+          action: 'quote.signed',
+          entity: 'quotes',
+          entityId: finalQuote.id,
+          resourceId: finalQuote.id,
+          workspaceId: finalQuote.workspace_id || finalQuote.workspaceId || 'default',
+          actor: {
+            name: signerName.trim(),
+            email: signerEmail.trim().toLowerCase(),
+            type: 'external_signer',
+            ip: signerIp,
+            userAgent,
+          },
+          ip: signerIp,
+          userAgent,
+          details: {
+            quoteNumber: finalQuote.quoteNumber || finalQuote.quote_number || '',
+            contractId: contract?.id || '',
+            total: finalQuote.total,
+            signedAt,
+          },
+          timestamp: signedAt,
+          createdAt: signedAt,
+        };
+
+        await mutateDb((db) => {
+          if (!Array.isArray(db.audit)) db.audit = [];
+          db.audit.unshift(auditRecord);
+        });
+      } catch (auditErr) {
+        console.error('[quotes] Error recording audit trail for quote sign:', auditErr);
       }
 
       return res.status(200).json({
