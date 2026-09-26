@@ -10,6 +10,7 @@
     "seed": "node backend/db/seed.js",
     "migrate": "node backend/db/migrate.js",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "migrate:data": "node scripts/migrate-json-to-pg.js",
     "build": "vite build --config web/vite.config.ts",
     "preview": "vite preview --config web/vite.config.ts --host 127.0.0.1 --port 4173 --open",
     "start": "node start.js",
