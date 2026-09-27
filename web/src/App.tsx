@@ -1,5 +1,3 @@
-const [pageSize, setPageSize] = useState(getPageSize());
-const [page, setPage] = useState(1);
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
 
 import { useForm } from "react-hook-form";
@@ -26,6 +24,7 @@ import {
 } from "react";
 import {
   Navigate,
+  NavLink,
   Route,
   Routes,
   useLocation,
@@ -70,12 +69,11 @@ import {
   getGoalProgress,
   type GoalMilestone,
 } from "./components/goals/GoalProgress";
-import { CornerBrackets } from "./components/CornerBrackets";
 import { QuoteForm } from "./components/quotes/QuoteForm";
+import { GenerateInvoiceButton } from "./components/quotes/GenerateInvoiceButton";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
-import { Shell } from "./shell/Shell";
 
 const LeadsPage = lazy(() =>
   import("./pages/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
@@ -498,14 +496,15 @@ function AuthScreen({
                   : "Sign in"}{" "}
               <Icon name="arrowRight" />
             </button>
-          </div>
         </form>
+        </div>
       </section>
     </main>
   );
 }
 
 function AppRoutes() {
+  const { user, toast, logout } = useApp();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -2188,19 +2187,6 @@ function changePageSize(value: number) {
       </section>
 
       {edit !== undefined ? (
-        <RecordForm
-          title={`${edit ? "Edit" : "Add"} ${singular}`}
-          fields={fields}
-          initial={edit || {}}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit
-              ? await update(edit.id, data)
-              : await create(data);
-
-            setEdit(undefined);
-          }}
-        />
         renderEditor ? (
           renderEditor({
             title: `${edit ? "Edit" : "Add"} ${singular}`,
@@ -2272,6 +2258,8 @@ function PeoplePage({
   const { toast } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  const [pageSize, setPageSize] = useState(getPageSize());
+  const [page, setPage] = useState(1);
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const custom = useSchema(resource);
@@ -2283,6 +2271,13 @@ function PeoplePage({
     { key: "avatar", label: "Photo", type: "photo" },
     ...allFields,
   ];
+  const cols = allFields;
+  const mCols = new Set(cols.map((field) => field.key));
+  const singular = title.slice(0, -1).toLowerCase();
+  const nameOf = (row: Row) => String(row.name || row.title || "Untitled");
+  const synopsis = (row: Row) => row.company || row.role || "";
+  const statusField = "status";
+  const toneOf = (value?: string): BadgeTone => value === "Active" ? "green" : "blue";
 const filteredRows = items.filter(
   (row) =>
     !query ||
@@ -2617,8 +2612,8 @@ function RecordDetailPage({
         setActivities(
           items.filter(
             (a) =>
-              a.contact === name ||
-              a.title?.toLowerCase().includes(name.toLowerCase()),
+              a.contact === recordName ||
+              a.title?.toLowerCase().includes(recordName.toLowerCase()),
           ),
         ),
       )
@@ -2743,6 +2738,9 @@ function RecordDetailPage({
   </p>
 </div>
           <div className="detail-actions">
+            {resource === "quotes" ? (
+              <GenerateInvoiceButton key={record.id} quote={record} />
+            ) : null}
             {record.status ? (
               <Badge
                 tone={
@@ -3155,7 +3153,7 @@ function RecordForm({
     </Drawer>
   );
 }
-function CompaniesPage() {
+function LegacyCompaniesPage() {
   const fields: FieldSpec[] = [
     { key: "logo", label: "Logo", type: "photo" },
     { key: "name", label: "Company name" },
@@ -3294,7 +3292,7 @@ function CompaniesPage() {
   );
 }
 
-function PipelinePage() {
+function LegacyPipelinePage() {
   const { items, create, update, remove } = useResource<Row>("deals");
   const [pipelineStages, setPipelineStages] = useState<
     { name: string; probability: number }[]
@@ -4180,7 +4178,9 @@ function WorkflowsPage() {
       {items.length ? (
         <>
           {/* Workflow visualisation avec React Flow */}
-          <WorkflowCanvas workflow={items[0]} />
+          <WorkflowCanvas
+            workflow={{ event: items[0].event, filter: items[0].filter, actions: items[0].actions }}
+          />
 
           {/* Liste des workflows existants */}
           <div className="workflow-list">
@@ -4228,33 +4228,6 @@ function WorkflowsPage() {
                     </p>
                   </div>
 
-                  <div className="flow-actions">
-                    <Toggle
-                      value={Boolean(flow.enabled)}
-                      onChange={(enabled) =>
-                        update(flow.id, { enabled })
-                      }
-                    />
-
-                    <button
-                      className="icon-btn tiny"
-                      onClick={() => setEdit(flow)}
-                    >
-                      <Icon name="edit" />
-                    </button>
-
-                    <button
-                      className="icon-btn tiny danger-link"
-                      onClick={() =>
-                        confirm("Delete this workflow?") &&
-                        remove(flow.id)
-                      }
-                    >
-                      <Icon name="trash" />
-                    </button>
-                  </div>
-                    ) : null}
-                  </p>
                 </div>
                 <div className="flow-actions">
                   <Toggle
@@ -8708,20 +8681,13 @@ function AppInner() {
         </div>
       </main>
     );
-  return user ? (
-    <OnboardingGate userId={user.id}>
-      <Shell />
-    </OnboardingGate>
-  ) : (
-
   if (user)
     return (
-      <Shell
-        renderQuickCreate={(onClose) => <QuickCreate onClose={onClose} />}
-        renderGlobalSearch={(onClose) => <GlobalSearch onClose={onClose} />}
-      >
-        <AppRoutes />
-      </Shell>
+      <OnboardingGate userId={user.id}>
+        <Suspense fallback={<div className="table-loading">Loading…</div>}>
+          <AppRoutes />
+        </Suspense>
+      </OnboardingGate>
     );
 
   if (unauthView === "pricing") {
@@ -8753,7 +8719,7 @@ function AppInner() {
       onNavigateToSetup={navigateToLogin}
     />
   );
-});
+}
 
 export default function App() {
   return (
