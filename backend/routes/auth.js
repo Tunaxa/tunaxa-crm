@@ -52,7 +52,10 @@ export default function registerAuthRoutes(app) {
     const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     const db = await readDb();
+    const session = db.sessions.find(x => x.token === token);
+    const user = session ? db.users.find(x => x.id === session.userId) : null;
     if (!session || sessionIsExpired(session) || !user) return res.status(401).json({ error: 'Session expired' });
+    const nextToken = crypto.randomBytes(32).toString('hex');
     await mutateDb(next => {
       next.sessions = next.sessions.filter(x => x.token !== token);
       next.sessions.push({ token: nextToken, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
@@ -61,6 +64,57 @@ export default function registerAuthRoutes(app) {
   });
 
   app.get('/api/auth/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
+    app.get('/api/users/me/preferences', auth, async (req, res) => {
+    const db = await readDb();
+    const user = db.users.find(u => u.id === req.user.id);
+
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json({
+      preferences: user.preferences || {
+        theme: 'light',
+        sidebarCollapsed: false,
+        pageSize: 25,
+      },
+    });
+  });
+
+  app.put('/api/users/me/preferences', auth, async (req, res) => {
+    const { theme, sidebarCollapsed, pageSize } = req.body;
+
+    const result = await mutateDb(db => {
+      const user = db.users.find(u => u.id === req.user.id);
+      if (!user) return null;
+
+      user.preferences = {
+        ...(user.preferences || {}),
+        ...(theme === 'light' || theme === 'dark' ? { theme } : {}),
+        ...(typeof sidebarCollapsed === 'boolean' ? { sidebarCollapsed } : {}),
+        ...(Number.isInteger(pageSize) && pageSize > 0 ? { pageSize } : {}),
+      };
+
+      return user.preferences;
+    });
+
+    if (!result) return res.status(404).json({ error: 'User not found' });
+
+    res.json({ preferences: result });
+  });
+
+  app.post('/api/auth/events-token', auth, async (req, res) => {
+    const sseLifetimeMs = 120_000;
+    const token = crypto.randomBytes(32).toString('hex');
+    await mutateDb(db => {
+      db.sessions.push({
+        token,
+        userId: req.user.id,
+        createdAt: now(),
+        expiresAt: new Date(Date.now() + sseLifetimeMs).toISOString(),
+        purpose: 'sse',
+      });
+    });
+    res.json({ token, expiresAt: new Date(Date.now() + sseLifetimeMs).toISOString() });
+  });
 
   app.post('/api/auth/logout', auth, async (req, res) => {
     await mutateDb(db => { db.sessions = db.sessions.filter(x => x.token !== req.token); });
@@ -89,7 +143,7 @@ export default function registerAuthRoutes(app) {
       return publicUser(user);
     });
     if (!saved) return res.status(404).json({ error: 'User not found' });
-    broadcast('user.role.changed', { userId: saved.id, role: saved.role });
+    broadcast('user.role.changed', { userId: saved.id, role: saved.role }, req.user.workspaceId || 'default');
     res.json(saved);
   });
 
@@ -104,7 +158,7 @@ export default function registerAuthRoutes(app) {
       return publicUser(user);
     });
     if (!saved) return res.status(409).json({ error: 'Email already exists' });
-    broadcast('user.created', { user: saved });
+    broadcast('user.created', { user: saved }, req.user.workspaceId || 'default');
     res.status(201).json(saved);
   });
 
@@ -121,7 +175,7 @@ export default function registerAuthRoutes(app) {
       db.audit.unshift({ id: id('audit'), action: `Removed user: ${deleted.email}`, actor: req.user.name, createdAt: now() });
     });
     if (!deleted) return res.status(404).json({ error: 'User not found' });
-    broadcast('user.deleted', { userId: deleted.id });
+    broadcast('user.deleted', { userId: deleted.id }, req.user.workspaceId || 'default');
     res.json({ ok: true });
   });
 }
