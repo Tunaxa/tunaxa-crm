@@ -343,9 +343,10 @@ export default function registerFormRoutes(app) {
   // ============ Management endpoints (auth) ============
 
   app.get('/api/forms', auth, async (req, res) => {
+    const workspaceId = req.user?.workspaceId || req.user?.workspace_id || DEFAULT_WORKSPACE;
     try {
       const repo = repoFor('forms');
-      const filters = {};
+      const filters = { workspaceId };
       if (req.query.q) filters.q = req.query.q;
       if (req.query.enabled !== undefined && req.query.enabled !== '') {
         filters.enabled = req.query.enabled === 'true';
@@ -411,6 +412,7 @@ export default function registerFormRoutes(app) {
 
   app.put('/api/forms/:id', auth, requireRole('admin', 'member'), async (req, res) => {
     const body = req.body || {};
+    const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     try {
       const patch = { ...body };
       if (Array.isArray(body.fields)) patch.fields = normalizeFields(body.fields);
@@ -419,7 +421,11 @@ export default function registerFormRoutes(app) {
       delete patch.id;
       delete patch.createdAt;
       delete patch.updatedAt;
-      const row = await repoFor('forms').update(req.params.id, legacyToPg(patch, 'forms'));
+      // The tenant is server-derived too, or a PUT could move a form into
+      // another workspace.
+      delete patch.workspace_id;
+      delete patch.workspaceId;
+      const row = await repoFor('forms').update(req.params.id, legacyToPg(patch, 'forms'), workspaceId);
       if (!row) return res.status(404).json({ error: 'Form not found' });
       const form = pgToLegacy(row, 'forms');
       await mutateDb(db => {
@@ -433,11 +439,12 @@ export default function registerFormRoutes(app) {
   });
 
   app.delete('/api/forms/:id', auth, requireRole('admin', 'member'), async (req, res) => {
+    const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     try {
       const repo = repoFor('forms');
-      const existing = await repo.findById(req.params.id);
+      const existing = await repo.findById(req.params.id, workspaceId);
       if (!existing) return res.status(404).json({ error: 'Form not found' });
-      const ok = await repo.delete(req.params.id);
+      const ok = await repo.delete(req.params.id, workspaceId);
       if (!ok) return res.status(404).json({ error: 'Form not found' });
       await mutateDb(db => {
         db.audit.unshift({ id: id('audit'), action: `Deleted form "${pgToLegacy(existing, 'forms').name}"`, actor: req.user.name, createdAt: now() });
