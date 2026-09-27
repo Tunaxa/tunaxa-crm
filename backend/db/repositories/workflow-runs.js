@@ -38,7 +38,7 @@ export async function create(data = {}) {
   return result.rows[0] || null;
 }
 
-export async function update(id, data = {}) {
+export async function update(id, data = {}, workspaceId) {
   const fields = UPDATE_FIELDS.filter(
     (field) =>
       Object.prototype.hasOwnProperty.call(data, field) &&
@@ -61,19 +61,27 @@ export async function update(id, data = {}) {
     assignments.push(`${field} = $${index + 1}`);
   });
   values.push(id);
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  if (scoped) values.push(workspaceId);
 
   const result = await query(
     `UPDATE workflow_runs
      SET ${assignments.join(", ")}
-     WHERE id = $${values.length}
+     WHERE id = $${values.length - (scoped ? 1 : 0)}${scoped ? ` AND (workspace_id = $${values.length} OR ($${values.length} = 'default' AND workspace_id IS NULL))` : ""}
      RETURNING *`,
     values,
   );
   return result.rows[0] || null;
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM workflow_runs WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM workflow_runs WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))"
+      : "SELECT * FROM workflow_runs WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
   return result.rows[0] || null;
 }
 

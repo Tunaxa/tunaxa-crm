@@ -32,11 +32,13 @@ function slaStatus(ticket, sla) {
 // through the repository. The envelope shape ({ data, stages, sla, total }) is
 // unchanged: the SLA board and the stage counts are computed from the full set,
 // so this pages through the whole result rather than stopping at one page.
-async function loadTickets(filters = {}) {
+async function loadTickets(filters = {}, workspaceId) {
   const repo = repoFor('tickets');
   const rows = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const result = await repo.findAll({ ...filters, page, limit: 100 });
+    // Scoped in SQL on every page, so a paginated board cannot page past the
+    // end of the caller's tenant and pull in another workspace's rows.
+    const result = await repo.findAll({ ...filters, page, limit: 100, workspaceId });
     rows.push(...result.data.map(row => pgToLegacy(row, 'tickets')));
     if (result.data.length === 0 || rows.length >= result.total) break;
     if (page === MAX_PAGES) {
@@ -61,6 +63,7 @@ async function logTicketActivity(legacy) {
 
 export default function registerTicketRoutes(app) {
   app.get('/api/tickets', auth, async (req, res) => {
+    const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     try {
       const db = await readDb();
       const sla = db.ticketSla || DEFAULT_SLA;
@@ -70,7 +73,7 @@ export default function registerTicketRoutes(app) {
       for (const key of ['q', 'stage', 'priority', 'source']) {
         if (req.query[key]) filters[key] = req.query[key];
       }
-      const tickets = (await loadTickets(filters)).map(t => ({ ...t, sla: slaStatus(t, sla) }));
+      const tickets = (await loadTickets(filters, workspaceId)).map(t => ({ ...t, sla: slaStatus(t, sla) }));
       const stages = TICKET_STAGES.map(stage => ({ stage, count: tickets.filter(t => t.stage === stage).length }));
       res.json({ data: tickets, stages, sla, total: tickets.length });
     } catch (error) {
@@ -141,10 +144,14 @@ export default function registerTicketRoutes(app) {
 
   app.put('/api/tickets/:id', auth, requireRole('admin', 'member'), async (req, res) => {
     const nowIso = now();
+    const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     // Same two rules the JSON handler applied, kept verbatim: moving a ticket
     // off "New" counts as a first response, and moving it to "Resolved" stamps
     // the resolution once.
     const patch = { ...req.body, updatedAt: nowIso };
+    // The tenant is server-derived, never client-supplied.
+    delete patch.workspace_id;
+    delete patch.workspaceId;
     if (req.body.stage && req.body.stage !== 'New' && !req.body.firstResponseAt) {
       patch.firstResponseAt = nowIso;
     }
@@ -154,13 +161,13 @@ export default function registerTicketRoutes(app) {
     }
     try {
       const repo = repoFor('tickets');
-      const existing = await repo.findById(req.params.id);
+      const existing = await repo.findById(req.params.id, workspaceId);
       if (!existing) return res.status(404).json({ error: 'Ticket not found' });
 
       // Only the keys the client actually sent reach the UPDATE, so a partial
       // PUT cannot wipe a stored firstResponseAt/resolvedAt. The JSON handler
       // got this for free from `{ ...ticket, ...req.body }`.
-      const row = await repo.update(req.params.id, legacyToPg(patch, 'tickets'));
+      const row = await repo.update(req.params.id, legacyToPg(patch, 'tickets'), workspaceId);
       if (!row) return res.status(404).json({ error: 'Ticket not found' });
       const saved = pgToLegacy(row, 'tickets');
 
@@ -176,6 +183,7 @@ export default function registerTicketRoutes(app) {
 
   app.post('/api/tickets/:id/comment', auth, requireRole('admin', 'member'), async (req, res) => {
     const { body } = req.body || {};
+    const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     if (!body) return res.status(400).json({ error: 'Comment body is required' });
     try {
       // addComment prepends server-side and sets first_response_at on the first
@@ -185,7 +193,7 @@ export default function registerTicketRoutes(app) {
         body,
         author: req.user.name,
         createdAt: now()
-      });
+      }, workspaceId);
       if (!row) return res.status(404).json({ error: 'Ticket not found' });
       res.status(201).json(pgToLegacy(row, 'tickets'));
     } catch (error) {
@@ -194,8 +202,9 @@ export default function registerTicketRoutes(app) {
   });
 
   app.delete('/api/tickets/:id', auth, requireRole('admin', 'member'), async (req, res) => {
+    const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     try {
-      const ok = await repoFor('tickets').delete(req.params.id);
+      const ok = await repoFor('tickets').delete(req.params.id, workspaceId);
       if (!ok) return res.status(404).json({ error: 'Ticket not found' });
       res.json({ ok: true });
     } catch (error) {
@@ -205,10 +214,11 @@ export default function registerTicketRoutes(app) {
 
   // SLA summary board
   app.get('/api/tickets/sla/summary', auth, async (req, res) => {
+    const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     try {
       const db = await readDb();
       const sla = db.ticketSla || DEFAULT_SLA;
-      const tickets = await loadTickets();
+      const tickets = await loadTickets({}, workspaceId);
       const open = tickets.filter(t => t.stage !== 'Resolved');
       let breached = 0, pending = 0, ok = 0;
       for (const t of open) {

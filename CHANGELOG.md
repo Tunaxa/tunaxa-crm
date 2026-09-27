@@ -6,7 +6,37 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+### Security
+- **Cross-Tenant IDOR Remediations (`backend/routes/` & repositories):**
+  - Remediated un-scoped generic CRUD and CSV export in `backend/routes/resources.js` to enforce tenant workspace boundaries across all 19 entities. The tenant is now server-derived on every write, so a `workspace_id` supplied in a request body is ignored on both create and update; cross-tenant reads and writes return `404` rather than `403` so a response does not confirm that an id exists.
+  - Enforced workspace isolation across all forms endpoints (`GET /api/forms`, `findById`, `update`, `delete`) in `backend/routes/forms.js`.
+  - Scoped ticket management, ticket boards, comments, and SLA summaries to the caller's workspace in `backend/routes/tickets.js`. Scoping is applied in SQL on every page of the paginated board, so paging cannot walk past the end of the caller's tenant.
+  - Fixed property spread precedence in `backend/routes/goals.js` preventing request payloads from overwriting the server-derived `workspace_id`.
+  - Fixed precedence order in `backend/services/savedReports.js` so the explicit scope argument wins over `data.workspaceId`. No current caller forwarded a raw body, so this corrected a latent weakness rather than a live hole.
+  - Tenant scoping was applied to all 21 PostgreSQL repositories. The scope is an optional argument, so omitting it still yields the previous unscoped SQL; this keeps migrations, backfills, and system workers working, and means a new call site that forgets the argument silently disables isolation.
+- **Origin & CSRF Defense (`backend/middleware/csrf.js`, `backend/server.js`):**
+  - Added state-changing request `Origin`/`Referer` validation with normalized protocol handling. `GET`, `HEAD`, and `OPTIONS` are never blocked, and requests carrying neither header are allowed through because they are non-browser clients with no ambient credential to forge.
+  - Same-origin is now compared on host **and** scheme where the request scheme is determinable, so an `http` page on an `https` deployment's host is rejected.
+  - Removed insecure trust of `http://localhost:5173` and `http://localhost:3000` in production environments. Development origins are now honored only when `NODE_ENV` is not `production`; previously a production build accepted a known-good origin an attacker could host a forgery page on.
+  - Documented the exempt path list (Twilio callbacks, token-authenticated webhook receivers, tracking pixel, chat widget, public form embeds, public booking pages, quote signing, customer portal), which are cross-origin by design and are not CSRF targets.
+  - Classic CSRF was assessed as not currently exploitable: sessions are opaque bearer tokens in `localStorage`, and browsers do not attach `Authorization` headers automatically. The check is defence in depth for a future move to cookie-based auth.
+- **Authentication Rate Limiting (`backend/routes/auth.js`):**
+  - Tightened the login and first-run setup limiter to 10 requests per 15 minutes, and kept the refresh limiter isolated at 30 requests per minute so refresh traffic cannot be used to lock a user out of logging in.
+  - Made the global `/api` ceiling configurable via `RATE_LIMIT_GLOBAL_MAX`, defaulting to the previous hardcoded 120 requests per minute. The bucket is per-process, so multi-instance deployments can otherwise throttle users unevenly.
+- **Security Policy & Documentation (`SECURITY.md`):**
+  - Expanded the 4-line policy stub into a full security policy: vulnerability disclosure via `security@tunaxa.com` or a private GitHub advisory with a 48-hour acknowledgement target, supported-version policy, an explanation of the opaque-session auth model, the tenant-isolation contract, and the rate-limit table.
+  - Added an OWASP Top 10 (2021) defense matrix with per-category status, the four A01 defects and their locations, and the origin-enforcement rules.
+  - Cataloged legacy JSON store models that have no `workspace_id` column and are therefore visible to every tenant (`knowledgebase`, `lists`, `sequences`, `templates`, `scheduler`, `uploads`, `webhookendpoints`, `modules`, `audit`, `ai`), plus other accepted risks, so the gap is recorded rather than left implicit.
+  - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
+
 ### Added
+- **Security Audit Test Suite (`backend/__tests__/security-audit.test.js`):**
+  - Added 53 unit and integration tests sweeping SQL injection resistance, XSS escaping, CSRF origin enforcement, cross-tenant IDOR boundaries, and authentication rate limiting across all 19 tenant-scoped resources.
+  - Injection coverage asserts search payloads are treated as literal values, injected sort identifiers fall back to the default sort rather than erroring, malicious report `groupBy`/`metric` fields are refused, and a static scan rejects any repository that interpolates a caller-supplied id into SQL text.
+  - XSS coverage asserts the frontend contains no `dangerouslySetInnerHTML` or raw DOM HTML injection, and that `escapeHtml()` neutralizes script tags, event handlers, and attribute breakout.
+  - IDOR coverage is end-to-end against a real database: each resource is created in one tenant with a forged `workspace_id` in the body, then read, updated, deleted, and listed from a second tenant.
+  - Verified by mutation testing: reverting a single tenant argument, or the goals spread ordering, makes the suite fail.
+  - Full suite verified against a clean `HEAD` worktree: 22 pre-existing failures unchanged, 0 regressions. Repository unit tests 263/263 and targeted run 415/415 pass.
 - **Auth Refresh Test Suite (`backend/__tests__/auth-refresh.test.js`):**
   - Added 16 unit and mutation-verified integration tests covering multiple token extraction sources (`body.refreshToken`, `body.token`, `x-refresh-token`, `Authorization: Bearer`), invalid/missing/whitespace inputs, expired and orphaned session eviction, immediate old-token revocation, non-disclosure of password hashes, audit trail recording, and core route non-regression.
 - **Subsystem Deep Health Probes (`backend/services/health.js`):**

@@ -7,7 +7,12 @@ import { createRateLimiter } from '../services/rateLimit.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { broadcast } from './sse.js';
 
-const authLimiter = createRateLimiter({ windowMs: 60_000, max: 10, prefix: 'auth' });
+// Credential endpoints are bounded per IP. Login is 10 attempts per 15 minutes
+// rather than per minute: a 10/minute window let an attacker try 10 passwords
+// every minute indefinitely, which is 14,400 guesses a day against a short
+// password. 10 per 15 minutes is 960 a day, and the window is long enough that
+// a legitimate user who fat-fingers a password a few times is not locked out.
+const authLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 10, prefix: 'auth' });
 // Refresh is unauthenticated and accepts a raw credential, so it gets its own
 // bucket rather than sharing login's budget -- a legitimate client refreshing
 // should not be able to lock itself out of signing in, and a brute-force run

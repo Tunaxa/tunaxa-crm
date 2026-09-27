@@ -60,6 +60,7 @@ async function findAllUncached({
   limit = 20,
   sortBy = "created_at:desc",
   q = "",
+  workspaceId,
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
@@ -69,26 +70,38 @@ async function findAllUncached({
   const offset = (normalizedPage - 1) * normalizedLimit;
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
-  const whereClause = searchTerm
-    ? "WHERE (name ILIKE $1 OR domain ILIKE $1 OR industry ILIKE $1 OR website ILIKE $1 OR country ILIKE $1)"
-    : "";
+  // Built as an ordered condition list rather than a fixed `$1` string so the
+  // workspace predicate can be appended without renumbering by hand.
+  const conditions = [];
+  const params = [];
+  if (workspaceId !== undefined && workspaceId !== null) {
+    params.push(workspaceId);
+    conditions.push(
+      `(workspace_id = $${params.length} OR ($${params.length} = 'default' AND workspace_id IS NULL))`,
+    );
+  }
+  if (searchTerm) {
+    params.push(searchTerm);
+    const p = `$${params.length}`;
+    conditions.push(
+      `(name ILIKE ${p} OR domain ILIKE ${p} OR industry ILIKE ${p} OR website ILIKE ${p} OR country ILIKE ${p})`,
+    );
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
      FROM companies
      ${whereClause}`,
-    searchTerm ? [searchTerm] : [],
+    [...params],
   );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
+  const params2 = [...params, normalizedLimit, offset];
   const dataResult = await query(
     `SELECT *
      FROM companies
      ${whereClause}
      ORDER BY ${column} ${direction}
-     LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
-    searchTerm
-      ? [searchTerm, normalizedLimit, offset]
-      : [normalizedLimit, offset],
+     LIMIT $${params2.length - 1} OFFSET $${params2.length}`,
+    params2,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
   return {
@@ -100,8 +113,17 @@ async function findAllUncached({
   };
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM companies WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  // The workspace predicate lives in the WHERE clause, not in a post-filter: a
+  // record belonging to another tenant has to be indistinguishable from one
+  // that does not exist.
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM companies WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))"
+      : "SELECT * FROM companies WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
   return result.rows[0] || null;
 }
 
@@ -130,7 +152,7 @@ export async function create(data = {}) {
   return row;
 }
 
-export async function update(id, data = {}) {
+export async function update(id, data = {}, workspaceId) {
   const fields = UPDATE_FIELDS.filter(
     (field) =>
       Object.prototype.hasOwnProperty.call(data, field) &&
@@ -142,11 +164,13 @@ export async function update(id, data = {}) {
   const assignments = fields.map(
     (field, index) => `${field} = $${index + 1}`,
   );
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   values.push(id);
+  if (scoped) values.push(workspaceId);
   const result = await query(
     `UPDATE companies
      SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}
+     WHERE id = $${fields.length + 1}${scoped ? ` AND (workspace_id = $${fields.length + 2} OR ($${fields.length + 2} = 'default' AND workspace_id IS NULL))` : ''}
      RETURNING *`,
     values,
   );
@@ -155,10 +179,13 @@ export async function update(id, data = {}) {
   return row;
 }
 
-async function remove(id) {
+async function remove(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    "DELETE FROM companies WHERE id = $1 RETURNING id",
-    [id],
+    scoped
+      ? "DELETE FROM companies WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL)) RETURNING id"
+      : "DELETE FROM companies WHERE id = $1 RETURNING id",
+    scoped ? [id, workspaceId] : [id],
   );
   const deleted = result.rowCount > 0;
   if (deleted) await invalidateListCache("companies");
