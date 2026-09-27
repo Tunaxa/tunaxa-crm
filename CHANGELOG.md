@@ -41,6 +41,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- Added `POST /api/auth/refresh` with 30-day session token rotation, invalidating the previous token after each successful refresh.
 - Added Helmet security headers, including `X-Frame-Options: DENY`, a permissive Content Security Policy, and Strict-Transport-Security.
 - Secured Server-Sent Events by requiring authentication and restricting event delivery to the authenticated user's workspace.
 - Search: updated empty search result message
