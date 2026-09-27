@@ -24,6 +24,7 @@ export function useResource<T extends { id: string }>(
   const { toast } = useApp();
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
   const page = options.page || 1;
   const limit = options.limit || 25;
@@ -33,6 +34,7 @@ export function useResource<T extends { id: string }>(
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({
         page: String(page),
@@ -41,10 +43,20 @@ export function useResource<T extends { id: string }>(
         sortDir,
       });
       if (q) params.set("q", q);
-      const result = await api<ResourceResponse<T>>(`/${resource}?${params}`);
-      setItems(result.data);
-      setTotal(result.total);
+      const result = await api<ResourceResponse<T> | T[]>(`/${resource}?${params}`);
+      // Workflow builder returns an array rather than the paginated CRUD envelope.
+      if (resource === "workflows" && Array.isArray(result)) {
+        const workflows = result.filter((item) => item && typeof item === "object" && typeof item.id === "string");
+        setItems(workflows);
+        setTotal(workflows.length);
+      } else if (!Array.isArray(result)) {
+        setItems(result.data);
+        setTotal(result.total);
+      } else {
+        throw new Error("Unexpected resource response");
+      }
     } catch (error) {
+      setError((error as Error).message);
       toast((error as Error).message, "error");
     } finally {
       setLoading(false);
@@ -111,5 +123,5 @@ export function useResource<T extends { id: string }>(
     }
   }
 
-  return { items, setItems, loading, total, page, limit, load, create, update, remove };
+  return { items, setItems, loading, error, total, page, limit, load, create, update, remove };
 }

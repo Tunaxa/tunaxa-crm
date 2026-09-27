@@ -8,6 +8,8 @@ type ConditionNodeData = {
 export default function ConditionNode({
   data,
 }: NodeProps & { data: ConditionNodeData }) {
+  const field = typeof data.field === "string" ? data.field : "";
+  const value = typeof data.value === "string" || typeof data.value === "number" ? String(data.value) : "";
   return (
     <div className="workflow-node condition-node">
       <Handle type="target" position={Position.Left} />
@@ -19,11 +21,11 @@ export default function ConditionNode({
 
       <div className="workflow-node-body">
         <strong>
-          {data.field || "Field"} = {data.value || "Value"}
+          {field || "Field"} = {value || "Value"}
         </strong>
 
         <div className="condition-summary">
-          IF {data.field || "field"} = {data.value || "value"}
+          IF {field || "field"} = {value || "value"}
         </div>
       </div>
     </div>
