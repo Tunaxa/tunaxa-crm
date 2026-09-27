@@ -1,4 +1,5 @@
-import { useCallback, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useState, type DragEvent } from "react";
+import type { WorkflowGraph } from "./workflowGraph";
 import {
   Background,
   Controls,
@@ -19,6 +20,8 @@ import ConditionNode from "./nodes/ConditionNode";
 import ActionNode from "./nodes/ActionNode";
 
 type WorkflowCanvasProps = {
+  initialGraph?: WorkflowGraph;
+  onGraphChange?: (graph: WorkflowGraph) => void;
   readOnly?: boolean;
   workflow: {
     event?: string;
@@ -57,11 +60,14 @@ const paletteItems = [
 export default function WorkflowCanvas({
   workflow,
   readOnly = false,
+  initialGraph,
+  onGraphChange,
 }: WorkflowCanvasProps) {
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
 
   const [nodes, setNodes] = useState<Node[]>(() => {
+    if (initialGraph) return initialGraph.nodes;
     const initialNodes: Node[] = [];
 
     if (!workflow.event && !workflow.filter?.field && !workflow.actions?.length) return initialNodes;
@@ -114,6 +120,7 @@ export default function WorkflowCanvas({
   });
 
   const [edges, setEdges] = useState<Edge[]>(() => {
+    if (initialGraph) return initialGraph.edges;
     const initialEdges: Edge[] = [];
 
     let previousId = "trigger";
@@ -142,6 +149,8 @@ export default function WorkflowCanvas({
 
     return initialEdges;
   });
+
+  useEffect(() => { onGraphChange?.({ nodes, edges }); }, [nodes, edges, onGraphChange]);
 
   const onDragStart = (
     event: DragEvent<HTMLElement>,
