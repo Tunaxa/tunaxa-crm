@@ -52,6 +52,7 @@ const emptyDb = {
   marketingEmails: [],
   marketingEvents: [],
   goals: [],
+  savedReports: [],
   surveys: [],
   surveyResponses: [],
   webhookEndpoints: [],
@@ -101,6 +102,14 @@ export async function resetTestDb() {
   try {
     await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses, workflow_runs, goals CASCADE;");
     pgReachable = true;
+    // Migration 011 may not have been applied yet, and a 42P01 here must not
+    // be read as "Postgres is down" - that would silently disable the
+    // Postgres-backed assertions for the rest of the run.
+    try {
+      await query("TRUNCATE TABLE saved_reports CASCADE;");
+    } catch (error) {
+      if (error.code !== "42P01") throw error;
+    }
   } catch (error) {
     // ECONNREFUSED when no server is listening, 42P01 before 004/005 are applied.
     if (error.code === "ECONNREFUSED" || error.code === "42P01") {

@@ -2,7 +2,35 @@ import { readDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { cacheGet, cacheSet } from '../services/cache.js';
-import { runReportQuery, ReportQueryError } from '../services/reports.js';
+import { runReportQuery, ReportQueryError, normalizeReportSchedule, isScheduleActive } from '../services/reports.js';
+import {
+  listSavedReports,
+  findSavedReport,
+  createSavedReport,
+  updateSavedReport,
+  deleteSavedReport,
+} from '../services/savedReports.js';
+import { runScheduledReports, generateReportData } from '../workers/reportScheduler.js';
+
+const workspaceOf = (user) => user?.workspaceId || user?.workspace_id || 'default';
+
+/**
+ * Validates and strips the aggregation definition a saved report carries.
+ * Returns null when valid, or an error message to answer 400 with.
+ */
+function validateReportQuery(body = {}) {
+  const definition = body.query && typeof body.query === 'object' ? body.query : body;
+  if (!definition.entity || !String(definition.entity).trim()) {
+    return 'query.entity is required';
+  }
+  if (!definition.groupBy || !String(definition.groupBy).trim()) {
+    return 'query.groupBy is required';
+  }
+  if (!definition.metric || !String(definition.metric).trim()) {
+    return 'query.metric is required';
+  }
+  return null;
+}
 
 export default function registerReportRoutes(app) {
   app.get('/api/reports/pipeline', auth, async (req, res) => {
@@ -152,4 +180,253 @@ export default function registerReportRoutes(app) {
       }
     }
   );
+
+  /**
+   * GET /api/reports
+   * List saved report definitions for the caller's workspace.
+   */
+  app.get('/api/reports', auth, async (req, res, next) => {
+    try {
+      const workspaceId = workspaceOf(req.user);
+      const reports = await listSavedReports({ workspaceId });
+      res.json(reports);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/reports
+   * Create a saved report, optionally with a weekly email schedule attached.
+   */
+  app.post(
+    '/api/reports',
+    auth,
+    requireRole('admin', 'member'),
+    async (req, res, next) => {
+      try {
+        const workspaceId = workspaceOf(req.user);
+        const body = req.body || {};
+
+        if (!body.name || !String(body.name).trim()) {
+          return res.status(400).json({ error: 'Report name is required' });
+        }
+
+        const queryError = validateReportQuery(body);
+        if (queryError) {
+          return res.status(400).json({ error: queryError });
+        }
+
+        const definition = body.query && typeof body.query === 'object' ? body.query : body;
+        const { schedule, error } = normalizeReportSchedule(body.schedule || {}, {});
+        if (error) {
+          return res.status(400).json({ error });
+        }
+
+        const report = await createSavedReport(
+          {
+            name: String(body.name).trim(),
+            description: body.description || '',
+            entity: definition.entity,
+            query: definition,
+            schedule,
+          },
+          workspaceId,
+        );
+
+        res.status(201).json(report);
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  /**
+   * GET /api/reports/:id
+   */
+  app.get('/api/reports/:id', auth, async (req, res, next) => {
+    try {
+      const workspaceId = workspaceOf(req.user);
+      const report = await findSavedReport(req.params.id, workspaceId);
+      if (!report) return res.status(404).json({ error: 'Report not found' });
+      res.json(report);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * PUT /api/reports/:id
+   * Update a saved report definition, including its schedule when supplied.
+   */
+  app.put(
+    '/api/reports/:id',
+    auth,
+    requireRole('admin', 'member'),
+    async (req, res, next) => {
+      try {
+        const workspaceId = workspaceOf(req.user);
+        const body = req.body || {};
+        const existing = await findSavedReport(req.params.id, workspaceId);
+        if (!existing) return res.status(404).json({ error: 'Report not found' });
+
+        if (body.query !== undefined || body.entity !== undefined) {
+          const queryError = validateReportQuery({ query: body.query || existing.query });
+          if (queryError) return res.status(400).json({ error: queryError });
+        }
+
+        const patch = {};
+        if (body.name !== undefined) {
+          if (!String(body.name).trim()) {
+            return res.status(400).json({ error: 'Report name is required' });
+          }
+          patch.name = String(body.name).trim();
+        }
+        if (body.description !== undefined) patch.description = body.description;
+        if (body.entity !== undefined) patch.entity = body.entity;
+        if (body.query !== undefined) patch.query = body.query;
+
+        if (body.schedule !== undefined) {
+          const { schedule, error } = normalizeReportSchedule(body.schedule, existing.schedule);
+          if (error) return res.status(400).json({ error });
+          patch.schedule = schedule;
+          patch.scheduleEnabled = isScheduleActive(schedule);
+        }
+
+        const updated = await updateSavedReport(req.params.id, patch, workspaceId);
+        if (!updated) return res.status(404).json({ error: 'Report not found' });
+        res.json(updated);
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  /**
+   * DELETE /api/reports/:id
+   */
+  app.delete(
+    '/api/reports/:id',
+    auth,
+    requireRole('admin', 'member'),
+    async (req, res, next) => {
+      try {
+        const workspaceId = workspaceOf(req.user);
+        const deleted = await deleteSavedReport(req.params.id, workspaceId);
+        if (!deleted) return res.status(404).json({ error: 'Report not found' });
+        res.json({ message: 'Report deleted successfully' });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  /**
+   * PUT /api/reports/:id/schedule  (POST accepted as an alias)
+   * Configure or toggle the weekly email schedule for a saved report.
+   */
+  const setReportSchedule = async (req, res, next) => {
+    try {
+      const workspaceId = workspaceOf(req.user);
+      const existing = await findSavedReport(req.params.id, workspaceId);
+      if (!existing) return res.status(404).json({ error: 'Report not found' });
+
+      const { schedule, error } = normalizeReportSchedule(
+        req.body?.schedule && typeof req.body.schedule === 'object' ? req.body.schedule : req.body || {},
+        existing.schedule,
+      );
+      if (error) return res.status(400).json({ error });
+
+      const updated = await updateSavedReport(
+        req.params.id,
+        { schedule, scheduleEnabled: isScheduleActive(schedule) },
+        workspaceId,
+      );
+      if (!updated) return res.status(404).json({ error: 'Report not found' });
+
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  app.put('/api/reports/:id/schedule', auth, requireRole('admin', 'member'), setReportSchedule);
+  app.post('/api/reports/:id/schedule', auth, requireRole('admin', 'member'), setReportSchedule);
+
+  /**
+   * GET /api/reports/:id/schedule
+   * Read back the stored schedule so a client can render the delivery form.
+   */
+  app.get('/api/reports/:id/schedule', auth, async (req, res, next) => {
+    try {
+      const workspaceId = workspaceOf(req.user);
+      const report = await findSavedReport(req.params.id, workspaceId);
+      if (!report) return res.status(404).json({ error: 'Report not found' });
+      res.json({ reportId: report.id, schedule: report.schedule || null, active: isScheduleActive(report.schedule) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/reports/:id/send-now
+   * Generate the report and email it to the configured recipients immediately,
+   * bypassing the weekly cron gate.
+   */
+  app.post(
+    '/api/reports/:id/send-now',
+    auth,
+    requireRole('admin', 'member'),
+    async (req, res, next) => {
+      try {
+        const workspaceId = workspaceOf(req.user);
+        const report = await findSavedReport(req.params.id, workspaceId);
+        if (!report) return res.status(404).json({ error: 'Report not found' });
+        if (!isScheduleActive(report.schedule)) {
+          return res.status(400).json({
+            error: 'Report has no active email schedule. Configure recipients first.',
+          });
+        }
+
+        const result = await runScheduledReports({
+          workspaceId,
+          reportId: report.id,
+          force: true,
+        });
+
+        const refreshed = await findSavedReport(report.id, workspaceId);
+        res.json({
+          reportId: report.id,
+          name: report.name,
+          recipients: report.schedule.recipients,
+          emailsSent: result.emailsSent,
+          emailsDelivered: result.emailsDelivered,
+          errors: result.errors,
+          lastSentAt: refreshed?.schedule?.lastSentAt || null,
+          message: `Report emailed to ${result.emailsSent} recipient${result.emailsSent === 1 ? '' : 's'}`,
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  /**
+   * POST /api/reports/:id/run
+   * Execute the aggregation without emailing anyone.
+   */
+  app.post('/api/reports/:id/run', auth, requireRole('admin', 'member'), async (req, res, next) => {
+    try {
+      const workspaceId = workspaceOf(req.user);
+      const report = await findSavedReport(req.params.id, workspaceId);
+      if (!report) return res.status(404).json({ error: 'Report not found' });
+      const rows = await generateReportData(report);
+      res.json({ reportId: report.id, data: rows });
+    } catch (err) {
+      if (err.isValidationError || err.status === 400 || err.statusCode === 400) {
+        return res.status(400).json({ error: err.message });
+      }
+      next(err);
+    }
+  });
 }

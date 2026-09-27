@@ -36,6 +36,8 @@ export const PG_RESOURCES = new Set([
     "surveyResponses",
     "survey_responses",
     "goals",
+    "savedReports",
+    "saved_reports",
   ]);
 
 /**
@@ -686,6 +688,42 @@ export const RESOURCE_MAPPINGS = {
       assigned_type: "assignedType",
       start_date: "startDate",
       end_date: "endDate",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "name",
+    titleFallbacks: ["name", "title"],
+  },
+  saved_reports: {
+    columns: [
+      "workspace_id",
+      "name",
+      "description",
+      "entity",
+      "query",
+      "schedule",
+      "schedule_enabled",
+      "last_sent_at",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    // `query` holds the aggregation definition consumed by
+    // services/reports.js runReportQuery(); `schedule` holds the weekly email
+    // delivery config written by routes/reports.js. `scheduleEnabled` and
+    // `workspaceId` are spelled out because legacyToPg() otherwise routes them
+    // into the custom_fields bag instead of the indexed columns.
+    toPg: {
+      workspaceId: "workspace_id",
+      scheduleEnabled: "schedule_enabled",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+      lastSentAt: "last_sent_at",
+    },
+    toLegacy: {
+      schedule_enabled: "scheduleEnabled",
+      last_sent_at: "lastSentAt",
       created_at: "createdAt",
       updated_at: "updatedAt",
     },
