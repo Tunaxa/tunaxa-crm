@@ -7,6 +7,21 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Subsystem Deep Health Probes (`backend/services/health.js`):**
+  - Implemented timeout-bounded (2000ms max) health probes for core CRM subsystems:
+    - `postgres`: Executes `SELECT 1 AS alive;` using connection pool (`ok` | `error`). The only probe whose failure is fatal, since the CRM cannot serve data without it.
+    - `redis`: Performs direct raw RESP `PING` over TCP socket to circumvent `ioredis` handshake/RESP3 initialization constraints and support lightweight mock/real servers without client connection leaks (`ok` | `degraded`). An absent Redis is never reported as an outage, because the queues are designed to fall back to in-process queues.
+    - `smtp`: Inspects configured CRM workspace email settings and environment variables (`ok` | `unconfigured`). Deliberately configuration-only: a live transport handshake inside a health probe would add a multi-second network dependency and risk account lockouts.
+    - `ai`: Checks for presence of OpenAI, Anthropic, or local Ollama runtime availability (`ok` | `offline`). Does not use `isAiConfigured()`, which is `Boolean(settings.ollamaBaseUrl)` and therefore always true because `DEFAULT_SETTINGS` seeds that value.
+  - Added composite `getDeepHealthStatus()` runner using `Promise.allSettled` to prevent subsystem probe hangs, returning top-level and subsystem status maps along with uptime and timestamp. Probes are injectable so failure modes that cannot be produced for real (such as an unreachable database) remain testable.
+- **Deep Health Check Route (`backend/routes/health.js`):**
+  - Added authenticated `GET /api/health/deep` endpoint restricted to `admin` users via `requireRole('admin')`. The endpoint is not public because the report discloses which subsystems are configured and which are not, which is reconnaissance for anyone probing an instance.
+  - Returns HTTP 200 OK when operational and HTTP 503 Service Unavailable when the primary PostgreSQL datastore is unreachable. Secondary subsystem degradations deliberately return 200, because the API is still serving and a load balancer evicting the instance over a missing AI key would be reacting to the wrong signal.
+  - Registered route in `backend/server.js`.
+- **Health Check Test Suite (`backend/__tests__/health-deep.test.js`):**
+  - Added 26 unit and mutation-verified integration tests covering RBAC authorization, individual subsystem status reporting, 503 PostgreSQL failure handling, raw socket RESP ping parsing, and connection resolution parity across queues.
+  - The Redis `ok` path is asserted against an in-process TCP server that replies `+PONG`, so the success case is covered on machines with no Redis installed.
+  - The parity test asserts `resolveRedisConnection()` returns results identical to both `workflowQueue.js` and `transcriptionQueue.js` across seven `REDIS_*` combinations, so the local copy of that logic cannot drift from the queues it mirrors.
 - **GitHub Actions CI Pipeline (`.github/workflows/ci.yml`):**
   - Configured automated CI workflow triggering on pull requests targeting `main`, pushes to `main`, and `workflow_dispatch`.
   - Added concurrency control (`concurrency: ${{ github.workflow }}-${{ github.ref }}`) with automatic cancellation of superseded runs on PR branches, while leaving `main` runs uncancelled so the post-merge signal always completes.
@@ -264,6 +279,7 @@ and this project adheres to Semantic Versioning.
 
 - AXA-154: Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
 - Webhook delivery logging (inbound) — verified by the webhook-Endpoints vitest suite (`backend/__tests__/forms-webhooks.test.js`, 18/18 passing in isolation) and manually via the API: `npm run server`, authenticate (`POST /api/auth/login`, or reuse a live session token from `backend/data/db.json`), `POST /api/webhookEndpoints` with `{"name":"Manual test","enabled":true}` and note the returned `id`/`url`, then `POST <url>` with `Content-Type: application/json` (repeat 3×) and `GET /api/webhookEndpoints/:id/deliveries` with `Authorization: Bearer $TOKEN` → newest-first rows with `status:"received"`, captured `contentType`/`remoteIp`, and per-endpoint `attemptNumber` incrementing 1→2→3…; same GET without a token → 401, bogus endpoint id with a token → 404.
+- Deep health check (`backend/__tests__/health-deep.test.js`) — 26/26 passing, and mutation-verified: dropping `requireRole('admin')`, never returning 503, mislabelling the postgres or redis failure status, breaking `REDIS_URL` precedence, ignoring SMTP or AI provider configuration, dropping the flattened status fields, and ignoring postgres failure in the composite were each caught. Full suite at 966 passed / 21 pre-existing baseline failures / 1 skipped, a delta of exactly +26 over the prior 962, so no regressions. Note that the 21 failures are the known baseline in `hubspot-parity`, `graphql`, `extensions`, `new-features`, `emailSync` and `hubspot-parity-2`; a `transcription-queue` failure also appeared in one full run and did not reproduce in isolation or on a clean re-run, consistent with the existing parallel-execution flakiness around the shared `test-db.json`.
 
 ## [2.1.0] - 2026-09-16
 
