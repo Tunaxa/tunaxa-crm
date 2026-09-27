@@ -156,6 +156,7 @@ export async function calculateGoalProgress(goal, { workspaceId, now = new Date(
   } catch (err) {
     // If PG is unreachable or table missing in offline mode, fallback to in-memory JSON
     pgSuccess = false;
+    console.error('Error querying goals from Postgres, falling back to in-memory store', err);
   }
 
   // ── 2. In-Memory Store Fallback ─────────────────────────────────────────

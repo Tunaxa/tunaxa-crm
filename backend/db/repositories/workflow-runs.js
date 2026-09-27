@@ -1,5 +1,7 @@
 import { query } from "../pg.js";
 import { toJsonb } from "./json.js";
+import { mutateDb, readDb } from "../../store.js";
+import { randomUUID } from "node:crypto";
 
 const UPDATE_FIELDS = [
   "status",
@@ -16,26 +18,78 @@ function validatePositiveInteger(value, name) {
   return value;
 }
 
+function shouldUseFallback(error) {
+  return [
+    "ECONNREFUSED",
+    "ECONNRESET",
+    "ENOTFOUND",
+    "ETIMEDOUT",
+    "42P01",
+  ].includes(error?.code);
+}
+
+function createFallbackRun(data) {
+  return {
+    id: `run_${randomUUID()}`,
+    workspace_id: data.workspace_id ?? "default",
+    workflow_id: data.workflow_id,
+    trigger_event: data.trigger_event,
+    status: data.status ?? "running",
+    started_at: data.started_at
+      ? new Date(data.started_at).toISOString()
+      : new Date().toISOString(),
+    completed_at: data.completed_at
+      ? new Date(data.completed_at).toISOString()
+      : null,
+    steps: data.steps ?? [],
+    error_message: data.error_message ?? null,
+    custom_fields: data.custom_fields ?? {},
+    created_at: new Date().toISOString(),
+  };
+}
+
+async function updateFallbackRun(id, data) {
+  let updated = null;
+  await mutateDb((db) => {
+    db.workflowRuns ??= [];
+    const run = db.workflowRuns.find((item) => item.id === id);
+    if (!run) return;
+    Object.assign(run, data);
+    updated = run;
+  });
+  return updated;
+}
+
 export async function create(data = {}) {
-  const result = await query(
-    `INSERT INTO workflow_runs (
+  try {
+    const result = await query(
+      `INSERT INTO workflow_runs (
        workspace_id, workflow_id, trigger_event, status,
        started_at, completed_at, steps, error_message, custom_fields
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING *`,
-    [
-      data.workspace_id ?? "default",
-      data.workflow_id,
-      data.trigger_event,
-      data.status ?? "running",
-      data.started_at ? new Date(data.started_at) : new Date(),
-      data.completed_at ? new Date(data.completed_at) : null,
-      toJsonb(data.steps, "[]"),
-      data.error_message ?? null,
-      toJsonb(data.custom_fields, "{}"),
-    ],
-  );
-  return result.rows[0] || null;
+      [
+        data.workspace_id ?? "default",
+        data.workflow_id,
+        data.trigger_event,
+        data.status ?? "running",
+        data.started_at ? new Date(data.started_at) : new Date(),
+        data.completed_at ? new Date(data.completed_at) : null,
+        toJsonb(data.steps, "[]"),
+        data.error_message ?? null,
+        toJsonb(data.custom_fields, "{}"),
+      ],
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    const run = createFallbackRun(data);
+    await mutateDb((db) => {
+      db.workflowRuns ??= [];
+      db.workflowRuns.push(run);
+    });
+    return run;
+  }
 }
 
 export async function update(id, data = {}) {
@@ -62,19 +116,42 @@ export async function update(id, data = {}) {
   });
   values.push(id);
 
-  const result = await query(
-    `UPDATE workflow_runs
+  try {
+    const result = await query(
+      `UPDATE workflow_runs
      SET ${assignments.join(", ")}
      WHERE id = $${values.length}
      RETURNING *`,
-    values,
-  );
-  return result.rows[0] || null;
+      values,
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    return updateFallbackRun(
+      id,
+      Object.fromEntries(
+        fields.map((field) => [
+          field,
+          field === "completed_at" && data[field]
+            ? new Date(data[field]).toISOString()
+            : data[field],
+        ]),
+      ),
+    );
+  }
 }
 
 export async function findById(id) {
-  const result = await query("SELECT * FROM workflow_runs WHERE id = $1", [id]);
-  return result.rows[0] || null;
+  try {
+    const result = await query("SELECT * FROM workflow_runs WHERE id = $1", [
+      id,
+    ]);
+    return result.rows[0] || null;
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    const db = await readDb();
+    return (db.workflowRuns || []).find((run) => run.id === id) || null;
+  }
 }
 
 export async function findByWorkflowId(
@@ -96,32 +173,51 @@ export async function findByWorkflowId(
     whereSql += ` AND workspace_id = $${params.length}`;
   }
 
-  const countResult = await query(
-    `SELECT COUNT(*)::int AS total FROM workflow_runs ${whereSql}`,
-    params,
-  );
-  const total = Number(countResult.rows[0]?.total ?? 0);
+  try {
+    const countResult = await query(
+      `SELECT COUNT(*)::int AS total FROM workflow_runs ${whereSql}`,
+      params,
+    );
+    const total = Number(countResult.rows[0]?.total ?? 0);
 
-  const dataParams = [...params, normalizedLimit, offset];
-  const dataResult = await query(
-    `SELECT * FROM workflow_runs ${whereSql} ORDER BY started_at DESC, created_at DESC LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
-    dataParams,
-  );
+    const dataParams = [...params, normalizedLimit, offset];
+    const dataResult = await query(
+      `SELECT * FROM workflow_runs ${whereSql} ORDER BY started_at DESC, created_at DESC LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
+      dataParams,
+    );
 
-  return {
-    data: dataResult.rows,
-    total,
-    page: normalizedPage,
-    limit: normalizedLimit,
-    totalPages: Math.ceil(total / normalizedLimit),
-  };
+    return {
+      data: dataResult.rows,
+      total,
+      page: normalizedPage,
+      limit: normalizedLimit,
+      totalPages: Math.ceil(total / normalizedLimit),
+    };
+  } catch (error) {
+    if (!shouldUseFallback(error)) throw error;
+    const db = await readDb();
+    let runs = (db.workflowRuns || []).filter(
+      (run) => run.workflow_id === workflowId,
+    );
+    if (workspaceId !== undefined && workspaceId !== null) {
+      runs = runs.filter((run) => run.workspace_id === workspaceId);
+    }
+    runs.sort(
+      (left, right) =>
+        Date.parse(right.started_at) - Date.parse(left.started_at),
+    );
+    const total = runs.length;
+    return {
+      data: runs.slice(offset, offset + normalizedLimit),
+      total,
+      page: normalizedPage,
+      limit: normalizedLimit,
+      totalPages: Math.ceil(total / normalizedLimit),
+    };
+  }
 }
 
-export async function findAll({
-  page = 1,
-  limit = 50,
-  workspaceId,
-} = {}) {
+export async function findAll({ page = 1, limit = 50, workspaceId } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),

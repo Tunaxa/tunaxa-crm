@@ -7,8 +7,7 @@ import { query } from '../db/pg.js';
 import { mutateDb } from '../store.js';
 import {
   getGoalDateRange,
-  computeGoalStatus,
-  calculateGoalProgress,
+  computeGoalStatus
 } from '../services/goals.js';
 
 let adminToken;

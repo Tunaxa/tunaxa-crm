@@ -5,7 +5,6 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import multer from "multer";
-import * as Sentry from "@sentry/node";
 import { fileURLToPath } from "node:url";
 import { ensureSettingsDefaults } from "./services/config.js";
 import { startRateLimitSweeper } from "./services/rateLimit.js";
@@ -68,6 +67,11 @@ import {
 import { createRateLimiter } from "./services/rateLimit.js";
 import { initCache } from "./services/cache.js";
 import { seedPlaybooks } from "./services/seedPlaybooks.js";
+
+const Sentry =
+  process.env.SENTRY_DSN && process.env.VITEST !== "true"
+    ? await import("@sentry/node")
+    : null;
 
 const app = express();
 app.disable("x-powered-by");
@@ -284,10 +288,13 @@ const webDistDir = path.join(root, "..", "web", "dist");
 if (existsSync(path.join(webDistDir, "index.html"))) {
   // index: false - the shell is served explicitly below, so that it can be sent
   // with no-store while the content-hashed assets under /assets stay immutable.
-  app.use(express.static(webDistDir, { index: false, maxAge: "1y", immutable: true }));
+  app.use(
+    express.static(webDistDir, { index: false, maxAge: "1y", immutable: true }),
+  );
   app.use((req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
-    if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
+    if (req.path.startsWith("/api") || req.path.startsWith("/uploads"))
+      return next();
     res.setHeader("Cache-Control", "no-store");
     return res.sendFile(path.join(webDistDir, "index.html"), (error) => {
       if (error) next(error);

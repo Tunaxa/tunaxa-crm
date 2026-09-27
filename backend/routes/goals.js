@@ -63,7 +63,8 @@ export default function registerGoalRoutes(app) {
             });
           }
           return res.json(data);
-        } catch (_) {
+        } catch (err) {
+          console.error('Error querying goals from Postgres, falling back to in-memory store', err);
           // If PG query fails, proceed to in-memory store fallback
         }
       }
@@ -170,8 +171,9 @@ export default function registerGoalRoutes(app) {
             const item = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
             return res.status(201).json(item);
           }
-        } catch (_) {
+        } catch (err) {
           // Fallback to in-memory store
+          console.error('Error creating goal in Postgres, falling back to in-memory store', err); 
         }
       }
 
@@ -218,8 +220,8 @@ export default function registerGoalRoutes(app) {
           if (row) {
             goal = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
           }
-        } catch (_) {
-          // ignore
+        } catch (err) {
+          console.error('Error querying goals from Postgres, falling back to in-memory store', err);
         }
       }
 
@@ -261,7 +263,8 @@ export default function registerGoalRoutes(app) {
           if (row) {
             goal = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
           }
-        } catch (_) {
+        } catch (err) {
+          console.error('Error querying goals from Postgres, falling back to in-memory store', err);
           // ignore
         }
       }
@@ -327,7 +330,8 @@ export default function registerGoalRoutes(app) {
             const item = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
             return res.json(item);
           }
-        } catch (_) {
+        } catch (err) {
+          console.error('Error updating goal in Postgres, falling back to in-memory store', err);
           // ignore
         }
       }
@@ -371,7 +375,8 @@ export default function registerGoalRoutes(app) {
       if (repo) {
         try {
           deleted = await repo.delete(req.params.id, workspaceId);
-        } catch (_) {
+        } catch (err) {
+          console.error('Error deleting goal from Postgres, falling back to in-memory store', err);
           // ignore
         }
       }

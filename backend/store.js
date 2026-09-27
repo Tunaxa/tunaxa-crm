@@ -1,9 +1,9 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-let dbFile = path.join(root, 'data', 'db.json');
+let dbFile = path.join(root, "data", "db.json");
 let queue = Promise.resolve();
 let ensurePromise = null;
 
@@ -59,6 +59,7 @@ export const EMPTY_DB = {
   marketingEmails: [],
   marketingEvents: [],
   goals: [],
+  workflowRuns: [],
   surveys: [],
   surveyResponses: [],
   webhookEndpoints: [],
@@ -80,14 +81,14 @@ function ensureDbFile() {
       try {
         await fs.access(target);
       } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
+        if (error.code !== "ENOENT") throw error;
         try {
           await fs.writeFile(target, JSON.stringify(EMPTY_DB, null, 2), {
-            flag: 'wx',
+            flag: "wx",
           });
         } catch (writeError) {
           // A concurrent caller created the file first; that is fine.
-          if (writeError.code !== 'EEXIST') throw writeError;
+          if (writeError.code !== "EEXIST") throw writeError;
         }
       }
     })().catch((error) => {
@@ -115,7 +116,7 @@ export function getDbPath() {
 export async function readDb() {
   await queue;
   await ensureDbFile();
-  const raw = await fs.readFile(dbFile, 'utf8');
+  const raw = await fs.readFile(dbFile, "utf8");
   return JSON.parse(raw);
 }
 
