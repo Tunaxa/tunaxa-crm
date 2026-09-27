@@ -11,6 +11,7 @@ import { startRateLimitSweeper } from "./services/rateLimit.js";
 import { backupDb } from "./services/backup.js";
 import { cleanupExpiredSessions } from "./middleware/auth.js";
 import registerAuthRoutes from "./routes/auth.js";
+import registerHealthRoutes from "./routes/health.js";
 import registerResourceRoutes from "./routes/resources.js";
 import registerSettingsRoutes from "./routes/settings.js";
 import registerCallRoutes from "./routes/calls.js";
@@ -200,6 +201,7 @@ registerV1AssociationRoutes(app);
 registerWebhookRoutes(app);
 
 registerAuthRoutes(app);
+registerHealthRoutes(app);
 registerSettingsRoutes(app);
 registerCallRoutes(app);
 registerRecordingRoutes(app, upload);
