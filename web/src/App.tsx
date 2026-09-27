@@ -39,7 +39,6 @@ import { LayoutGrid, Sun, Moon } from "lucide-react";
 import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { CornerBrackets } from "./components/CornerBrackets";
 import { GoalProgress } from "./components/goals/GoalProgress";
 import { useResource } from "./lib/useResource";
 import i18n from "./i18n";

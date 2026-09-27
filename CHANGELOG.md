@@ -7,6 +7,21 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **GitHub Actions CI Pipeline (`.github/workflows/ci.yml`):**
+  - Configured automated CI workflow triggering on pull requests targeting `main`, pushes to `main`, and `workflow_dispatch`.
+  - Added concurrency control (`concurrency: ${{ github.workflow }}-${{ github.ref }}`) with automatic cancellation of superseded runs on PR branches, while leaving `main` runs uncancelled so the post-merge signal always completes.
+  - Configured PostgreSQL 16 (`postgres:16-alpine` with `pg_isready` health check on port 5432) and Redis 7 (`redis:7-alpine` with `redis-cli ping` health check on port 6379) service containers.
+  - Implemented 7-step pipeline: code checkout (`actions/checkout@v4`), Node 22 setup with npm cache (`actions/setup-node@v4`), clean dependency installation (`npm ci`), TypeScript type checking (`npm run typecheck`), database migrations (`npm run migrate`), linting (`npm run lint`), and Vitest test execution (`npm test`).
+  - Replaces the previous workflow, which delegated a job to the cross-repository reusable workflow `Tunaxa/.github/.github/workflows/reusable-lint-test.yml@main`. A reusable-workflow job cannot declare its own service containers or environment, so the PostgreSQL and Redis services could not live alongside it.
+  - `typecheck` and `migrate` are blocking gates; `lint` and `npm test` currently carry `continue-on-error: true` and are advisory, because the repository carries 64 pre-existing lint errors and 21 pre-existing test failures. Deleting those two lines is the deliberate switch that makes them merge blockers once that debt is cleared.
+- **NPM Scripts & Dependencies (`package.json`):**
+  - Added `npm run typecheck` (`tsc --noEmit -p web`) validating frontend TypeScript sources.
+  - Added `npm run migrate` (`node run-migrations.js`) running PostgreSQL schema migrations.
+  - Declared `js-yaml` (`^5.4.2`) in `devDependencies` for robust CI workflow file parsing and assertions. It was previously only present transitively, which the new test suite would otherwise have been relying on as a phantom dependency.
+- **CI Workflow Test Suite (`backend/__tests__/ci-workflow.test.js`):**
+  - Added 25 unit and mutation-verified integration tests validating workflow YAML syntax, trigger definitions, service container configurations, health checks, required execution steps, and environment variable bindings.
+  - The suite asserts the PG credentials reaching the job match the `postgres` service definition rather than re-declaring the password, so the two halves cannot drift apart unnoticed.
+  - Verified by mutation testing: retargeting the `pull_request` branch, altering a health command, removing a `continue-on-error`, and switching `test` to watch mode each produce a failure.
 - **Production Multi-Stage Dockerfile (`Dockerfile`):**
   - Created hardened, two-stage Dockerfile based on `node:22-alpine`.
   - **Build Stage (`deps`):** Performs clean dependency installation via `npm ci --no-audit --no-fund`, dynamically resolves missing Linux musl binaries (`@rollup/rollup-linux-x64-musl` and `@esbuild/linux-x64`) to overcome Windows-scoped package locks, compiles the frontend bundle (`npm run build`), and prunes devDependencies (`npm prune --omit=dev`).
@@ -243,6 +258,7 @@ and this project adheres to Semantic Versioning.
 - `npm run build` failed inside the container image: `package-lock.json` was generated on Windows and records only the `win32` variants of Rollup and Esbuild, so `npm ci` on `node:22-alpine` left `node_modules/@rollup` and `node_modules/@esbuild` empty and Vite aborted with `Cannot find module @rollup/rollup-linux-x64-musl` (npm/cli#4828). The Dockerfile now installs both binaries at versions read from the already-resolved `rollup` and `esbuild` packages, so they cannot drift from the lockfile.
 - `web/src/styles/app.css`: an unclosed `@media (max-width: 700px)` block (introduced in `a1983c4`) swallowed roughly 180 following lines and broke the PostCSS build with "Unclosed block".
 - `web/src/lib/api.ts`: an orphaned duplicate tail of `requestWithRetry` was left behind by an earlier revision, producing an esbuild `Unexpected "catch"` parse error; the dead fragment is removed.
+- **Frontend Typecheck (`web/src/App.tsx`):** resolved TS2300 duplicate identifier conflict for `CornerBrackets` by removing the redundant local import in favor of the `components/ui` component. Two near-identical components existed: `components/ui/CornerBrackets.tsx` accepts `size?: "sm" | "md" | "lg" | number`, while `components/CornerBrackets.tsx` only accepts `"sm" | "md"`. Four of the ten call sites pass numeric sizes (`size={8}`), so the `ui` variant is the correct one to keep. `components/CornerBrackets.tsx` is now unreferenced and can be deleted.
 
 ### Testing
 
