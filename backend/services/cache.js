@@ -119,6 +119,18 @@ export function cacheDel(key) {
   }
 }
 
+export function cacheIncr(key, ttlSeconds) {
+  if (!redis) return Promise.resolve(null);
+  return redis
+    .eval(
+      "local count = redis.call('INCR', KEYS[1]); if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; return count",
+      1,
+      PREFIX + key,
+      ttlSeconds,
+    )
+    .catch(() => null);
+}
+
 export function cacheFlush(pattern) {
   if (!redis) return Promise.resolve();
   try {
