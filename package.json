@@ -8,7 +8,6 @@
     "server": "node backend/server.js",
     "migrate": "node backend/db/migrate.js",
     "seed": "node backend/db/seed.js",
-    "migrate": "node backend/db/migrate.js",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "migrate:data": "node scripts/migrate-json-to-pg.js",
     "build": "vite build --config web/vite.config.ts",
