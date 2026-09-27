@@ -6,6 +6,7 @@ import { useApp } from "../../context/AppContext";
 import WorkflowCanvas from "./WorkflowCanvas";
 import { workflowEnabled, workflowName } from "./WorkflowPicker";
 import { graphFingerprint, graphPayload, readWorkflowGraph, type WorkflowGraph } from "./workflowGraph";
+import { WorkflowRunHistory } from "./WorkflowRunHistory";
 
 type Workflow = { id: string; name?: string; enabled?: boolean;
   event?: string; filter?: { field?: string; value?: string };
@@ -145,8 +146,7 @@ export function WorkflowDetailPage() {
           </section>
           {tab === "History" ? (
             <section aria-label="Workflow history">
-              <Empty icon="activity" title="Run history integration pending"
-                text="This tab will show this workflow’s workflow_runs log once its API is available. Runs are not loaded yet." />
+              <WorkflowRunHistory key={workflow.id} workflowId={workflow.id} />
             </section>
           ) : null}
         </>

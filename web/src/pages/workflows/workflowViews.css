@@ -9,6 +9,13 @@
 .workflow-local-notice { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
 .workflow-detail .workflow-builder { min-height: 420px; }
 .workflow-detail .workflow-palette-item { width: 100%; text-align: left; color: var(--ink-primary); }
+.workflow-history-toolbar, .workflow-run-step-heading {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0;
+}
+.workflow-run-steps { padding-left: 24px; }
+.workflow-run-steps li { padding: 12px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.workflow-run-steps time { font-size: 12px; color: var(--muted); }
+.workflow-run-error { color: var(--red); white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 700px) {
   .workflow-detail .workflow-builder { flex-direction: column; height: 560px; }
   .workflow-detail .workflow-palette {

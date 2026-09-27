@@ -25,10 +25,22 @@ saves retain edits. Reloads and navigation warn about unsaved changes. Malformed
 graphs show a load error; no silent blank fallback is saved over stored data.
 Empty arrays remain empty, including for workflows with legacy actions.
 
-Follow-up AXA-125 should populate History from this workflow's workflow_runs log
-and show per-node outcomes. No workflow_runs API is present in current dev.
-History explicitly shows integration pending, rather than claiming there are no
-runs. The backend owner needs to provide list/detail endpoints and payloads.
+AXA-125 loads History on demand from `GET /api/workflows/:id/runs?page=1&limit=20`.
+The contract was inspected in `origin/feat/workflow-execution-history`, not copied
+or merged. That backend branch is not in current dev, so deployment of its API
+and workflow_runs storage is still required. Missing endpoints show unavailable,
+not an empty history. Access matches the API's admin/member restriction.
 
-At the user's request, AXA-123 is a follow-up commit on the AXA-117 branch so both
-can be reviewed and merged in one PR. This does not assume the branch is merged.
+Response: `{ data, total, page, limit, totalPages }`. Each run includes `id`,
+`workflow_id`, `trigger_event`, `status`, `started_at`, `completed_at`,
+`error_message` and `steps`. Steps include `nodeId`, `nodeName`, `nodeType`,
+`status`, `executedAt`, and `error`. Status values are success, failed, running,
+and skipped; unexpected values display Unknown. Missing/malformed steps display
+unavailable, rather than a fabricated empty breakdown. The list response already
+contains step details, so opening a run makes no second API request. Backend
+tenant authorization remains required; frontend also rejects mismatched workflow
+references. Raw node outputs are not exposed by this viewer.
+
+At the user's request, AXA-123 and AXA-125 are follow-up commits on the AXA-117
+branch so all three can be reviewed and merged in one PR. This does not assume
+the branch or the backend history branch is merged.
