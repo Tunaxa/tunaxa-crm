@@ -98,10 +98,16 @@ function readPgFilters(query) {
  * `page`/`limit` gets exactly that, which is what makes `export.csv` and the
  * duplicate detector see the complete set.
  */
-async function pgFindAll(resource, query = {}) {
+async function pgFindAll(resource, query = {}, workspaceId = undefined) {
   const repo = repoFor(resource);
   const filters = readPgFilters(query);
   if (query.sortBy) filters.sortBy = query.sortBy;
+  // Tenant scoping is applied in SQL, not by filtering the returned rows: a
+  // post-filter would report a `total` that does not match the page and would
+  // silently return short pages.
+  if (workspaceId !== undefined && workspaceId !== null) {
+    filters.workspaceId = workspaceId;
+  }
 
   const hasPaging = query.page !== undefined || query.limit !== undefined;
   if (hasPaging) {
@@ -123,6 +129,19 @@ async function pgFindAll(resource, query = {}) {
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
 
+/**
+ * The tenant a request acts within.
+ *
+ * Mirrors the idiom already used by routes/goals.js so that a user record
+ * without an explicit workspace still resolves to the `default` tenant, which
+ * is also the column default in the migrations. Getting this wrong in either
+ * direction is a security bug: a wrong value leaks another tenant's rows, and
+ * an undefined value silently disables the scoping entirely.
+ */
+function tenantOf(req) {
+  return req.user?.workspaceId || req.user?.workspace_id || "default";
+}
+
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
     if (!resources.has(req.params.resource) || !req.user) return next();
@@ -141,7 +160,7 @@ export default function registerResourceRoutes(app) {
     // ── PG path: every resource in PG_RESOURCES ────────────────────────────
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
-        const rows = await pgFindAll(req.params.resource, req.query);
+        const rows = await pgFindAll(req.params.resource, req.query, tenantOf(req));
         return res.json(rows);
       } catch (err) {
         return next(err);
@@ -196,7 +215,7 @@ export default function registerResourceRoutes(app) {
       try {
         // Already legacy-shaped by the time it gets here, so the header keeps
         // the same camelCase names the JSON-backed exports have always used.
-        rows = await pgFindAll(req.params.resource, {});
+        rows = await pgFindAll(req.params.resource, {}, tenantOf(req));
       } catch (err) {
         return next(err);
       }
@@ -227,7 +246,7 @@ export default function registerResourceRoutes(app) {
     if (PG_RESOURCES.has(req.params.resource)) {
       const repo = repoFor(req.params.resource);
       try {
-        const row = await repo.findById(req.params.id);
+        const row = await repo.findById(req.params.id, tenantOf(req));
         if (!row) return res.status(404).json({ error: "Record not found" });
         return res.json(coerceBuiltIns(req.params.resource, pgToLegacy(row, req.params.resource)));
       } catch (err) {
@@ -257,6 +276,10 @@ export default function registerResourceRoutes(app) {
         const repo = repoFor(resource);
         try {
           const pgData = legacyToPg({ ...req.body }, resource);
+          // The workspace is server-derived. Honouring a client-supplied
+          // workspace_id would let any authenticated user create records inside
+          // another tenant.
+          pgData.workspace_id = tenantOf(req);
           // Coerce numeric built-ins (e.g. deals.value, companies.employees)
           coerceBuiltIns(resource, pgData);
           const row = await repo.create(pgData);
@@ -329,6 +352,9 @@ export default function registerResourceRoutes(app) {
           const saved = await Promise.all(
             req.body.map(async (data) => {
               const pgData = legacyToPg({ ...data }, resource);
+              // Server-derived, same as the single-create path: a batch must not
+              // be a way around tenant assignment.
+              pgData.workspace_id = tenantOf(req);
               coerceBuiltIns(resource, pgData);
               const row = await repo.create(pgData);
               return pgToLegacy(row, resource);
@@ -384,7 +410,7 @@ export default function registerResourceRoutes(app) {
         try {
           const pgData = legacyToPg({ ...req.body }, resource);
           coerceBuiltIns(resource, pgData);
-          const row = await repo.update(req.params.id, pgData);
+          const row = await repo.update(req.params.id, pgData, tenantOf(req));
           if (!row) return res.status(404).json({ error: "Record not found" });
           const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
           const event = updatedEvent(resource);
@@ -448,7 +474,7 @@ export default function registerResourceRoutes(app) {
       if (PG_RESOURCES.has(resource)) {
         const repo = repoFor(resource);
         try {
-          const deleted = await repo.delete(req.params.id);
+          const deleted = await repo.delete(req.params.id, tenantOf(req));
           if (!deleted) return res.status(404).json({ error: "Record not found" });
           broadcast("record.deleted", { resource, id: req.params.id });
           cacheFlush(resource);

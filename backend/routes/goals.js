@@ -148,22 +148,26 @@ export default function registerGoalRoutes(app) {
       const repo = repoFor('goals');
       if (repo) {
         try {
-          const pgData = legacyToPg(
-            {
-              workspace_id: workspaceId,
-              name: String(body.name).trim(),
-              type: rawType,
-              target: targetNum,
-              period: rawPeriod,
-              assigned_to: body.assignedTo || body.assigned_to || null,
-              assigned_type: body.assignedType || body.assigned_type || 'user',
-              start_date: body.startDate || body.start_date || null,
-              end_date: body.endDate || body.end_date || null,
-              status: body.status || 'active',
-              ...body,
-            },
-            'goals',
-          );
+        const pgData = legacyToPg(
+          {
+            // `...body` comes first on purpose: the fields below are the
+            // server-derived, validated ones and must win. Spreading the body
+            // last let a caller-supplied `workspace_id` overwrite the tenant,
+            // which is a cross-tenant write.
+            ...body,
+            workspace_id: workspaceId,
+            name: String(body.name).trim(),
+            type: rawType,
+            target: targetNum,
+            period: rawPeriod,
+            assigned_to: body.assignedTo || body.assigned_to || null,
+            assigned_type: body.assignedType || body.assigned_type || 'user',
+            start_date: body.startDate || body.start_date || null,
+            end_date: body.endDate || body.end_date || null,
+            status: body.status || 'active',
+          },
+          'goals',
+        );
           coerceBuiltIns('goals', pgData);
           const row = await repo.create(pgData);
           if (row) {
