@@ -7,6 +7,8 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Auth Refresh Test Suite (`backend/__tests__/auth-refresh.test.js`):**
+  - Added 16 unit and mutation-verified integration tests covering multiple token extraction sources (`body.refreshToken`, `body.token`, `x-refresh-token`, `Authorization: Bearer`), invalid/missing/whitespace inputs, expired and orphaned session eviction, immediate old-token revocation, non-disclosure of password hashes, audit trail recording, and core route non-regression.
 - **Subsystem Deep Health Probes (`backend/services/health.js`):**
   - Implemented timeout-bounded (2000ms max) health probes for core CRM subsystems:
     - `postgres`: Executes `SELECT 1 AS alive;` using connection pool (`ok` | `error`). The only probe whose failure is fatal, since the CRM cannot serve data without it.
@@ -266,6 +268,11 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- **Session Token Refresh Endpoint (`backend/routes/auth.js`):**
+  - Resolved unhandled `ReferenceError` on `POST /api/auth/refresh` caused by undeclared variables (`session`, `user`, `nextToken`) and removed dead `readDb()` call.
+  - Implemented atomic session token rotation inside `mutateDb`: validates caller sessions against `sessionIsExpired()`, prunes expired or orphaned sessions, immediately revokes the presented token, issues a new 32-byte cryptographic hex token, records a session refresh audit log, and returns `{ token, user }` sanitized via `publicUser()`.
+  - Added dedicated `refreshLimiter` rate limiter (30 requests/minute) isolated from the login endpoint bucket.
+  - Cleared the codebase's sole remaining `no-undef` ESLint violation.
 - `scripts/migrate-revenue-to-pg.js` silently discarded every legacy timestamp: `created_at`/`updated_at` were computed in `main()` but never added to the `INSERT` column list, so every backfilled row received the column default `NOW()` instead of the record's real `createdAt`/`updatedAt`. Both columns are now inserted, and `created_at` is deliberately excluded from the `ON CONFLICT (id) DO UPDATE` assignment list so a re-run cannot restamp an original creation date. `updated_at` is left to the `update_updated_at_column()` trigger, which already overwrites it on every write. Found by a fixture pass on migration 007; the revenue backfill had never been run against non-empty data, so the bug was latent.
 - Backend failed to start locally: runtime data file `backend/data/db.json` was missing, so `app.listen(3001)` never ran; restored the tracked `db.json.bac` seed to `db.json`, unblocking `npm run server` and `npm start`. (Note: `db.json` is gitignored runtime data.)
 - `npm test` previously invoked `jest` (not installed); it now runs `vitest run`, matching the runner the backend suite actually uses (tests import from `vitest`, and `server.js` already skips `app.listen(3001)` when `VITEST === "true"`).
