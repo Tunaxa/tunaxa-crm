@@ -7,6 +7,36 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Database Index Tuning & Foreign Key Coverage (Migration 012):**
+  - Added `backend/db/migrations/012_index_tuning_and_foreign_keys.sql` adding 12 missing relational pointer indexes:
+    - `deals(owner_id)`
+    - `contacts(company_id)`, `contacts(owner_id)`
+    - `leads(owner_id)`
+    - `activities(contact_id)`, `activities(user_id)`
+    - `tasks(contact_id)`
+    - `contracts(contact_id)`
+    - `orders(company_id)`, `orders(contact_id)`
+    - `invoices(company_id)`, `invoices(contact_id)`
+  - Added composite indexes for multi-column filtering and pagination:
+    - `contacts(workspace_id, created_at DESC)`
+    - `deals(workspace_id, stage, created_at DESC)`
+    - `deals(workspace_id, owner_id, created_at DESC)`
+    - `leads(workspace_id, status, created_at DESC)`
+    - `activities(workspace_id, record_id, created_at DESC)`
+    - `quotes(workspace_id, deal_id, created_at DESC)`
+  - Added covering index for pipeline revenue aggregations:
+    - `deals(workspace_id, created_at, stage) INCLUDE (value)` enabling pure Index Only Scans.
+  - Implemented high-selectivity partial indexes:
+    - `tasks(workspace_id, assigned_to, due_date ASC) WHERE completed = false` (dropped latency from 4.75ms to 0.14ms).
+    - `tickets(workspace_id, priority DESC, created_at DESC) WHERE resolved_at IS NULL` (dropped latency from 10.81ms to 0.05ms).
+  - Added functional/pattern B-tree indexes for case-insensitive and prefix lookups:
+    - `contacts(workspace_id, LOWER(email))`
+    - `contacts(workspace_id, LOWER(first_name) varchar_pattern_ops)`
+    - `contacts(workspace_id, LOWER(last_name) varchar_pattern_ops)`
+    - `leads(workspace_id, LOWER(email))`
+- **Performance Benchmark Harness & Test Suite:**
+  - Added benchmark tooling in `backend/db/tools/` generating 10,000 target rows + 27,000 multi-tenant decoy rows across tables.
+  - Added `backend/__tests__/db-indexes.test.js` validating index existence, plan node types, execution times (<10ms target met across all 10 common query patterns with 0 sequential scans), and prefix pattern search limits.
 - **Saved Reports Schema Migration (Migration 011):**
   - Added `backend/db/migrations/011_saved_reports.sql` creating the `saved_reports` table with `workspace_id` tenant isolation, `query` and `schedule` JSONB columns, indexed `schedule_enabled` and `last_sent_at` columns, and `update_updated_at_column()` trigger.
 - **Saved Reports Repository & Service Layer:**
