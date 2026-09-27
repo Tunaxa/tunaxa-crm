@@ -1,6 +1,36 @@
 import { query } from '../db/pg.js';
 import { readDb } from '../store.js';
 import { RESOURCE_MAPPINGS } from '../db/legacy-shape.js';
+import { normalizeEmail } from '../helpers.js';
+
+export const SUPPORTED_FREQUENCIES = new Set(['weekly']);
+
+export const SUPPORTED_FORMATS = new Set(['summary', 'detailed']);
+
+// Index matches Date#getUTCDay(), which is also what the BullMQ cron
+// `0 8 * * 1` (Monday) is evaluated against.
+export const WEEKDAYS = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+];
+
+export const DEFAULT_REPORT_SCHEDULE = {
+  enabled: false,
+  frequency: 'weekly',
+  dayOfWeek: 'monday',
+  time: '08:00',
+  recipients: [],
+  format: 'summary',
+  lastSentAt: null,
+  includeTable: true,
+};
+
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export class ReportQueryError extends Error {
   constructor(message, statusCode = 400) {
@@ -410,3 +440,116 @@ export async function runReportQuery({
     workspaceId: workspaceId || 'default',
   });
 }
+
+/**
+ * Merges a stored schedule with an incoming partial schedule, validating as it
+ * goes. Unknown keys are dropped, so a client cannot smuggle state into the
+ * persisted record.
+ *
+ * @param {object} [input] - Incoming schedule fragment
+ * @param {object} [existing] - Currently stored schedule
+ * @returns {{ schedule: object, error: string|null }}
+ */
+export function normalizeReportSchedule(input = {}, existing = {}) {
+  const base = { ...DEFAULT_REPORT_SCHEDULE, ...(existing || {}) };
+  const body = input && typeof input === 'object' ? input : {};
+  const schedule = { ...base };
+
+  if (body.enabled !== undefined) {
+    if (typeof body.enabled !== 'boolean') {
+      return { schedule: base, error: 'schedule.enabled must be a boolean' };
+    }
+    schedule.enabled = body.enabled;
+  }
+
+  if (body.frequency !== undefined) {
+    const frequency = String(body.frequency || '').trim().toLowerCase();
+    if (!SUPPORTED_FREQUENCIES.has(frequency)) {
+      return {
+        schedule: base,
+        error: `Invalid schedule frequency. Must be one of: ${[...SUPPORTED_FREQUENCIES].join(', ')}`,
+      };
+    }
+    schedule.frequency = frequency;
+  }
+
+  if (body.dayOfWeek !== undefined) {
+    const day = String(body.dayOfWeek || '').trim().toLowerCase();
+    const index = WEEKDAYS.indexOf(day);
+    if (index < 0) {
+      return {
+        schedule: base,
+        error: `Invalid schedule dayOfWeek. Must be one of: ${WEEKDAYS.join(', ')}`,
+      };
+    }
+    schedule.dayOfWeek = day;
+  }
+
+  if (body.time !== undefined) {
+    const time = String(body.time || '').trim();
+    if (!TIME_PATTERN.test(time)) {
+      return { schedule: base, error: 'Invalid schedule time. Expected 24-hour HH:MM' };
+    }
+    schedule.time = time;
+  }
+
+  if (body.format !== undefined) {
+    const format = String(body.format || '').trim().toLowerCase();
+    if (!SUPPORTED_FORMATS.has(format)) {
+      return {
+        schedule: base,
+        error: `Invalid schedule format. Must be one of: ${[...SUPPORTED_FORMATS].join(', ')}`,
+      };
+    }
+    schedule.format = format;
+  }
+
+  if (body.includeTable !== undefined) {
+    if (typeof body.includeTable !== 'boolean') {
+      return { schedule: base, error: 'schedule.includeTable must be a boolean' };
+    }
+    schedule.includeTable = body.includeTable;
+  }
+
+  if (body.recipients !== undefined) {
+    if (!Array.isArray(body.recipients)) {
+      return { schedule: base, error: 'schedule.recipients must be an array of email addresses' };
+    }
+    const recipients = [];
+    for (const raw of body.recipients) {
+      const email = normalizeEmail(raw);
+      if (!email) {
+        return { schedule: base, error: `Invalid recipient email address: '${raw}'` };
+      }
+      if (!recipients.includes(email)) recipients.push(email);
+    }
+    if (body.enabled === true && recipients.length === 0) {
+      return { schedule: base, error: 'At least one recipient is required to enable a schedule' };
+    }
+    schedule.recipients = recipients;
+  }
+
+  return { schedule, error: null };
+}
+
+/** True when a schedule is switched on and has somewhere to deliver to. */
+export function isScheduleActive(schedule) {
+  return Boolean(schedule?.enabled) && Array.isArray(schedule?.recipients) && schedule.recipients.length > 0;
+}
+
+/**
+ * Whether a weekly schedule falls due on `now`. Compared in UTC so it agrees
+ * with the BullMQ cron expression, which is evaluated in UTC.
+ *
+ * @param {object} schedule
+ * @param {Date} [now=new Date()]
+ * @returns {boolean}
+ */
+export function isScheduleDue(schedule, now = new Date()) {
+  if (!isScheduleActive(schedule)) return false;
+  if (String(schedule.frequency || 'weekly').toLowerCase() !== 'weekly') return false;
+  const expected = WEEKDAYS.indexOf(String(schedule.dayOfWeek || 'monday').toLowerCase());
+  if (expected < 0) return false;
+  return now.getUTCDay() === expected;
+}
+

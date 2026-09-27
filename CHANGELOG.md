@@ -7,6 +7,24 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Saved Reports Schema Migration (Migration 011):**
+  - Added `backend/db/migrations/011_saved_reports.sql` creating the `saved_reports` table with `workspace_id` tenant isolation, `query` and `schedule` JSONB columns, indexed `schedule_enabled` and `last_sent_at` columns, and `update_updated_at_column()` trigger.
+- **Saved Reports Repository & Service Layer:**
+  - Implemented `backend/db/repositories/saved-reports.js` providing CRUD operations and tenant-scoped queries.
+  - Implemented `backend/services/savedReports.js` with PostgreSQL-first lookups and JSON-store fallback.
+  - Registered `saved_reports` repository in `backend/db/repositories/index.js` and added explicit column mappings in `backend/db/legacy-shape.js` to ensure `workspace_id` and `schedule_enabled` map to dedicated columns rather than `custom_fields`.
+- **Report Email Digest Generator (`backend/services/reportEmail.js`):**
+  - Implemented `generateReportEmailContent(report, reportData)` rendering branded HTML and plaintext digests with summary KPI metrics (total records, currency-detected total values, group averages), styled responsive data tables, XSS escaping via `escapeHtml()`, and empty-state messaging.
+- **Weekly Report BullMQ Scheduler & Worker (`backend/workers/reportScheduler.js`):**
+  - Configured `report-scheduler-queue` with a repeatable cron job running Mondays at 08:00 UTC (`0 8 * * 1`) and exponential backoff retry.
+  - Implemented `InMemoryReportSchedulerQueue` fallback ensuring zero-dependency test execution when Redis is offline.
+  - Implemented `runScheduledReports()` executing tenant-scoped report queries, dispatching digest emails via SMTP, recording delivery in `db.messages`/`db.notifications`, and stamping `schedule.lastSentAt`.
+  - Wired worker initialization and clean shutdown into `backend/server.js`.
+- **Report Scheduling & Delivery API Endpoints (`backend/routes/reports.js`):**
+  - Added endpoints: `GET/POST /api/reports`, `GET/PUT/DELETE /api/reports/:id`, `GET/PUT/POST /api/reports/:id/schedule`, `POST /api/reports/:id/send-now`, and `POST /api/reports/:id/run` under `auth` and `requireRole('admin', 'member')`.
+  - Added strict schedule validation enforcing frequency, valid weekdays, 24-hour time format, and de-duplicated recipient email arrays.
+- **Report Scheduler Test Suite (`backend/__tests__/report-scheduler.test.js`):**
+  - Added 30 unit and integration tests covering schedule CRUD, validation, HTML/text digest generation, BullMQ cron registration, email delivery, tenant workspace isolation, and on-demand sending.
 - **Goal Tracking Schema Migration (Migration 010):**
   - Added `backend/db/migrations/010_goals.sql` creating the `goals` table with `TEXT` primary keys, `workspace_id` tenant isolation, `type` (`revenue`, `activity`, `deal`), `target`, `period` (`monthly`, `quarterly`, `annual`), `assigned_to`, `assigned_type`, `start_date`, `end_date`, `status`, and `update_updated_at_column()` trigger with secondary indexes.
 - **Goals Repository & Entity Shape Mapping:**
@@ -41,7 +59,10 @@ and this project adheres to Semantic Versioning.
 
 ### Changed
 - **Test Database Setup (`backend/__tests__/setup.js`):**
+  - Included `saved_reports` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
   - Included `goals` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
+- **PG Resource Inventory Test (`backend/db/__tests__/legacy-shape.test.js`):**
+  - Added `savedReports` and `saved_reports` to the expected `PG_RESOURCES` set asserted by the inventory test.
 - **Resource Numeric Coercion (`backend/routes/resources.js`):**
   - Added numeric coercion for `target` to ensure consistent JSON types.
 - **Recording Upload Route (`backend/routes/recordings.js`):**
