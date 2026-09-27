@@ -71,6 +71,7 @@ import {
 } from "./components/goals/GoalProgress";
 import { QuoteForm } from "./components/quotes/QuoteForm";
 import { GenerateInvoiceButton } from "./components/quotes/GenerateInvoiceButton";
+import { ContractDetails, contractSummaryValue } from "./components/contracts/ContractDetails";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
@@ -1073,6 +1074,7 @@ function AppRoutes() {
                 element={
                   <RecordDetailPage
                     resource="contracts"
+                    key={location.pathname}
                     fields={contractFields}
                     title={t("nav.contracts")}
                   />
@@ -2535,7 +2537,7 @@ function RecordDetailPage({
 }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const [record, setRecord] = useState<Row | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<DetailTab>("Overview");
@@ -2544,6 +2546,7 @@ function RecordDetailPage({
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("All");
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState(false);
+  const [activityRetry, setActivityRetry] = useState(0);
   const [messages, setMessages] = useState<Row[]>([]);
   const [revisions, setRevisions] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
@@ -2559,7 +2562,7 @@ function RecordDetailPage({
     label: resource === "companies" ? "Logo" : "Photo",
     type: "photo",
   };
-  const detailFields: FieldSpec[] = [photoField, ...fields];
+  const detailFields: FieldSpec[] = resource === "contracts" ? fields : [photoField, ...fields];
 
   useEffect(() => {
     if (!id) return;
@@ -2579,7 +2582,7 @@ function RecordDetailPage({
     if (!record || (tab !== "Activity" && tab !== "Notes")) return;
     const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
-    if (name) params.set("contact", name);
+    if (name && resource !== "contracts") params.set("contact", name);
     const type =
       tab === "Notes"
         ? "Note"
@@ -2592,7 +2595,10 @@ function RecordDetailPage({
     setActivityError(false);
     setActivityLoading(true);
     api<Row[]>(`/activities?${params}`, { signal: controller.signal })
-      .then(setActivities)
+      .then((items) => {
+        if (!Array.isArray(items)) throw new Error("Invalid activity response");
+        setActivities(items.filter((item) => item && typeof item === "object" && typeof item.id === "string"));
+      })
       .catch((error) => {
         if (error.name !== "AbortError") setActivityError(true);
       })
@@ -2600,7 +2606,7 @@ function RecordDetailPage({
         if (!controller.signal.aborted) setActivityLoading(false);
       });
     return () => controller.abort();
-  }, [record, tab, activityFilter, showActivityFilters]);
+  }, [record, tab, activityFilter, showActivityFilters, activityRetry, resource]);
 
   useEffect(() => {
     if (!record?.email) return;
@@ -2756,12 +2762,14 @@ function RecordDetailPage({
             ) : null}
             <button
               className="btn secondary compact"
+              disabled={resource === "contracts" && user?.role !== "admin" && user?.role !== "member"}
               onClick={() => setEdit(true)}
             >
               <Icon name="edit" /> Edit
             </button>
             <button
               className="btn ghost compact danger-link"
+              disabled={resource === "contracts" && user?.role !== "admin" && user?.role !== "member"}
               aria-label={`Delete ${record.name || record.title || "record"}`}
               onClick={deleteRecord}
             >
@@ -2772,7 +2780,7 @@ function RecordDetailPage({
       </div>
 
       <div className="detail-tabs">
-        {(resource === "contacts"
+        {(resource === "contracts" ? (["Overview", "Activity"] as const) : resource === "contacts"
           ? detailTabList
           : detailTabList.filter((item) => item !== "History")
         ).map((t) => (
@@ -2781,7 +2789,7 @@ function RecordDetailPage({
             className={tab === t ? "active" : ""}
             onClick={() => setTab(t)}
           >
-            {t}
+            {resource === "contracts" && t === "Activity" ? "Activity timeline" : t}
             {t === "Emails" && messages.length ? (
               <span>{messages.length}</span>
             ) : t === "Activity" && tab === "Activity" && activities.length ? (
@@ -2797,22 +2805,25 @@ function RecordDetailPage({
         {tab === "Overview" && (
           <div className="detail-overview">
             <div className="detail-section">
-              <h3>Contact information</h3>
-              <div className="detail-props">
+              <h3>{resource === "contracts" ? "Contract summary" : "Contact information"}</h3>
+              <dl className="detail-props">
                 {fields.map((f) =>
-                  record[f.key] ? (
+                  resource === "contracts" || record[f.key] ? (
                     <div key={f.key}>
                       <dt>{f.label}</dt>
                       <dd>
-                        {f.type === "number" && f.key === "value"
+                        {resource === "contracts"
+                          ? contractSummaryValue(record[f.key], f.type, f.key)
+                          : f.type === "number" && f.key === "value"
                           ? money(record[f.key])
                           : String(record[f.key])}
                       </dd>
                     </div>
                   ) : null,
                 )}
-              </div>
+              </dl>
             </div>
+            {resource === "contracts" ? <ContractDetails record={record} /> : null}
           </div>
         )}
 
@@ -2843,7 +2854,12 @@ function RecordDetailPage({
               <Empty
                 icon="activity"
                 title="Could not load activities"
-                text="Try another filter."
+                text={resource === "contracts" ? "Try loading the activity timeline again." : "Try another filter."}
+                action={resource === "contracts" ? (
+                  <button type="button" className="btn secondary compact" onClick={() => setActivityRetry((value) => value + 1)}>
+                    Retry
+                  </button>
+                ) : undefined}
               />
             ) : activities.length ? (
               activities.map((a) => (
@@ -2999,12 +3015,13 @@ function RecordDetailPage({
           onClose={() => setEdit(false)}
           onSave={async (data) => {
             try {
-              const payload = { ...record, ...data };
+              const payload = resource === "contracts" ? data : { ...record, ...data };
               await api(`/${resource}/${record.id}`, json("PUT", payload));
               setRecord((prev) => (prev ? { ...prev, ...payload } : prev));
               setEdit(false);
               toast("Updated");
             } catch (error) {
+              if (resource === "contracts") throw error;
               toast((error as Error).message, "error");
             }
           }}
