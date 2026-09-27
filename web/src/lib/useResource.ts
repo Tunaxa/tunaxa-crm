@@ -2,21 +2,54 @@ import { useCallback, useEffect, useState } from "react";
 import { api, json } from "./api";
 import { useApp } from "../context/AppContext";
 
-export function useResource<T extends { id: string }>(resource: string) {
+type ResourceOptions = {
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  q?: string;
+};
+
+type ResourceResponse<T> = {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export function useResource<T extends { id: string }>(
+  resource: string,
+  options: ResourceOptions = {},
+) {
   const { toast } = useApp();
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const page = options.page || 1;
+  const limit = options.limit || 25;
+  const sortBy = options.sortBy || "createdAt";
+  const sortDir = options.sortDir || "desc";
+  const q = options.q || "";
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(await api<T[]>(`/${resource}`));
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+        sortBy,
+        sortDir,
+      });
+      if (q) params.set("q", q);
+      const result = await api<ResourceResponse<T>>(`/${resource}?${params}`);
+      setItems(result.data);
+      setTotal(result.total);
     } catch (error) {
       toast((error as Error).message, "error");
     } finally {
       setLoading(false);
     }
-  }, [resource]);
+  }, [limit, page, q, resource, sortBy, sortDir]);
 
   useEffect(() => {
     load();
@@ -78,5 +111,5 @@ export function useResource<T extends { id: string }>(resource: string) {
     }
   }
 
-  return { items, setItems, loading, load, create, update, remove };
+  return { items, setItems, loading, total, page, limit, load, create, update, remove };
 }
