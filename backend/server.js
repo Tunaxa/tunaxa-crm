@@ -54,6 +54,10 @@ import registerQuoteRoutes from "./routes/quotes.js";
 import registerContactRoutes from "./routes/contacts.js";
 import registerGoalRoutes from "./routes/goals.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
+import {
+  initReportSchedulerWorker,
+  closeReportSchedulerQueue,
+} from "./workers/reportScheduler.js";
 import { processExecutionQueue } from "./services/queue.js";
 import { startEmailSync, stopEmailSync } from "./services/emailSync.js";
 import {
@@ -284,6 +288,9 @@ if (process.env.VITEST !== "true") {
     startWebhookWorker();
     startEmailSync();
     startTranscriptionWorker();
+    initReportSchedulerWorker().catch((error) =>
+      console.error("[report-scheduler] worker init failed:", error.message),
+    );
   });
   setInterval(
     () =>
@@ -296,6 +303,7 @@ if (process.env.VITEST !== "true") {
   const shutdown = () => {
     stopEmailSync();
     stopTranscriptionWorker().catch(() => {});
+    closeReportSchedulerQueue().catch(() => {});
     process.exit(0);
   };
   process.on("SIGTERM", shutdown);
