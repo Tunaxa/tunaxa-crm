@@ -1,4 +1,5 @@
-import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
+import { WorkflowPicker } from "./pages/workflows/WorkflowPicker";
+import { WorkflowDetailPage } from "./pages/workflows/WorkflowDetailPage";
 
 import { useForm } from "react-hook-form";
 import {
@@ -1013,6 +1014,7 @@ function AppRoutes() {
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/workflows" element={<WorkflowsPage />} />
+              <Route path="/workflows/:id" element={<WorkflowDetailPage key={location.pathname} />} />
               <Route path="/calls" element={<CallsPage />} />
               <Route path="/recordings" element={<RecordingsPage />} />
               <Route path="/inbox" element={<InboxPage />} />
@@ -4147,7 +4149,10 @@ function WorkflowForm({
 }
 
 function WorkflowsPage() {
-  const { items, create, update, remove } = useResource<Row>("workflows");
+  const { items, loading, error, load, create, update, remove } = useResource<Row>("workflows");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [pickerOpen, setPickerOpen] = useState(() => new URLSearchParams(location.search).get("picker") === "1");
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const [meta, setMeta] = useState<WorkflowMeta>({
     events: [],
@@ -4166,6 +4171,9 @@ function WorkflowsPage() {
         title="Workflows"
         description="Automate follow-ups: pick a trigger, add actions, and Tunaxa runs them server-side."
       >
+        <button type="button" className="btn secondary" onClick={() => setPickerOpen(true)}>
+          <Icon name="workflow" /> Open Canvas
+        </button>
         <button
           className="btn primary"
           disabled={!meta.events.length}
@@ -4175,13 +4183,11 @@ function WorkflowsPage() {
         </button>
       </PageHeader>
 
-      {items.length ? (
+      {loading ? <p role="status">Loading workflows…</p> : error ? (
+        <Empty icon="workflow" title="Could not load workflows" text="Try loading the list again."
+          action={<button type="button" className="btn secondary" onClick={() => load()}>Retry</button>} />
+      ) : items.length ? (
         <>
-          {/* Workflow visualisation avec React Flow */}
-          <WorkflowCanvas
-            workflow={{ event: items[0].event, filter: items[0].filter, actions: items[0].actions }}
-          />
-
           {/* Liste des workflows existants */}
           <div className="workflow-list">
             {items.map((flow) => (
@@ -4272,6 +4278,11 @@ function WorkflowsPage() {
         />
       )}
 
+      {pickerOpen ? (
+        <WorkflowPicker workflows={items} loading={loading} error={error}
+          onRetry={() => load()} onClose={() => setPickerOpen(false)}
+          onSelect={(id) => { setPickerOpen(false); navigate(`/workflows/${encodeURIComponent(id)}`); }} />
+      ) : null}
       {edit !== undefined ? (
         <WorkflowForm
           meta={meta}

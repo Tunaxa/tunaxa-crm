@@ -2,7 +2,11 @@ import { useCallback, useState, type DragEvent } from "react";
 import {
   Background,
   Controls,
+  MiniMap,
   ReactFlow,
+  addEdge,
+  applyNodeChanges,
+  applyEdgeChanges,
   type Edge,
   type Node,
   type ReactFlowInstance,
@@ -15,6 +19,7 @@ import ConditionNode from "./nodes/ConditionNode";
 import ActionNode from "./nodes/ActionNode";
 
 type WorkflowCanvasProps = {
+  readOnly?: boolean;
   workflow: {
     event?: string;
     filter?: {
@@ -51,12 +56,15 @@ const paletteItems = [
 
 export default function WorkflowCanvas({
   workflow,
+  readOnly = false,
 }: WorkflowCanvasProps) {
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
 
   const [nodes, setNodes] = useState<Node[]>(() => {
     const initialNodes: Node[] = [];
+
+    if (!workflow.event && !workflow.filter?.field && !workflow.actions?.length) return initialNodes;
 
     initialNodes.push({
       id: "trigger",
@@ -136,9 +144,10 @@ export default function WorkflowCanvas({
   });
 
   const onDragStart = (
-    event: DragEvent<HTMLDivElement>,
+    event: DragEvent<HTMLElement>,
     nodeType: string,
   ) => {
+    if (readOnly) return;
     event.dataTransfer.setData(
       "application/reactflow",
       nodeType,
@@ -159,7 +168,7 @@ export default function WorkflowCanvas({
     (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
 
-      if (!reactFlowInstance) {
+      if (!reactFlowInstance || readOnly) {
         return;
       }
 
@@ -167,7 +176,7 @@ export default function WorkflowCanvas({
         "application/reactflow",
       );
 
-      if (!type) {
+      if (!["trigger", "condition", "action"].includes(type)) {
         return;
       }
 
@@ -177,7 +186,7 @@ export default function WorkflowCanvas({
           y: event.clientY,
         });
 
-      const id = `${type}-${Date.now()}`;
+      const id = `${type}-${crypto.randomUUID()}`;
 
       let data: Record<string, unknown>;
 
@@ -209,8 +218,19 @@ export default function WorkflowCanvas({
         newNode,
       ]);
     },
-    [reactFlowInstance],
+    [reactFlowInstance, readOnly],
   );
+
+  function addPaletteNode(type: string) {
+    if (readOnly) return;
+    const data = type === "trigger" ? { event: "" }
+      : type === "condition" ? { field: "", value: "" }
+      : { type: "Action", configuration: {} };
+    setNodes((current) => [...current, {
+      id: `${type}-${crypto.randomUUID()}`, type,
+      position: { x: 80 + (current.length % 3) * 260, y: 80 + Math.floor(current.length / 3) * 160 }, data,
+    }]);
+  }
 
   return (
     <div className="workflow-builder">
@@ -227,16 +247,16 @@ export default function WorkflowCanvas({
               (item) => item.section === "Triggers",
             )
             .map((item) => (
-              <div
+              <button type="button" disabled={readOnly} onClick={() => addPaletteNode(item.type)}
                 key={item.type}
                 className="workflow-palette-item trigger-palette-item"
-                draggable
+                draggable={!readOnly}
                 onDragStart={(event) =>
                   onDragStart(event, item.type)
                 }
               >
                 {item.label}
-              </div>
+              </button>
             ))}
         </section>
 
@@ -248,16 +268,16 @@ export default function WorkflowCanvas({
               (item) => item.section === "Conditions",
             )
             .map((item) => (
-              <div
+              <button type="button" disabled={readOnly} onClick={() => addPaletteNode(item.type)}
                 key={item.type}
                 className="workflow-palette-item condition-palette-item"
-                draggable
+                draggable={!readOnly}
                 onDragStart={(event) =>
                   onDragStart(event, item.type)
                 }
               >
                 {item.label}
-              </div>
+              </button>
             ))}
         </section>
 
@@ -269,16 +289,16 @@ export default function WorkflowCanvas({
               (item) => item.section === "Actions",
             )
             .map((item) => (
-              <div
+              <button type="button" disabled={readOnly} onClick={() => addPaletteNode(item.type)}
                 key={item.type}
                 className="workflow-palette-item action-palette-item"
-                draggable
+                draggable={!readOnly}
                 onDragStart={(event) =>
                   onDragStart(event, item.type)
                 }
               >
                 {item.label}
-              </div>
+              </button>
             ))}
         </section>
       </aside>
@@ -292,11 +312,18 @@ export default function WorkflowCanvas({
           nodes={nodes}
           edges={edges}
           nodeTypes={nodeTypes}
+          onNodesChange={readOnly ? undefined : (changes) => setNodes((current) => applyNodeChanges(changes, current))}
+          onEdgesChange={readOnly ? undefined : (changes) => setEdges((current) => applyEdgeChanges(changes, current))}
+          onConnect={readOnly ? undefined : (connection) => setEdges((current) => addEdge(connection, current))}
+          nodesDraggable={!readOnly}
+          nodesConnectable={!readOnly}
+          deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
           onInit={setReactFlowInstance}
           fitView
         >
           <Background />
-          <Controls />
+          <Controls showInteractive={!readOnly} />
+          <MiniMap pannable zoomable style={{ background: "var(--surface)" }} nodeColor="var(--muted)" />
         </ReactFlow>
       </div>
     </div>
