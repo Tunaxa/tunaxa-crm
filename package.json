@@ -26,6 +26,7 @@
     "fuse.js": "^7.5.0",
     "graphql": "^17.0.2",
     "graphql-yoga": "^5.22.0",
+    "helmet": "^8.3.0",
     "i18next": "^26.4.0",
     "imapflow": "^2.0.5",
     "ioredis": "^6.0.0",
