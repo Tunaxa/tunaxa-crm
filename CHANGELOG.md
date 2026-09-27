@@ -7,6 +7,17 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Production Multi-Stage Dockerfile (`Dockerfile`):**
+  - Created hardened, two-stage Dockerfile based on `node:22-alpine`.
+  - **Build Stage (`deps`):** Performs clean dependency installation via `npm ci --no-audit --no-fund`, dynamically resolves missing Linux musl binaries (`@rollup/rollup-linux-x64-musl` and `@esbuild/linux-x64`) to overcome Windows-scoped package locks, compiles the frontend bundle (`npm run build`), and prunes devDependencies (`npm prune --omit=dev`).
+  - **Runtime Stage (`runner`):** Configures lightweight production container using `tini` as init process (`/sbin/tini --`), enforces non-root execution under UID/GID 1000 (`USER node`) with files copied using `--chown=node:node`, exposes port 3000, declares `NODE_ENV=production`, and configures container health checks (`wget -q -O - http://127.0.0.1:3000/api/health`).
+- **Build Context Configuration (`.dockerignore`):**
+  - Added 121-line `.dockerignore` file filtering secrets, environment variables, git history, test suites, coverage reports, build caches, and local datastores.
+- **Container Verification Test Suite (`backend/__tests__/dockerfile.test.js`):**
+  - Added 46 static and dynamic integration tests validating Dockerfile directives, multi-stage separation, non-root user enforcement, environment variables, startup responsiveness, and live image execution.
+- **Production Static Asset Serving (`backend/server.js`):**
+  - Serves `web/dist` when a built bundle is present, with a SPA fallback that returns the app shell for client-side routes while leaving `/api` and `/uploads` untouched so unknown API routes still return JSON rather than HTML.
+  - Listens on `process.env.PORT` (default 3001) and `process.env.HOST` (default 127.0.0.1) instead of a hardcoded loopback port, so the image can publish a port while the dev workflow is unchanged.
 - **Database Index Tuning & Foreign Key Coverage (Migration 012):**
   - Added `backend/db/migrations/012_index_tuning_and_foreign_keys.sql` adding 12 missing relational pointer indexes:
     - `deals(owner_id)`
@@ -88,6 +99,8 @@ and this project adheres to Semantic Versioning.
   - Added 11 unit and integration tests covering queue fallback, immediate 201 response on upload, worker background processing, transcript persistence, SSE event delivery, failure handling, and async route modes.
 
 ### Changed
+- **Dependencies (`package.json`):**
+  - Moved `@vitejs/plugin-react` from `dependencies` to `devDependencies`. The plugin declares `vite` as a peer dependency, so listing it as a production dependency caused npm to resolve Vite — and transitively Rollup and Esbuild — into the production graph, where `npm prune --omit=dev` is required to keep them. The production image now carries 228 packages instead of 253.
 - **Test Database Setup (`backend/__tests__/setup.js`):**
   - Included `saved_reports` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
   - Included `goals` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
@@ -227,6 +240,9 @@ and this project adheres to Semantic Versioning.
 - Backend failed to start locally: runtime data file `backend/data/db.json` was missing, so `app.listen(3001)` never ran; restored the tracked `db.json.bac` seed to `db.json`, unblocking `npm run server` and `npm start`. (Note: `db.json` is gitignored runtime data.)
 - `npm test` previously invoked `jest` (not installed); it now runs `vitest run`, matching the runner the backend suite actually uses (tests import from `vitest`, and `server.js` already skips `app.listen(3001)` when `VITEST === "true"`).
 - Duplicate merge now happens atomically: `POST /api/duplicates/merge` accepts a `mergeIds` array and merges an entire duplicate group in a single `mutateDb()` call, and the Duplicates page sends all IDs in one request instead of looping per-merge HTTP calls, so a mid-merge failure can no longer leave partial/corrupted state.
+- `npm run build` failed inside the container image: `package-lock.json` was generated on Windows and records only the `win32` variants of Rollup and Esbuild, so `npm ci` on `node:22-alpine` left `node_modules/@rollup` and `node_modules/@esbuild` empty and Vite aborted with `Cannot find module @rollup/rollup-linux-x64-musl` (npm/cli#4828). The Dockerfile now installs both binaries at versions read from the already-resolved `rollup` and `esbuild` packages, so they cannot drift from the lockfile.
+- `web/src/styles/app.css`: an unclosed `@media (max-width: 700px)` block (introduced in `a1983c4`) swallowed roughly 180 following lines and broke the PostCSS build with "Unclosed block".
+- `web/src/lib/api.ts`: an orphaned duplicate tail of `requestWithRetry` was left behind by an earlier revision, producing an esbuild `Unexpected "catch"` parse error; the dead fragment is removed.
 
 ### Testing
 

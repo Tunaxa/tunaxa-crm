@@ -2,6 +2,7 @@ import express from "express";
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import multer from "multer";
 import * as Sentry from "@sentry/node";
 import { fileURLToPath } from "node:url";
@@ -237,6 +238,35 @@ registerQuoteRoutes(app);
 registerGoalRoutes(app);
 registerResourceRoutes(app);
 
+// ============================================
+// Production static assets
+// ============================================
+// In development the UI is served by the Vite dev server (web/vite.config.ts
+// proxies /api and /uploads here), so this block is inert: it only activates
+// when a production bundle exists, which is what the Dockerfile produces. That
+// keeps every existing test and dev workflow on the same code path it had
+// before - there is no web/dist in a checkout, so nothing is mounted.
+//
+// The fallback is registered as a bare app.use rather than app.get("*") on
+// purpose: Express 5 replaced path-to-regexp's bare "*" with named wildcards,
+// and a pattern-free middleware cannot break on a future Express upgrade.
+// /api and /uploads are excluded so an unknown API route still returns JSON
+// 404 rather than the HTML shell.
+const webDistDir = path.join(root, "..", "web", "dist");
+if (existsSync(path.join(webDistDir, "index.html"))) {
+  // index: false - the shell is served explicitly below, so that it can be sent
+  // with no-store while the content-hashed assets under /assets stay immutable.
+  app.use(express.static(webDistDir, { index: false, maxAge: "1y", immutable: true }));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
+    res.setHeader("Cache-Control", "no-store");
+    return res.sendFile(path.join(webDistDir, "index.html"), (error) => {
+      if (error) next(error);
+    });
+  });
+}
+
 app.use((err, req, res, next) => {
   if (process.env.SENTRY_DSN && process.env.VITEST !== "true") {
     Sentry.captureException(err);
@@ -255,8 +285,15 @@ app.use((err, req, res, next) => {
 export { app };
 
 if (process.env.VITEST !== "true") {
-  app.listen(3001, "127.0.0.1", () => {
-    console.log("Tunaxa API running on http://127.0.0.1:3001");
+  // Defaults are the pre-existing dev values, so `npm start`, start.js and the
+  // Vite proxy in web/vite.config.ts keep working untouched. A container
+  // overrides both: PORT selects the published port and HOST must be 0.0.0.0,
+  // because a server bound to 127.0.0.1 inside a container is unreachable from
+  // the host no matter what the port mapping says.
+  const port = Number(process.env.PORT) || 3001;
+  const host = process.env.HOST || "127.0.0.1";
+  app.listen(port, host, () => {
+    console.log(`Tunaxa API running on http://${host}:${port}`);
     startWebhookWorker();
     startEmailSync();
     startTranscriptionWorker();
