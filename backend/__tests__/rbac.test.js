@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import crypto from "node:crypto";
 import request from "supertest";
 import { resetTestDb, cleanupTestDb } from "./setup.js";
-import { mutateDb } from "../store.js";
+import { mutateDb, readDb } from "../store.js";
 
 let app;
 
@@ -275,5 +275,126 @@ describe("RBAC end-to-end verification", () => {
   it("no token -> 401 on reads", async () => {
     const res = await request(app).get("/api/leads");
     expect(res.status).toBe(401);
+  });
+});
+
+describe("Field-level RBAC on writes (stripHiddenFields)", () => {
+  let ownerToken, memberToken;
+
+  beforeAll(async () => {
+    ownerToken = await login("owner@test.com");
+    memberToken = await login("member@test.com");
+  });
+
+  it("owner can configure a hidden field for member", async () => {
+    const res = await request(app)
+      .put("/api/permissions/fields/lead")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ role: "member", hidden: ["phone"] });
+    expect(res.status).toBe(200);
+  });
+
+  it("POST with a hidden field does not persist it", async () => {
+    const res = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ name: "Stripped Lead", phone: "888-888-8888", value: 2500 });
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe("Stripped Lead");
+    expect(res.body.value).toBe(2500);
+    expect(res.body.phone).toBeUndefined();
+
+    const db = await readDb();
+    const saved = db.leads.find((x) => x.id === res.body.id);
+    expect(saved.phone).toBeUndefined();
+  });
+
+  it("PUT with a hidden field does not persist it (other edits kept)", async () => {
+    const db = await readDb();
+    const lead = db.leads.find((x) => x.name === "Stripped Lead");
+    expect(lead).toBeTruthy();
+
+    const res = await request(app)
+      .put(`/api/leads/${lead.id}`)
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ name: "Renamed Lead", phone: "999-999-9999", value: 5000 });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("Renamed Lead");
+    expect(res.body.value).toBe(5000);
+    expect(res.body.phone).toBeUndefined();
+
+    const after = (await readDb()).leads.find((x) => x.id === lead.id);
+    expect(after.phone).toBeUndefined();
+    expect(after.name).toBe("Renamed Lead");
+  });
+
+  it("viewer cannot bypass stripping to write through POST (403 first)", async () => {
+    const viewerToken = await login("viewer@test.com");
+    const res = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .send({ name: "Viewer Hack", phone: "777-777-7777" });
+    expect(res.status).toBe(403);
+    const db = await readDb();
+    expect(db.leads.some((x) => x.name === "Viewer Hack")).toBe(false);
+  });
+
+  it("hidden fields are stripped from batch POST payloads", async () => {
+    const res = await request(app)
+      .post("/api/leads/batch")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send([
+        { name: "Batch One", phone: "111-111-1111" },
+        { name: "Batch Two", phone: "222-222-2222" },
+      ]);
+    expect(res.status).toBe(201);
+    for (const row of res.body) {
+      expect(row.phone).toBeUndefined();
+    }
+    const db = await readDb();
+    const batch = db.leads.filter((x) => x.name.startsWith("Batch "));
+    expect(batch).toHaveLength(2);
+    for (const row of batch) expect(row.phone).toBeUndefined();
+  });
+
+  it("empty and null write bodies are handled safely (no 500)", async () => {
+    const res = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({});
+    expect([201, 400]).toContain(res.status);
+
+    const noBody = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${memberToken}`);
+    expect([201, 400]).toContain(noBody.status);
+  });
+
+  it("GET still masks the hidden field for the affected role", async () => {
+    // Owner is not restricted for this config, so the phone persists server-side.
+    const created = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ name: "Masked Read", phone: "123-456-7890" });
+    expect(created.status).toBe(201);
+    expect(created.body.phone).toBe("123-456-7890");
+
+    // Member reads it masked (applyFieldMasking must stay intact).
+    const res = await request(app)
+      .get("/api/leads")
+      .set("Authorization", `Bearer ${memberToken}`);
+    expect(res.status).toBe(200);
+    const row = res.body.data.find((x) => x.name === "Masked Read");
+    expect(row).toBeTruthy();
+    expect(row.phone).toBe("••••••");
+  });
+
+  it("member with no hidden config can still write phone on contacts", async () => {
+    const res = await request(app)
+      .post("/api/contacts")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ name: "Contact With Phone", phone: "444-444-4444" });
+    expect(res.status).toBe(201);
+    expect(res.body.phone).toBe("444-444-4444");
   });
 });
