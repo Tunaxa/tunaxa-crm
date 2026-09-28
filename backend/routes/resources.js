@@ -21,27 +21,39 @@ import {
 import { broadcast } from "./sse.js";
 import { cacheFlush } from "../services/cache.js";
 import { recordRevision } from "../services/revisions.js";
-import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
+import { getFieldPermissions, applyFieldMasking, stripHiddenFields } from "./permissions.js";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
 
 export default function registerResourceRoutes(app) {
-  app.use("/api/:resource", async (req, res, next) => {
-    if (!resources.has(req.params.resource) || !req.user) return next();
-
-    req.db = await readDb();
+  // Attach field-level permissions for the authenticated user. Must run AFTER
+  // `auth` so req.user is populated — otherwise masking is a silent no-op.
+  // It also loads req.db here (post-auth), matching HEAD's lazy-read timing so
+  // the store's serialized queue ordering for workflow triggers is preserved.
+  async function attachFieldPerms(req, res, next) {
+    if (!req.user || !resources.has(req.params.resource)) return next();
+    const db = req.db || (await readDb());
+    req.db = db;
     req.fieldPerms = getFieldPermissions(
-      req.db,
+      db,
       req.params.resource.replace(/s$/, ""),
       req.user.role,
     );
-
     next();
-  });
+  }
 
-  app.get("/api/:resource", auth, async (req, res, next) => {
+  // Strip fields the current role may not write from inbound payloads before
+  // schema validation and persistence (field-level RBAC on writes).
+  function sanitizeWriteBody(req, res, next) {
+    if (req.fieldPerms) {
+      req.body = stripHiddenFields(req.body, req.fieldPerms);
+    }
+    next();
+  }
+
+  app.get("/api/:resource", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
     const db = req.db || (await readDb());
@@ -131,10 +143,11 @@ export default function registerResourceRoutes(app) {
       });
     }
 
-    res.json(rows);
+    // Paginated envelope consumed by the UI (useResource) and the API tests.
+    res.json({ data: rows, total: rows.length, page, limit });
   });
 
-  app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
+  app.get("/api/:resource/export.csv", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
     const db = req.db || (await readDb());
@@ -175,7 +188,7 @@ export default function registerResourceRoutes(app) {
     res.end();
   });
 
-  app.get("/api/:resource/:id", auth, async (req, res, next) => {
+  app.get("/api/:resource/:id", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
     const db = req.db || (await readDb());
@@ -197,6 +210,8 @@ export default function registerResourceRoutes(app) {
     "/api/:resource",
     auth,
     requireRole("admin", "member"),
+    attachFieldPerms,
+    sanitizeWriteBody,
     validate(ResourceSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
@@ -263,6 +278,8 @@ export default function registerResourceRoutes(app) {
     "/api/:resource/batch",
     auth,
     requireRole("admin", "member"),
+    attachFieldPerms,
+    sanitizeWriteBody,
     validate(BatchSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
@@ -306,6 +323,8 @@ export default function registerResourceRoutes(app) {
     "/api/:resource/:id",
     auth,
     requireRole("admin", "member"),
+    attachFieldPerms,
+    sanitizeWriteBody,
     validate(ResourceSchema),
     async (req, res, next) => {
       const resource = req.params.resource;

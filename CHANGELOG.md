@@ -71,6 +71,7 @@ and this project adheres to Semantic Versioning.
 
 ### Security
 
+- Field-level RBAC now also enforces hidden fields on **write** operations: `POST /api/:resource`, `POST /api/:resource/batch`, and `PUT /api/:resource/:id` strip any field listed in the user's role `fieldPermissions.hidden` from the inbound payload before schema validation and persistence (new `stripHiddenFields` utility in `backend/routes/permissions.js`), so restricted fields can no longer be smuggled into the store on create or update. Read-side masking (`applyFieldMasking`) is unchanged, and the field-permission attachment was fixed to run after auth so GET masks actually apply.
 - Added a scoped, short-lived (120s) query-token authentication path for the SSE endpoint only (`GET /api/events`), since browsers cannot attach custom headers to `EventSource` connections. Tokens are minted per-connection via a new authenticated endpoint (`POST /api/auth/events-token`), scoped to `purpose: "sse"`, and cannot be used on any other route. All other existing routes continue using standard header-based authentication, unchanged.
 
 ## [2.1.0] - 2026-09-16

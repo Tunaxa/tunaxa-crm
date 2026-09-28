@@ -50,6 +50,29 @@ export function applyFieldMasking(record, fieldPerms) {
   return out;
 }
 
+/**
+ * Removes keys listed in fieldPerms.hiddenFields from an inbound write payload
+ * (POST/PUT) before schema validation and persistence. Enforces the same
+ * field-level RBAC on writes that applyFieldMasking enforces on reads.
+ *
+ * Safe on null, undefined, empty, or non-object bodies — they are returned
+ * unchanged (validation will reject grossly-wrong payloads as usual).
+ */
+export function stripHiddenFields(body, fieldPerms) {
+  if (!fieldPerms || body == null) return body;
+  if (Array.isArray(body)) {
+    return body.map((item) => stripHiddenFields(item, fieldPerms));
+  }
+  if (typeof body !== 'object') return body;
+  const hidden = Array.isArray(fieldPerms.hiddenFields)
+    ? fieldPerms.hiddenFields
+    : [];
+  if (hidden.length === 0) return body;
+  const out = { ...body };
+  for (const field of hidden) delete out[field];
+  return out;
+}
+
 export default function registerPermissionsRoutes(app) {
   app.get('/api/permissions', auth, async (req, res) => {
     const db = await readDb();
