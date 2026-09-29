@@ -41,6 +41,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- Vitest runner hardened for Windows and parallel-safety: added `vitest.config.js` with `fileParallelism: false`, and isolated JSON-store paths per test worker — `backend/__tests__/setup.js` now uses a worker-unique `test-db-<VITEST_POOL_ID>.json` file and `backend/store.js` honors a `TEST_DB_PATH` override. `npm test`/`npm run test:watch` were standardized to plain `vitest run`/`vitest` (config-owned flags). SQL migrations now run by spawning `node backend/db/migrate.js` directly via `process.execPath` instead of `npm run migrate`, eliminating `spawn EINVAL` from `npm.cmd` shims on Windows with Node ≥ 22. This removes Windows EPERM rename/file-lock contention and test parallelization race conditions.
 - Rate-limit buckets now use Redis `INCR`/`EXPIRE` when Redis is connected, with the existing in-memory fallback retained when it is unavailable.
 - Added `POST /api/auth/refresh` with 30-day session token rotation, invalidating the previous token after each successful refresh.
 - Added Helmet security headers, including `X-Frame-Options: DENY`, a permissive Content Security Policy, and Strict-Transport-Security.
