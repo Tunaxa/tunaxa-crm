@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Local development stack via `docker-compose.yml`: PostgreSQL 16, Redis 7, and Ollama, each with persistent named volumes and native health checks (`pg_isready`, `redis-cli ping`, and the Ollama `/api/tags` endpoint), plus a fully documented `.env.example` template covering database, cache/queue, HTTP/webhook, Ollama, email sync, Sentry, and runtime configuration.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
