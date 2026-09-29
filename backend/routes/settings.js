@@ -14,6 +14,12 @@ import { cacheGet, cacheSet, cacheFlush } from "../services/cache.js";
 import { broadcast } from "./sse.js";
 
 export default function registerSettingsRoutes(app) {
+  /**
+   * GET /api/dashboard
+   * Protected. Aggregated sales/CRM metrics for the dashboard home view
+   * (cached for 60s).
+   * Response: 200 { pipeline, won, qualified, connected, leads, contacts, companies, tasks, deals, recent }
+   */
   app.get("/api/dashboard", auth, async (req, res) => {
     const cached = await cacheGet("dashboard");
     if (cached) return res.json(cached);
@@ -78,6 +84,13 @@ export default function registerSettingsRoutes(app) {
     res.json(result);
   });
 
+  /**
+   * GET /api/search
+   * Protected. Full-text search across leads, contacts, companies, deals,
+   * tasks and recordings.
+   * Query param: q - search term (required)
+   * Response: 200 [{ id, type, route, name, detail }] (max 20)
+   */
   app.get("/api/search", auth, async (req, res) => {
     const q = String(req.query.q || "")
       .toLowerCase()
@@ -126,10 +139,21 @@ export default function registerSettingsRoutes(app) {
     res.json(out.slice(0, 20));
   });
 
+  /**
+   * GET /api/settings
+   * Protected. Returns the workspace configuration object.
+   * Response: 200 settings object (see services/config.js)
+   */
   app.get("/api/settings", auth, async (req, res) => {
     res.json(await getSettings());
   });
 
+  /**
+   * PUT /api/settings
+   * Admin-only. Merges workspace settings and resets email/SMTP transporters.
+   * Body (SettingsSchema): partial settings object
+   * Response: 200 { settings }
+   */
   app.put(
     "/api/settings",
     auth,
@@ -154,10 +178,24 @@ export default function registerSettingsRoutes(app) {
     },
   );
 
+  /**
+   * GET /api/workflows/meta
+   * Protected. Static workflow trigger-event and action metadata for the
+   * visual builder.
+   * Response: 200 { events, actions }
+   */
   app.get("/api/workflows/meta", auth, (req, res) =>
     res.json({ events: EVENT_META, actions: ACTION_META }),
   );
 
+  /**
+   * GET /api/schema/:object
+   * Protected. Returns the field schema (built-in + custom fields) for a CRM
+   * object: leads, contacts, companies or deals.
+   * Path param: :object - CRM object name
+   * Response: 200 { object, fields: [{ key, label, type, required, options? }] }
+   *           404 { error } for unknown objects
+   */
   app.get("/api/schema/:object", auth, async (req, res) => {
     const object = String(req.params.object || "").toLowerCase();
     if (!(object in BUILT_IN_FIELDS))
@@ -169,6 +207,11 @@ export default function registerSettingsRoutes(app) {
     });
   });
 
+  /**
+   * GET /api/twilio/status
+   * Protected. Reports whether Twilio calling is configured.
+   * Response: 200 { configured: boolean, number: string }
+   */
   app.get("/api/twilio/status", auth, async (req, res) => {
     const settings = await getSettings();
     res.json({
@@ -177,6 +220,11 @@ export default function registerSettingsRoutes(app) {
     });
   });
 
+  /**
+   * GET /api/ai/status
+   * Protected. Reports AI/Ollama configuration and connectivity status.
+   * Response: 200 { configured: boolean, ...ollamaStatus }
+   */
   app.get("/api/ai/status", auth, async (req, res) => {
     const settings = await getSettings();
     const status = await checkOllamaStatus(settings);

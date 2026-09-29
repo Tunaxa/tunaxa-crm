@@ -73,6 +73,10 @@ and this project adheres to Semantic Versioning.
 
 - Added a scoped, short-lived (120s) query-token authentication path for the SSE endpoint only (`GET /api/events`), since browsers cannot attach custom headers to `EventSource` connections. Tokens are minted per-connection via a new authenticated endpoint (`POST /api/auth/events-token`), scoped to `purpose: "sse"`, and cannot be used on any other route. All other existing routes continue using standard header-based authentication, unchanged.
 
+### Chore
+
+- Completed the Week 3 backend code review and documentation audit: every public and protected endpoint in the week-updated route files (`resources.js`, `settings.js`, `auth.js`, `queue.js`, `webhookendpoints.js`) now carries a JSDoc header describing its purpose, auth requirement, request parameters, and response shape; workers/services (`webhookWorker.js`, `webhookQueue.js`) and `helpers.js` gained module-level documentation. Verified no direct file-system or raw unmasked database access was introduced — all JSON-store reads/writes go through `readDb`/`mutateDb`/`writeDb` in `backend/store.js`, keeping the codebase ready for the Phase 3 Postgres migration.
+
 ## [2.1.0] - 2026-09-16
 
 ### Added

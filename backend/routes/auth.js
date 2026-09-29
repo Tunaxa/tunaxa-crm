@@ -10,13 +10,30 @@ import { broadcast } from './sse.js';
 const authLimiter = createRateLimiter({ windowMs: 60_000, max: 10, prefix: 'auth' });
 
 export default function registerAuthRoutes(app) {
+  /**
+   * GET /api/health
+   * Public liveness probe for uptime checks and infrastructure.
+   * Response: 200 { ok: true }
+   */
   app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+  /**
+   * GET /api/auth/status
+   * Public. Reports whether the workspace has been provisioned yet.
+   * Response: 200 { needsSetup: boolean }
+   */
   app.get('/api/auth/status', async (req, res) => {
     const db = await readDb();
     res.json({ needsSetup: db.users.length === 0 });
   });
 
+  /**
+   * POST /api/auth/setup
+   * Public (rate-limited). Creates the initial Owner account and workspace on a
+   * fresh install. Returns a session token.
+   * Body (SetupSchema): { name: string, email: string, password: string }
+   * Response: 200 { token: string, user: {...} } | 409 { error } if already configured
+   */
   app.post('/api/auth/setup', authLimiter, validate(SetupSchema), async (req, res) => {
     const { name, email, password } = req.body;
     const result = await mutateDb(db => {
@@ -34,6 +51,12 @@ export default function registerAuthRoutes(app) {
     res.json(result);
   });
 
+  /**
+   * POST /api/auth/login
+   * Public (rate-limited). Authenticates an existing user and issues a session token.
+   * Body (LoginSchema): { email: string, password: string }
+   * Response: 200 { token: string, user: {...} } | 401 { error } on bad credentials
+   */
   app.post('/api/auth/login', authLimiter, validate(LoginSchema), async (req, res) => {
     const { email, password } = req.body;
     const db = await readDb();
@@ -48,6 +71,12 @@ export default function registerAuthRoutes(app) {
     res.json({ token, user: publicUser(user) });
   });
 
+  /**
+   * POST /api/auth/refresh
+   * Public (rate-limited). Rotates an existing session token for a fresh one.
+   * Header: Authorization: Bearer <token>
+   * Response: 200 { token: string } | 401 { error }
+   */
   app.post('/api/auth/refresh', authLimiter, async (req, res) => {
     const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
@@ -66,8 +95,19 @@ export default function registerAuthRoutes(app) {
     res.json(result);
   });
 
+  /**
+   * GET /api/auth/me
+   * Protected. Returns the currently authenticated user (public shape).
+   * Response: 200 { user: { id, name, email, role, preferences } }
+   */
   app.get('/api/auth/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
-    app.get('/api/users/me/preferences', auth, async (req, res) => {
+
+  /**
+   * GET /api/users/me/preferences
+   * Protected. Returns the current user's UI preferences.
+   * Response: 200 { preferences: { theme, sidebarCollapsed, pageSize } }
+   */
+  app.get('/api/users/me/preferences', auth, async (req, res) => {
     const db = await readDb();
     const user = db.users.find(u => u.id === req.user.id);
 
@@ -82,6 +122,12 @@ export default function registerAuthRoutes(app) {
     });
   });
 
+  /**
+   * PUT /api/users/me/preferences
+   * Protected. Merges the current user's UI preferences.
+   * Body: { theme?: 'light'|'dark', sidebarCollapsed?: boolean, pageSize?: number }
+   * Response: 200 { preferences: {...} } | 404 { error }
+   */
   app.put('/api/users/me/preferences', auth, async (req, res) => {
     const { theme, sidebarCollapsed, pageSize } = req.body;
 
@@ -104,6 +150,12 @@ export default function registerAuthRoutes(app) {
     res.json({ preferences: result });
   });
 
+  /**
+   * POST /api/auth/events-token
+   * Protected. Issues a short-lived session token used to authenticate the SSE
+   * event stream.
+   * Response: 200 { token: string, expiresAt: ISO string }
+   */
   app.post('/api/auth/events-token', auth, async (req, res) => {
     const sseLifetimeMs = 120_000;
     const token = crypto.randomBytes(32).toString('hex');
@@ -119,21 +171,43 @@ export default function registerAuthRoutes(app) {
     res.json({ token, expiresAt: new Date(Date.now() + sseLifetimeMs).toISOString() });
   });
 
+  /**
+   * POST /api/auth/logout
+   * Protected. Invalidates the current session token.
+   * Response: 200 { ok: true }
+   */
   app.post('/api/auth/logout', auth, async (req, res) => {
     await mutateDb(db => { db.sessions = db.sessions.filter(x => x.token !== req.token); });
     res.json({ ok: true });
   });
 
+  /**
+   * POST /api/auth/logout-all
+   * Protected. Invalidates every session belonging to the current user.
+   * Response: 200 { ok: true }
+   */
   app.post('/api/auth/logout-all', auth, async (req, res) => {
     await mutateDb(db => { db.sessions = db.sessions.filter(x => x.userId !== req.user.id); });
     res.json({ ok: true });
   });
 
+  /**
+   * GET /api/users
+   * Protected. Lists all workspace users in public shape.
+   * Response: 200 [{ id, name, email, role, preferences }]
+   */
   app.get('/api/users', auth, async (req, res) => {
     const db = await readDb();
     res.json(db.users.map(u => publicUser(u)));
   });
 
+  /**
+   * PATCH /api/users/:id/role
+   * Admin-only. Changes a user's role (admin | member | viewer).
+   * Path param: :id - user id
+   * Body: { role: 'admin'|'member'|'viewer' }
+   * Response: 200 { user public shape } | 400/404 { error }
+   */
   app.patch('/api/users/:id/role', auth, requireAdmin, async (req, res) => {
     const { role } = req.body;
     if (!['admin', 'member', 'viewer'].includes(role)) return res.status(400).json({ error: 'Role must be admin, member, or viewer' });
@@ -150,6 +224,12 @@ export default function registerAuthRoutes(app) {
     res.json(saved);
   });
 
+  /**
+   * POST /api/users
+   * Admin-only. Creates a new member user and team entry directly.
+   * Body (SetupSchema): { name: string, email: string, password: string }
+   * Response: 201 { user public shape } | 409 { error } if email exists
+   */
   app.post('/api/users', auth, requireAdmin, validate(SetupSchema), async (req, res) => {
     const { name, email, password } = req.body;
     const saved = await mutateDb(db => {
@@ -165,6 +245,12 @@ export default function registerAuthRoutes(app) {
     res.status(201).json(saved);
   });
 
+  /**
+   * DELETE /api/users/:id
+   * Admin-only. Removes a user, their team entry and all their sessions.
+   * Path param: :id - user id (cannot be the caller's own id).
+   * Response: 200 { ok: true } | 400/404 { error }
+   */
   app.delete('/api/users/:id', auth, requireAdmin, async (req, res) => {
     if (req.params.id === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
     let deleted = null;
