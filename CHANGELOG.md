@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Admin-only BullMQ observability endpoint `GET /api/queue/status`: returns the waiting/active/failed job counts for the webhooks queue plus the last 10 failed jobs (`id`, `name`, `failedReason`, `timestamp`) to help debug webhook delivery. When Redis/BullMQ is disabled it responds gracefully with zeroed counts, an empty list, and an `error: 'Redis/BullMQ not configured'` field; non-admin roles get `403`.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
