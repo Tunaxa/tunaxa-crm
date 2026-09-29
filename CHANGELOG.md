@@ -38,6 +38,7 @@ and this project adheres to Semantic Versioning.
 
 - Optimized the login background as WebP, self-hosted/preloaded Geist WOFF2 fonts, and deferred optional Sentry loading to reduce production preview render blocking and initial JavaScript.
 - Per-route `ErrorBoundary` instances now get `key={location.pathname}`, so client-side navigation remounts a fresh boundary instead of carrying over a previously caught error's fallback UI.
+- CSV exports (`GET /api/:resource/export.csv`) now stream through native Node.js streams (`Readable.from` + `stream.pipeline`) instead of buffering the entire dataset in memory: rows are field-masked one chunk at a time as they pass through the pipeline, and the header row is derived from the first record only (with the built-in and custom field definitions as a fallback, so empty datasets still export a header and end the stream cleanly). Response headers (`Content-Type: text/csv; charset=utf-8` and the `Content-Disposition` attachment filename) are unchanged.
 
 ### Fixed
 
