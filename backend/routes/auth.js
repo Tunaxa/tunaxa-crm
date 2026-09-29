@@ -6,6 +6,8 @@ import { validate, SetupSchema, LoginSchema } from '../services/validate.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { broadcast } from './sse.js';
+import { getSettings } from '../services/config.js';
+import { sendEmail } from '../services/smtp.js';
 
 const authLimiter = createRateLimiter({ windowMs: 60_000, max: 10, prefix: 'auth' });
 
@@ -46,6 +48,67 @@ export default function registerAuthRoutes(app) {
       next.audit.unshift({ id: id('audit'), action: 'Signed in', actor: user.name, createdAt: now() });
     });
     res.json({ token, user: publicUser(user) });
+  });
+
+  // Public endpoint: accept a team invitation emailed to the user. No auth
+  // middleware here — everything is validated against the invite token.
+  app.post('/api/auth/accept-invite', async (req, res) => {
+    const { token, name, password } = req.body || {};
+    const cleanName = String(name || '').trim();
+    const cleanPassword = String(password || '');
+    if (!token || !cleanName || cleanPassword.length < 6) {
+      return res.status(400).json({
+        error: 'token, name, and a password of at least 6 characters are required',
+      });
+    }
+
+    const result = await mutateDb(db => {
+      db.invites = db.invites || [];
+      const invite = db.invites.find(item => item.token === token);
+      if (!invite) return { error: 'Invitation is invalid or has expired' };
+      if (new Date(invite.expiresAt).getTime() < Date.now()) {
+        return { error: 'Invitation is invalid or has expired' };
+      }
+      if (db.users.find(u => u.email === invite.email)) {
+        return { status: 409, error: 'Email already exists' };
+      }
+
+      const user = {
+        id: id('usr'),
+        name: cleanName,
+        email: invite.email,
+        password: hashPassword(cleanPassword),
+        role: 'member',
+        createdAt: now(),
+      };
+      db.users.push(user);
+      db.team.push({
+        id: id('team'),
+        name: user.name,
+        email: user.email,
+        role: 'member',
+        status: 'Active',
+        createdAt: now(),
+      });
+      db.invites = db.invites.filter(item => item.token !== token);
+      const sessionToken = crypto.randomBytes(32).toString('hex');
+      db.sessions.push({
+        token: sessionToken,
+        userId: user.id,
+        createdAt: now(),
+        expiresAt: sessionExpiresAt(),
+      });
+      db.audit.unshift({
+        id: id('audit'),
+        action: 'Accepted invitation',
+        actor: user.name,
+        createdAt: now(),
+      });
+      return { token: sessionToken, user: publicUser(user) };
+    });
+
+    if (result.error) return res.status(result.status || 400).json({ error: result.error });
+    res.json(result);
   });
 
   app.post('/api/auth/refresh', authLimiter, async (req, res) => {
@@ -163,6 +226,45 @@ export default function registerAuthRoutes(app) {
     if (!saved) return res.status(409).json({ error: 'Email already exists' });
     broadcast('user.created', { user: saved }, req.user.workspaceId || 'default');
     res.status(201).json(saved);
+  });
+
+  // Admin-only: generate a secure, emailed invitation instead of creating the
+  // user account directly. The accept link embeds a one-time token.
+  app.post('/api/users/invite', auth, requireAdmin, async (req, res) => {
+    const email = String(req.body.email || '')
+      .trim()
+      .toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email is required' });
+    }
+
+    const invite = await mutateDb(db => {
+      if (db.users.find(u => u.email === email)) return null;
+      db.invites = db.invites || [];
+      // Re-inviting an email invalidates any previously pending invite.
+      db.invites = db.invites.filter(entry => entry.email !== email);
+      const entry = {
+        id: id('inv'),
+        email,
+        token: crypto.randomBytes(32).toString('hex'),
+        expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        createdAt: now(),
+        createdBy: req.user.id,
+      };
+      db.invites.push(entry);
+      return entry;
+    });
+    if (!invite) return res.status(409).json({ error: 'Email already exists' });
+
+    const settings = await getSettings();
+    const link = `${settings.publicBaseUrl || ''}/accept-invite?token=${invite.token}`;
+    await sendEmail(settings, {
+      to: email,
+      subject: 'You are invited to join the Tunaxa workspace',
+      text: `Click the link below to accept your invitation:\n\n${link}`,
+      html: `<p>Click the link below to accept your invitation:</p><p><a href="${link}">${link}</a></p>`,
+    });
+    res.status(201).json({ ok: true, id: invite.id, email: invite.email, expiresAt: invite.expiresAt });
   });
 
   app.delete('/api/users/:id', auth, requireAdmin, async (req, res) => {
