@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Schema reflection (`GET /api/schema/:object`) now returns validation rules for frontend auto-generated forms: every field exposes `required: boolean`, `type` (`text`, `email`, `tel`, `number`, `date`, …), and a numeric `maxLength` for string-like inputs (default 255, 2000 for textareas) — built-in fields in `BUILT_IN_FIELDS` (e.g. lead/contact names and deal titles are `required: true`) plus custom fields via `customFieldSpecs`, all normalized by a shared `normalizeFieldSpec` helper.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
