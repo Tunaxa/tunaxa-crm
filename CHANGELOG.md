@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- User preferences API (`GET` / `PUT /api/users/me/preferences`) now persists per-user preferences under `db.settings.userPreferences[userId]` instead of on the user record in `db.users`, and the page-size preference is stored under the canonical `tablePageSize` property while still accepting and returning the legacy `pageSize` key used by `web/src/App.tsx` (mapped on the wire). The PUT route now also strictly validates that `theme` is `light` or `dark`, `sidebarCollapsed` is a boolean, and the page size is a positive number; the login and `/api/auth/me` responses continue to surface the saved preferences so the frontend initialization sequence is unchanged.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
