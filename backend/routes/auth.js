@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
 import { auth, sessionExpiresAt, sessionIsExpired } from '../middleware/auth.js';
-import { hashPassword, verifyPassword, publicUser, now, id } from '../helpers.js';
+import { hashPassword, verifyPassword, publicUser, now, id, paginateAndSort } from '../helpers.js';
 import { validate, SetupSchema, LoginSchema } from '../services/validate.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import { requireAdmin } from '../middleware/rbac.js';
@@ -131,7 +131,7 @@ export default function registerAuthRoutes(app) {
 
   app.get('/api/users', auth, async (req, res) => {
     const db = await readDb();
-    res.json(db.users.map(u => publicUser(u)));
+    res.json(paginateAndSort(db.users.map(u => publicUser(u)), req.query));
   });
 
   app.patch('/api/users/:id/role', auth, requireAdmin, async (req, res) => {

@@ -1,7 +1,7 @@
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 
 const publicLimiter = createRateLimiter({ windowMs: 60_000, max: 120, prefix: 'kb' });
@@ -14,7 +14,7 @@ export default function registerKnowledgeRoutes(app) {
     if (q) articles = articles.filter(a => `${a.title} ${a.body} ${a.category}`.toLowerCase().includes(String(q).toLowerCase()));
     if (category) articles = articles.filter(a => a.category === category);
     const categories = [...new Set((db.articles || []).map(a => a.category).filter(Boolean))];
-    res.json({ data: articles, total: articles.length, categories });
+    res.json({ ...paginateAndSort(articles, req.query), categories });
   });
 
   app.get('/api/knowledgebase/articles/:id', auth, async (req, res) => {
@@ -69,6 +69,6 @@ export default function registerKnowledgeRoutes(app) {
     const q = String(req.query.q || '').toLowerCase();
     let articles = (db.articles || []).filter(a => a.published !== false);
     if (q) articles = articles.filter(a => `${a.title} ${a.body}`.toLowerCase().includes(q));
-    return res.json({ data: articles.slice(0, 25), total: articles.length });
+    return res.json(paginateAndSort(articles, req.query));
   });
 }

@@ -2591,8 +2591,8 @@ function RecordDetailPage({
     setActivities([]);
     setActivityError(false);
     setActivityLoading(true);
-    api<Row[]>(`/activities?${params}`, { signal: controller.signal })
-      .then(setActivities)
+    api<{ data: Row[] }>(`/activities?${params}`, { signal: controller.signal })
+      .then((result) => setActivities(result.data))
       .catch((error) => {
         if (error.name !== "AbortError") setActivityError(true);
       })
@@ -2604,8 +2604,8 @@ function RecordDetailPage({
 
   useEffect(() => {
     if (!record?.email) return;
-    api<Row[]>("/messages")
-      .then((items) => setMessages(items.filter((m) => m.to === record.email)))
+    api<{ data: Row[] }>("/messages")
+      .then(({ data: items }) => setMessages(items.filter((m) => m.to === record.email)))
       .catch(() => {});
     api<{ data: Row[] }>("/activities")
       .then(({ data: items }) =>
@@ -4750,8 +4750,8 @@ function InboxPage() {
   }, [page]);
 
   useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
+    api<{ data: Row[] }>("/templates")
+      .then((result) => setTemplates(result.data))
       .catch(() => {});
   }, []);
 
@@ -6557,7 +6557,7 @@ function ForecastPage() {
       .then(([dealResult, pipelineResult]) => {
         const dealItems = Array.isArray(dealResult)
           ? dealResult
-          : dealResult?.items || [];
+          : dealResult?.data || dealResult?.items || [];
         setDeals(dealItems);
 
         const pipelineItems = Array.isArray(pipelineResult)
@@ -7025,8 +7025,8 @@ function AuditPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api<{ items: Row[] }>("/audit")
-      .then((result) => setItems(result.items))
+    api<{ data: Row[] }>("/audit")
+      .then((result) => setItems(result.data))
       .catch((error) => toast((error as Error).message, "error"))
       .finally(() => setLoading(false));
   }, [toast]);
@@ -7600,8 +7600,8 @@ function TemplatesManager() {
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
 
   useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
+    api<{ data: Row[] }>("/templates")
+      .then((result) => setTemplates(result.data))
       .catch(() => {});
   }, []);
 

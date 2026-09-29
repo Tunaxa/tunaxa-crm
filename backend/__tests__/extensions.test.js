@@ -87,7 +87,7 @@ describe('Duplicate management', () => {
     expect(merge.body.phone).toBe('+123');
 
     const list = await request(app).get('/api/contacts').set('Authorization', `Bearer ${token}`);
-    expect(list.body.filter(c => c.email === 'jane@test.com').length).toBe(1);
+    expect(list.body.data.filter(c => c.email === 'jane@test.com').length).toBe(1);
   });
 
   it('returns confidence for fuzzy company name matches', async () => {

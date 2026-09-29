@@ -1,7 +1,7 @@
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
-import { id, now } from "../helpers.js";
+import { id, now, paginateAndSort } from "../helpers.js";
 import { matchConditions } from "../services/conditions.js";
 
 const RESOURCES = ["leads", "contacts", "companies", "deals", "tasks"];
@@ -34,7 +34,7 @@ export default function registerListRoutes(app) {
   app.get("/api/lists", auth, async (req, res) => {
     const db = await readDb();
     const lists = db.lists || [];
-    res.json({ data: lists, total: lists.length });
+    res.json(paginateAndSort(lists, req.query));
   });
 
   app.post(
@@ -160,14 +160,14 @@ export default function registerListRoutes(app) {
       const records = (db[list.resource] || []).filter((r) =>
         (list.memberIds || []).includes(r.id),
       );
-      return res.json({ data: records, total: records.length, type: "static" });
+      return res.json({ ...paginateAndSort(records, req.query), type: "static" });
     }
 
     // Smart list — evaluate query against all records of the resource
     const records = (db[list.resource] || []).filter((r) =>
       recordMatches(r, list),
     );
-    res.json({ data: records, total: records.length, type: "smart" });
+    res.json({ ...paginateAndSort(records, req.query), type: "smart" });
   });
 
   // Refresh a smart list — re-evaluate & persist member snapshot
@@ -211,7 +211,7 @@ export default function registerListRoutes(app) {
       const records = (db[resource] || []).filter((r) =>
         recordMatches(r, { conditions, logic }),
       );
-      res.json({ data: records, total: records.length });
+      res.json(paginateAndSort(records, req.query));
     },
   );
 }

@@ -1,7 +1,7 @@
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { broadcast } from './sse.js';
 
 const TICKET_STAGES = ['New', 'In Progress', 'Awaiting Client', 'Resolved'];
@@ -23,7 +23,7 @@ export default function registerTicketRoutes(app) {
     const sla = db.ticketSla || DEFAULT_SLA;
     const tickets = (db.tickets || []).map(t => ({ ...t, sla: slaStatus(t, sla) }));
     const stages = TICKET_STAGES.map(stage => ({ stage, count: tickets.filter(t => t.stage === stage).length }));
-    res.json({ data: tickets, stages, sla, total: tickets.length });
+    res.json({ ...paginateAndSort(tickets, req.query), stages, sla });
   });
 
   app.post('/api/tickets', auth, requireRole('admin', 'member'), async (req, res) => {

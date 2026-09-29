@@ -2,17 +2,16 @@ import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { processExecutionQueue, retryExecution } from '../services/queue.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { broadcast } from './sse.js';
 
 export default function registerExecutionRoutes(app) {
   app.get('/api/executions', auth, async (req, res) => {
     const db = await readDb();
-    const { status, limit = 50 } = req.query;
+    const { status } = req.query;
     let rows = db.executionQueue || [];
     if (status) rows = rows.filter(item => item.status === status);
-    rows = rows.slice(0, Math.min(Number(limit) || 50, 500));
-    res.json({ data: rows, total: (db.executionQueue || []).length });
+    res.json(paginateAndSort(rows, req.query));
   });
 
   // Manually drain due queued actions

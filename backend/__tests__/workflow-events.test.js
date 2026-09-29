@@ -83,7 +83,7 @@ describe('Workflows actually fire on module events', () => {
       .send({ stock: 4 });
 
     const tasks = await request(app).get('/api/tasks').set('Authorization', `Bearer ${token}`);
-    const created = tasks.body.find(t => t.title === 'Reorder low-stock product Widget');
+    const created = tasks.body.data.find(t => t.title === 'Reorder low-stock product Widget');
     expect(created).toBeTruthy();
   });
 
@@ -104,7 +104,7 @@ describe('Workflows actually fire on module events', () => {
     expect(invoice.status).toBe(201);
 
     const messages = await request(app).get('/api/messages').set('Authorization', `Bearer ${token}`);
-    const created = messages.body.find(m => m.subject === 'Invoice reminder');
+    const created = messages.body.data.find(m => m.subject === 'Invoice reminder');
     expect(created).toBeTruthy();
     expect(created.to).toBe('acme@test.com');
   });

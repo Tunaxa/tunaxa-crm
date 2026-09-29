@@ -152,21 +152,21 @@ describe('Activity timeline filters', () => {
       .query({ contact, type: 'Email' })
       .set('Authorization', `Bearer ${token}`);
     expect(email.status).toBe(200);
-    expect(email.body.map((item) => item.title)).toEqual(['Email event']);
+    expect(email.body.data.map((item) => item.title)).toEqual(['Email event']);
 
     const system = await request(app)
       .get('/api/activities')
       .query({ contact, type: 'System' })
       .set('Authorization', `Bearer ${token}`);
     expect(system.status).toBe(200);
-    expect(system.body.map((item) => item.title)).toEqual(['Lifecycle event']);
+    expect(system.body.data.map((item) => item.title)).toEqual(['Lifecycle event']);
 
     const all = await request(app)
       .get('/api/activities')
       .query({ contact })
       .set('Authorization', `Bearer ${token}`);
     expect(all.status).toBe(200);
-    expect(all.body).toHaveLength(5);
+    expect(all.body.data).toHaveLength(5);
   });
 });
 

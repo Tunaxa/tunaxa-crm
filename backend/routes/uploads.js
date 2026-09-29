@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -74,9 +74,7 @@ export default function registerUploadRoutes(app, upload) {
     let files = db.uploads || [];
     if (req.query.contact) files = files.filter(f => f.contact === req.query.contact);
     if (req.query.deal) files = files.filter(f => f.deal === req.query.deal);
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    const offset = parseInt(req.query.offset) || 0;
-    res.json({ items: files.slice(offset, offset + limit), total: files.length });
+    res.json(paginateAndSort(files, req.query));
   });
 
   app.get('/api/uploads/:id', auth, async (req, res) => {

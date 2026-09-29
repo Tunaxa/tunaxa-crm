@@ -1,5 +1,5 @@
 import { mutateDb } from '../store.js';
-import { now } from '../helpers.js';
+import { now, paginateAndSort } from '../helpers.js';
 
 const PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
 
@@ -42,6 +42,6 @@ export default function registerTrackingRoutes(app) {
     let events = db.trackingEvents || [];
     if (messageId) events = events.filter(e => e.messageId === messageId);
     if (type) events = events.filter(e => e.type === type);
-    res.json(events.slice(0, 200));
+    res.json(paginateAndSort(events, req.query));
   });
 }

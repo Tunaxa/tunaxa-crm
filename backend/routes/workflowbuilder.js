@@ -1,7 +1,7 @@
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { dryRunFlow, EVENT_META, ACTION_META, NODE_META } from '../services/workflows.js';
 import { broadcast } from './sse.js';
 
@@ -98,7 +98,7 @@ export default function registerWorkflowBuilderRoutes(app) {
 
   app.get('/api/workflows', auth, async (req, res) => {
     const db = await readDb();
-    res.json((db.workflows || []).map(clean));
+    res.json(paginateAndSort((db.workflows || []).map(clean), req.query));
   });
 
   app.post('/api/workflows', auth, requireRole('admin', 'member'), (req, res) => createWorkflow(req, res));

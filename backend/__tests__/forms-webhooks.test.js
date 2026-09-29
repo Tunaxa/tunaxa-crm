@@ -39,7 +39,7 @@ describe('Webhook endpoints (Automation)', () => {
   it('lists webhook endpoints (auth required)', async () => {
     const res = await request(app).get('/api/webhookEndpoints').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(1);
   });
 
   it('rejects public hook delivery for an unknown token', async () => {
@@ -55,33 +55,33 @@ describe('Webhook endpoints (Automation)', () => {
 
     const deliveries = await request(app).get('/api/webhookDeliveries').set('Authorization', `Bearer ${token}`);
     expect(deliveries.status).toBe(200);
-    expect(deliveries.body.some(d => d.payload?.hello === 'world')).toBe(true);
+    expect(deliveries.body.data.some(d => d.payload?.hello === 'world')).toBe(true);
   });
 
   it('increments requestCount on the endpoint', async () => {
     const res = await request(app).get('/api/webhookEndpoints').set('Authorization', `Bearer ${token}`);
-    const ep = res.body.find(e => e.id === endpointId);
+    const ep = res.body.data.find(e => e.id === endpointId);
     expect(ep.requestCount).toBeGreaterThanOrEqual(1);
   });
 
   it('returns recent deliveries for a specific endpoint', async () => {
     const res = await request(app).get(`/api/webhookEndpoints/${endpointId}/deliveries`).set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.length).toBeGreaterThanOrEqual(1);
-    expect(res.body.every(d => d.endpointId === endpointId)).toBe(true);
-    expect(res.body.some(d => d.payload?.hello === 'world')).toBe(true);
-    expect(res.body[0].status).toBe('received');
-    expect(res.body[0].attemptNumber).toBeGreaterThanOrEqual(1);
-    expect(res.body[0].contentType).toContain('json');
+    expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.data.every(d => d.endpointId === endpointId)).toBe(true);
+    expect(res.body.data.some(d => d.payload?.hello === 'world')).toBe(true);
+    expect(res.body.data[0].status).toBe('received');
+    expect(res.body.data[0].attemptNumber).toBeGreaterThanOrEqual(1);
+    expect(res.body.data[0].contentType).toContain('json');
   });
 
   it('numbers delivery attempts per endpoint in order', async () => {
     const before = await request(app).get(`/api/webhookEndpoints/${endpointId}/deliveries`).set('Authorization', `Bearer ${token}`);
-    const count = before.body.length;
+    const count = before.body.data.length;
     const hit = await request(app).post('/api/hooks/' + url.split('/api/hooks/')[1]).send({ hello: 'numbered' });
     expect(hit.status).toBe(200);
     const after = await request(app).get(`/api/webhookEndpoints/${endpointId}/deliveries`).set('Authorization', `Bearer ${token}`);
-    expect(after.body[0].attemptNumber).toBe(count + 1);
+    expect(after.body.data[0].attemptNumber).toBe(count + 1);
   });
 
   it('rejects deliveries listing without auth and for unknown endpoints', async () => {
@@ -104,7 +104,7 @@ describe('Webhook endpoints (Automation)', () => {
   it('seeds a webhook.received playbook', async () => {
     await seedPlaybooks();
     const res = await request(app).get('/api/workflows').set('Authorization', `Bearer ${token}`);
-    expect(res.body.some(w => w.event === 'webhook.received')).toBe(true);
+    expect(res.body.data.some(w => w.event === 'webhook.received')).toBe(true);
   });
 });
 
@@ -145,7 +145,7 @@ describe('Forms management (Marketing > Forms)', () => {
     expect(submit.body.recordId).toBeTruthy();
 
     const leads = await request(app).get('/api/leads').set('Authorization', `Bearer ${token}`);
-    expect(leads.body.some(l => l.email === 'jane@demo.com')).toBe(true);
+    expect(leads.body.data.some(l => l.email === 'jane@demo.com')).toBe(true);
   });
 
   it('rejects a submission missing required fields', async () => {
@@ -184,6 +184,6 @@ describe('Webhook-triggered workflow execution', () => {
     expect(hit.status).toBe(200);
 
     const activities = await request(app).get('/api/activities').set('Authorization', `Bearer ${token}`);
-    expect(activities.body.some(a => a.title === 'Got webhook')).toBe(true);
+    expect(activities.body.data.some(a => a.title === 'Got webhook')).toBe(true);
   });
 });
