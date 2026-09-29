@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Webhook delivery hardening (outbound): the BullMQ webhook worker signs every HTTP POST with a strict HMAC-SHA256 signature (`crypto.createHmac('sha256', secret).update(body).digest('hex')`) sent as `X-Tunaxa-Signature: sha256=...`, records **every** delivery attempt — both successes and failures, with event ID, HTTP status, response/error message, and timestamp — to the new `webhook_delivery_attempts` PostgreSQL table (migration `005`), and retries failures on an exact backoff schedule: 1 minute → 5 minutes → 30 minutes (1st/2nd/3rd retry), after which the 4th total attempt is marked permanently failed (`status='failed'`, `next_retry_at=NULL`) and retrying stops.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
