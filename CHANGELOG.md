@@ -37,6 +37,7 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- Dynamic validation rules in schema reflection: GET /api/schema/:object exposes required, type, and maxLength metadata for built-in and custom fields.
 - **Write-Side Field Masking Test Suite (`backend/__tests__/rbac-field-mask-write.test.js`):**
   - Added 38 unit and mutation-verified integration tests verifying 403 Forbidden responses on attempted writes to masked scalar columns and nested custom fields, asserting database records remain untouched, verifying admin bypasses, and confirming merge override protections.
 - **Atomic Duplicate Merge Engine (`backend/services/merge.js` & `backend/routes/dataops.js`):**
