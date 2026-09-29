@@ -37,6 +37,7 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- Unified list endpoints under a single contract: every `GET` list route (`GET /api/:resource` plus all custom list endpoints such as `/api/audit`, `/api/users`, `/api/lists`, `/api/templates`, `/api/sequences`, `/api/workflows`, `/api/executions`, `/api/revisions`, `/api/knowledgebase/articles`, `/api/livechat/conversations`, `/api/tickets`, `/api/webhookEndpoints`, `/api/webhookDeliveries`, `/api/forms`, `/api/uploads`, `/api/scheduler/links`, `/api/tracking/events`) now returns `{ data, total, page, limit }` and supports `?q=` (case-insensitive substring search), `?sortBy=` (default `createdAt`), `?sortDir=asc|desc` (default `desc`), `?page=` (default 1), and `?limit=` (default 25, capped at 100) via the shared `paginateAndSort` helper in `backend/helpers.js`.
 - **Write-Side Field Masking Test Suite (`backend/__tests__/rbac-field-mask-write.test.js`):**
   - Added 38 unit and mutation-verified integration tests verifying 403 Forbidden responses on attempted writes to masked scalar columns and nested custom fields, asserting database records remain untouched, verifying admin bypasses, and confirming merge override protections.
 - **Atomic Duplicate Merge Engine (`backend/services/merge.js` & `backend/routes/dataops.js`):**

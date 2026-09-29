@@ -4465,8 +4465,8 @@ function InboxPage() {
   }, [page]);
 
   useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
+    api<{ data: Row[] }>("/templates")
+      .then((result) => setTemplates(result.data))
       .catch(() => {});
   }, []);
 
@@ -6146,7 +6146,7 @@ function ForecastPage() {
       .then(([dealResult, pipelineResult]) => {
         const dealItems = Array.isArray(dealResult)
           ? dealResult
-          : dealResult?.items || [];
+          : dealResult?.data || dealResult?.items || [];
         setDeals(dealItems);
 
         const pipelineItems = Array.isArray(pipelineResult)
@@ -6614,8 +6614,8 @@ function AuditPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api<{ items: Row[] }>("/audit")
-      .then((result) => setItems(result.items))
+    api<{ data: Row[] }>("/audit")
+      .then((result) => setItems(result.data))
       .catch((error) => toast((error as Error).message, "error"))
       .finally(() => setLoading(false));
   }, [toast]);
@@ -7189,8 +7189,8 @@ function TemplatesManager() {
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
 
   useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
+    api<{ data: Row[] }>("/templates")
+      .then((result) => setTemplates(result.data))
       .catch(() => {});
   }, []);
 
