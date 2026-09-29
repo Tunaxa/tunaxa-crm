@@ -348,6 +348,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- Test harness stability: isolated test database paths and ensured serial execution configurations for Windows environments.
 - **Stale Repository SQL Assertions (`backend/db/repositories/__tests__/`):**
   - Four repository tests (`contacts`, `companies`, `leads`, `email-lists`) asserted on the pre-merge `custom_fields = $n` overwrite form and on a structured object in the bound parameters, so they failed against the JSONB merge rewrite introduced with the atomic duplicate merge engine. Both expectations now assert the merge expression `COALESCE(custom_fields, '{}'::jsonb) || $n::jsonb` and the serialized JSON parameter that the `::jsonb` cast requires. Assertions were tightened to name the merge explicitly rather than loosened to a substring that would match either form.
 - **Email Dedup Case Sensitivity (`backend/services/dedup.js`):**
