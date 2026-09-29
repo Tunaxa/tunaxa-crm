@@ -3,7 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-let dbFile = path.join(root, 'data', 'db.json');
+// TEST_DB_PATH lets test harnesses (and CI) redirect the JSON store to a
+// worker-specific file; the test setup (backend/__tests__/setup.js) also calls
+// setDbPath() with a VITEST_POOL_ID-based path so parallel workers never share
+// a file handle (Windows EPERM/file-lock protection).
+let dbFile = process.env.TEST_DB_PATH || path.join(root, 'data', 'db.json');
 let queue = Promise.resolve();
 
 export function setDbPath(newPath) {

@@ -8,15 +8,27 @@ import { setDbPath } from "../store.js";
 
 const execFileAsync = promisify(execFile);
 
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+// Run the SQL migrations before the suite starts. We invoke node directly via
+// process.execPath instead of `npm run migrate` so the harness never has to
+// spawn the platform-specific npm.cmd/npm wrapper — spawning .cmd shims without
+// a shell throws EINVAL on Windows with Node >= 22. Direct node spawns are
+// shell-free and identical on every platform.
+const migrateScript = path.join(repoRoot, "backend", "db", "migrate.js");
+
 beforeAll(async () => {
-  await execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "migrate"], {
-    cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
+  await execFileAsync(process.execPath, [migrateScript], {
+    cwd: repoRoot,
     env: process.env,
   });
 });
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const testDbDir = path.join(root, "__tests__");
+// Worker-specific DB path: VITEST_POOL_ID is unique per Vitest worker, so
+// concurrent/sequential test files never share a JSON file handle. Fall back to
+// "1" when run outside Vitest (e.g., the migrate step or a one-off script).
 const workerId = (process.env.VITEST_POOL_ID || "1").replace(
   /[^a-zA-Z0-9_-]/g,
   "_",
