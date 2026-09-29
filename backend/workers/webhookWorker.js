@@ -1,3 +1,15 @@
+/**
+ * Outbound webhook delivery worker (BullMQ).
+ *
+ * Consumes jobs from the "webhooks" queue and delivers the payload to the
+ * endpoint URL with an HMAC-SHA256 signature (X-Tunaxa-Signature) so the
+ * receiver can verify authenticity. Database state (webhook_events) is updated
+ * exclusively through the Postgres helper in ../db/pg.js.
+ *
+ * Retry/backoff is driven by the queue's attempts/backoff configuration
+ * (see ../services/webhookQueue.js); failures update status, last_error and
+ * next_retry_at on the event row.
+ */
 import { Worker } from "bullmq";
 import crypto from "node:crypto";
 import { query } from "../db/pg.js";

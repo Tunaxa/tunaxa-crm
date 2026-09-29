@@ -20,12 +20,24 @@ function publicUrl(token) {
 }
 
 export default function registerWebhookEndpointRoutes(app) {
+  /**
+   * GET /api/webhookEndpoints
+   * Protected. Lists all configured inbound webhook endpoints, each with its
+   * public inbound URL.
+   * Response: 200 [{ endpoint, url }]
+   */
   app.get('/api/webhookEndpoints', auth, async (_req, res) => {
     const db = await readDb();
     const rows = (db.webhookEndpoints || []).map(w => ({ ...w, url: publicUrl(w.token) }));
     res.json(rows);
   });
 
+  /**
+   * POST /api/webhookEndpoints
+   * Admin/member. Creates a new inbound webhook endpoint with a secret token.
+   * Body: { name: string, description?: string, enabled?: boolean }
+   * Response: 201 { endpoint, url } | 400 { error } if name missing
+   */
   app.post('/api/webhookEndpoints', auth, requireRole('admin', 'member'), async (req, res) => {
     const body = req.body || {};
     if (!body.name) return res.status(400).json({ error: 'name is required' });
@@ -53,6 +65,13 @@ export default function registerWebhookEndpointRoutes(app) {
     res.status(201).json(saved);
   });
 
+  /**
+   * PUT /api/webhookEndpoints/:id
+   * Admin/member. Updates name/description/enabled on an existing endpoint.
+   * Path param: :id - endpoint id
+   * Body: { name?, description?, enabled? }
+   * Response: 200 { endpoint, url } | 404 { error }
+   */
   app.put('/api/webhookEndpoints/:id', auth, requireRole('admin', 'member'), async (req, res) => {
     const body = req.body || {};
     const saved = await mutateDb(db => {
@@ -69,6 +88,12 @@ export default function registerWebhookEndpointRoutes(app) {
     res.json(saved);
   });
 
+  /**
+   * DELETE /api/webhookEndpoints/:id
+   * Admin/member. Removes an inbound webhook endpoint.
+   * Path param: :id - endpoint id
+   * Response: 200 { ok: true } | 404 { error }
+   */
   app.delete('/api/webhookEndpoints/:id', auth, requireRole('admin', 'member'), async (req, res) => {
     const ok = await mutateDb(db => {
       const index = (db.webhookEndpoints || []).findIndex(w => w.id === req.params.id);
@@ -82,6 +107,15 @@ export default function registerWebhookEndpointRoutes(app) {
     res.json({ ok: true });
   });
 
+  /**
+   * POST /api/hooks/:token
+   * Public (rate-limited). Inbound webhook receiver. Delivers the request body
+   * to the endpoint matching the token, records a delivery, and triggers
+   * workflow/SSE events. 404 when the token is unknown or the endpoint is disabled.
+   * Path param: :token - endpoint secret token
+   * Body: any JSON payload
+   * Response: 200 { ok, endpoint, deliveryId, receivedAt } | 404 { error }
+   */
   // Public inbound trigger: POST /api/hooks/:token
   app.post('/api/hooks/:token', publicLimiter, async (req, res) => {
     const token = String(req.params.token || '');
@@ -121,6 +155,13 @@ export default function registerWebhookEndpointRoutes(app) {
     res.status(200).json({ ok: true, endpoint: endpoint.name, deliveryId: delivery.id, receivedAt });
   });
 
+  /**
+   * GET /api/webhookDeliveries
+   * Protected. Lists recent inbound webhook deliveries, optionally filtered by
+   * endpoint (max 50).
+   * Query params: endpointId - filter by endpoint
+   * Response: 200 [{ delivery }]
+   */
   // Recent deliveries for an endpoint
   app.get('/api/webhookDeliveries', auth, async (req, res) => {
     const db = await readDb();
@@ -129,6 +170,13 @@ export default function registerWebhookEndpointRoutes(app) {
     res.json(rows.slice(0, 50));
   });
 
+  /**
+   * GET /api/webhookEndpoints/:id/deliveries
+   * Protected. Lists the most recent deliveries for one endpoint (newest first,
+   * max 50).
+   * Path param: :id - endpoint id
+   * Response: 200 [{ delivery }] | 404 { error }
+   */
   // Recent deliveries for a specific endpoint
   app.get('/api/webhookEndpoints/:id/deliveries', auth, async (req, res) => {
     const db = await readDb();

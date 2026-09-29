@@ -28,6 +28,9 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
 
 export default function registerResourceRoutes(app) {
+  // Middleware: loads the JSON database snapshot and field-masking rules for the
+  // requested resource into req.db / req.fieldPerms. Passes through when the
+  // :resource segment is not a registered resource (so other routers can mount).
   app.use("/api/:resource", async (req, res, next) => {
     if (!resources.has(req.params.resource) || !req.user) return next();
 
@@ -41,6 +44,15 @@ export default function registerResourceRoutes(app) {
     next();
   });
 
+  /**
+   * GET /api/:resource
+   * Protected. Lists records of a registered resource with pagination and
+   * filtering. Supports query filters: page, limit (1-50), q (substring),
+   * and resource-specific filters (type/recordId/contact for activities,
+   * type for messages).
+   * Response: 200 [{ record }]
+   *           (messages: { items, total, page, limit, hasMore })
+   */
   app.get("/api/:resource", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
@@ -134,6 +146,12 @@ export default function registerResourceRoutes(app) {
     res.json(rows);
   });
 
+  /**
+   * GET /api/:resource/export.csv
+   * Protected. Streams all records of a resource as a CSV attachment (respects
+   * field-masking permissions).
+   * Response: 200 text/csv attachment
+   */
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
@@ -175,6 +193,12 @@ export default function registerResourceRoutes(app) {
     res.end();
   });
 
+  /**
+   * GET /api/:resource/:id
+   * Protected. Returns a single record by id.
+   * Path param: :id - record id
+   * Response: 200 { record } | 404 { error }
+   */
   app.get("/api/:resource/:id", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
@@ -193,6 +217,13 @@ export default function registerResourceRoutes(app) {
     );
   });
 
+  /**
+   * POST /api/:resource
+   * Admin/member. Creates a single record (coerces built-in + custom fields),
+   * records an audit entry, and fires workflow triggers/SSE events.
+   * Body (ResourceSchema): record fields
+   * Response: 201 { record }
+   */
   app.post(
     "/api/:resource",
     auth,
@@ -259,6 +290,13 @@ export default function registerResourceRoutes(app) {
     },
   );
 
+  /**
+   * POST /api/:resource/batch
+   * Admin/member. Bulk-imports an array of records for a resource in a single
+   * transaction, with one combined audit entry.
+   * Body (BatchSchema): [{ record fields }]
+   * Response: 201 [{ record }]
+   */
   app.post(
     "/api/:resource/batch",
     auth,
@@ -302,6 +340,15 @@ export default function registerResourceRoutes(app) {
     },
   );
 
+  /**
+   * PUT /api/:resource/:id
+   * Admin/member. Replaces fields on an existing record, records a revision and
+   * audit entry, and fires workflow triggers/SSE events. Returns the revision id
+   * when a revision was recorded.
+   * Path param: :id - record id
+   * Body (ResourceSchema): record fields to update
+   * Response: 200 { record, revisionId? } | 404 { error }
+   */
   app.put(
     "/api/:resource/:id",
     auth,
@@ -376,6 +423,14 @@ export default function registerResourceRoutes(app) {
     },
   );
 
+  /**
+   * DELETE /api/:resource/:id
+   * Admin/member. Deletes a record plus any derived data (calls: linked
+   * activities/recordings; recordings: linked media; messages: linked
+   * activities) and cleans up uploaded files.
+   * Path param: :id - record id
+   * Response: 200 { ok: true } | 404 { error }
+   */
   app.delete(
     "/api/:resource/:id",
     auth,

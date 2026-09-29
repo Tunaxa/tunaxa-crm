@@ -1,3 +1,11 @@
+/**
+ * BullMQ queue wrapper for outbound webhook deliveries.
+ *
+ * Centralizes queue creation (guarded on Redis availability) and the shared
+ * HMAC-SHA256 signing/verification primitives used by both the enqueue path
+ * and the delivery worker. No direct file-system access — job state lives in
+ * Redis when enabled, and webhook_events state in Postgres via ../db/pg.js.
+ */
 import { Queue } from "bullmq";
 import crypto from "node:crypto";
 

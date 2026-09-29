@@ -1,3 +1,12 @@
+/**
+ * Shared pure helpers (ids, timestamps, password hashing, field coercion and
+ * resource registration).
+ *
+ * This module performs NO direct database or file-system access: every helper
+ * is a pure function over data passed in. Route handlers are responsible for
+ * reading/writing the JSON store strictly through ../store.js (readDb /
+ * mutateDb / writeDb) so the Phase 3 Postgres migration has a single chokepoint.
+ */
 import crypto from 'node:crypto';
 
 export const now = () => new Date().toISOString();
