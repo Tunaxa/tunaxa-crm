@@ -1,0 +1,101 @@
+# =============================================================================
+# Tunaxa CRM - local development infrastructure stack
+#
+# Spins up the backing services the backend expects:
+#   - PostgreSQL 16  (primary data store, used by backend/db/pg.js)
+#   - Redis 7        (webhook queue + cache, used by services/cache.js,
+#                     services/webhookQueue.js and workers/webhookWorker.js)
+#   - Ollama         (local LLM runtime for AI features)
+#
+# Usage (from the repo root):
+#   cp .env.example .env          # optional tweaks, otherwise defaults apply
+#   docker compose up -d          # start all services with health checks
+#   docker compose ps             # watch service health
+#   docker compose down           # stop (volumes persist)
+#   docker compose down -v        # stop AND delete data volumes
+#
+# All variables may be overridden in .env (see .env.example).
+# Requires Docker Compose v2 (bundled with Docker Desktop / Docker Engine >= 23).
+# =============================================================================
+
+name: tunaxa-crm
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 - primary database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-tunaxa}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-tunaxa2024}
+    ports:
+      - "${PGPORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Native pg_isready probe; $${...} lets Compose expand the vars inside
+      # the container at runtime rather than at file parse time.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 - webhook queue + LRU cache (BullMQ)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ---------------------------------------------------------------------------
+  # Ollama - local LLM server for AI features
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      # Bind inside the container so requests reach it from any origin;
+      # consumed from the host via ${OLLAMA_HOST:-http://127.0.0.1:11434}.
+      OLLAMA_HOST: 0.0.0.0:11434
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      # Caches downloaded model weights under ~/.ollama in the named volume,
+      # so models survive `docker compose down` and restarts.
+      - ollama-data:/root/.ollama
+    healthcheck:
+      # Probe the REST API (GET /api/tags lists locally-pulled models). The
+      # Ollama image ships curl; the wget fallback keeps the check working
+      # across image variants.
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 || wget -q -O /dev/null http://127.0.0.1:11434/api/tags || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+# ---------------------------------------------------------------------------
+# Named volumes - data survives container lifecycle
+# ---------------------------------------------------------------------------
+volumes:
+  postgres-data:
+  redis-data:
+  ollama-data:
