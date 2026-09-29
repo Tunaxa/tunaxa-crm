@@ -27,6 +27,45 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
 
+// Fields considered when searching a resource via GET /api/:resource?q=.
+// Only meaningful, user-facing text fields are matched instead of the whole
+// serialized record, which keeps the search fast and avoids exposing hidden
+// or derived data embedded in records.
+const SEARCH_FIELDS = {
+  leads: ["name", "email", "company", "phone"],
+  contacts: ["name", "email", "company", "phone"],
+  companies: ["name", "industry", "website", "country"],
+  deals: ["title", "company", "stage"],
+  tasks: ["title", "owner", "status"],
+  activities: ["title", "contact", "company", "type"],
+  calls: ["title", "contact", "company"],
+  recordings: ["title", "contact", "transcript"],
+  messages: ["subject", "body", "from", "to"],
+  templates: ["name", "subject", "body"],
+  sequences: ["name", "description"],
+  workflows: ["name", "trigger", "description"],
+  team: ["name", "email", "role", "status"],
+  products: ["name", "sku", "description"],
+  invoices: ["number", "company", "status"],
+  expenses: ["title", "category"],
+  quotes: ["title", "company", "status"],
+  contracts: ["title", "company", "status"],
+  goals: ["title", "owner"],
+  surveys: ["title"],
+  webhookEndpoints: ["name", "url"],
+  audit: ["action", "actor"],
+};
+
+const DEFAULT_SEARCH_FIELDS = [
+  "name",
+  "email",
+  "title",
+  "subject",
+  "company",
+  "phone",
+  "contact",
+];
+
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
     if (!resources.has(req.params.resource) || !req.user) return next();
@@ -60,8 +99,12 @@ export default function registerResourceRoutes(app) {
       .trim();
 
     if (q) {
+      const fields = SEARCH_FIELDS[req.params.resource] || DEFAULT_SEARCH_FIELDS;
+
       rows = rows.filter((item) =>
-        JSON.stringify(item).toLowerCase().includes(q),
+        fields.some((field) =>
+          String(item[field] ?? "").toLowerCase().includes(q),
+        ),
       );
     }
 

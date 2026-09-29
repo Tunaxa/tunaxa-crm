@@ -84,21 +84,124 @@ describe("Settings", () => {
   });
 });
 
+const EMPTY_SEARCH_GROUPS = {
+  leads: [],
+  contacts: [],
+  companies: [],
+  deals: [],
+  tasks: [],
+  recordings: [],
+};
+
 describe("Search", () => {
-  it("GET /api/search with empty q returns empty", async () => {
+  it("GET /api/search with empty q returns empty groups", async () => {
     const res = await request(app)
       .get("/api/search?q=")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toEqual(EMPTY_SEARCH_GROUPS);
   });
 
-  it("GET /api/search without q returns empty", async () => {
+  it("GET /api/search without q returns empty groups", async () => {
     const res = await request(app)
       .get("/api/search")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toEqual(EMPTY_SEARCH_GROUPS);
+  });
+
+  it("GET /api/search groups results by entity type", async () => {
+    await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Nova Industries",
+        company: "Nova",
+        email: "nova@example.com",
+      })
+      .expect(201);
+    await request(app)
+      .post("/api/contacts")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Nova Employee",
+        company: "Nova",
+        email: "nova-emp@example.com",
+      })
+      .expect(201);
+    await request(app)
+      .post("/api/companies")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Nova Holdings", industry: "Nova", country: "US" })
+      .expect(201);
+
+    const res = await request(app)
+      .get("/api/search?q=Nova")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    for (const key of Object.keys(EMPTY_SEARCH_GROUPS))
+      expect(Array.isArray(res.body[key])).toBe(true);
+    expect(res.body.leads.length).toBeGreaterThan(0);
+    expect(res.body.contacts.length).toBeGreaterThan(0);
+    expect(res.body.companies.length).toBeGreaterThan(0);
+    expect(res.body.leads[0]).toMatchObject({ type: "Lead", route: "/leads" });
+    expect(res.body.contacts[0]).toMatchObject({
+      type: "Contact",
+      route: "/contacts",
+    });
+    expect(res.body.companies[0]).toMatchObject({
+      type: "Company",
+      route: "/companies",
+    });
+  });
+
+  it("GET /api/search matches only configured fields", async () => {
+    const created = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Quiet Zed", email: "zed@example.com", status: "zz-hidden" })
+      .expect(201);
+    // The marker lives in a field (status) that is not part of the search spec.
+    expect(created.body.status).toBe("zz-hidden");
+
+    const res = await request(app)
+      .get("/api/search?q=zz-hidden")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.leads).toEqual([]);
+
+    const byName = await request(app)
+      .get("/api/search?q=zed")
+      .set("Authorization", `Bearer ${token}`);
+    expect(byName.status).toBe(200);
+    expect(byName.body.leads.length).toBe(1);
+    expect(byName.body.leads[0].name).toBe("Quiet Zed");
+  });
+
+  it("GET /api/leads?q= filters leads by meaningful fields", async () => {
+    await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Zed Zielinski", email: "zed@example.com" })
+      .expect(201);
+    await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Ruth Ramos", email: "ruth@example.com" })
+      .expect(201);
+
+    const byName = await request(app)
+      .get("/api/leads?q=Zielinski")
+      .set("Authorization", `Bearer ${token}`);
+    expect(byName.status).toBe(200);
+    expect(byName.body).toHaveLength(1);
+    expect(byName.body[0].name).toBe("Zed Zielinski");
+
+    const byStatus = await request(app)
+      .get("/api/leads?q=zz-hidden")
+      .set("Authorization", `Bearer ${token}`);
+    expect(byStatus.status).toBe(200);
+    expect(byStatus.body).toHaveLength(0);
   });
 });
 

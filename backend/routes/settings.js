@@ -82,9 +82,8 @@ export default function registerSettingsRoutes(app) {
     const q = String(req.query.q || "")
       .toLowerCase()
       .trim();
-    if (!q) return res.json([]);
     const db = await readDb();
-    const map = [
+    const groups = [
       ["leads", "Lead", "/leads", ["name", "company", "email", "phone"]],
       [
         "contacts",
@@ -102,28 +101,30 @@ export default function registerSettingsRoutes(app) {
         ["title", "contact", "transcript"],
       ],
     ];
-    const out = [];
-    for (const [key, type, route, fields] of map) {
-      for (const item of db[key]) {
-        if (
-          fields.some((field) =>
-            String(item[field] || "")
-              .toLowerCase()
-              .includes(q),
+    // Results are returned grouped by entity type so the UI can render
+    // per-type sections. Every group key is always present, even when empty.
+    const out = Object.fromEntries(groups.map(([key]) => [key, []]));
+    if (q) {
+      for (const [key, type, route, fields] of groups) {
+        for (const item of db[key] || []) {
+          if (out[key].length >= 10) break;
+          if (
+            fields.some((field) =>
+              String(item[field] || "").toLowerCase().includes(q),
+            )
           )
-        )
-          out.push({
-            id: item.id,
-            type,
-            route,
-            name: item.name || item.title || item.email || type,
-            detail:
-              item.company || item.email || item.stage || item.status || "",
-          });
-        if (out.length >= 20) break;
+            out[key].push({
+              id: item.id,
+              type,
+              route,
+              name: item.name || item.title || item.email || type,
+              detail:
+                item.company || item.email || item.stage || item.status || "",
+            });
+        }
       }
     }
-    res.json(out.slice(0, 20));
+    res.json(out);
   });
 
   app.get("/api/settings", auth, async (req, res) => {

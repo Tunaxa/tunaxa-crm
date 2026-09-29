@@ -33,6 +33,7 @@ and this project adheres to Semantic Versioning.
 - Parameterized PostgreSQL repository layer for Contacts and Leads with CRUD, pagination, search, and validated sorting.
 - PostgreSQL repository layer for Companies, Deals, Tasks, and Activities with CRUD, pagination, search, sorting whitelists, and pipeline aggregation.
 - Redis query caching with 60s TTL and pattern-based invalidation across core repository findAll queries.
+- Search: `GET /api/search` now returns results grouped by entity type (`{ contacts, leads, companies, deals, tasks, recordings }`) with per-type section headers in the global search dropdown, and resource list endpoints (`GET /api/:resource?q=`) now match specific meaningful fields (`name`, `email`, `company`, `phone`, `title`, `subject`, …) instead of string-searching entire serialized records, which keeps search efficient and avoids surfacing hidden data.
 
 ### Changed
 
