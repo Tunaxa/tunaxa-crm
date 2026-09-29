@@ -11,6 +11,51 @@ import { sendEmail } from '../services/smtp.js';
 
 const authLimiter = createRateLimiter({ windowMs: 60_000, max: 10, prefix: 'auth' });
 
+// ReDoS-safe email validation for invite flows. Runs in pure string logic
+// with NO regular expression over attacker-controlled input, so there is
+// nothing the engine can backtrack on (the previous /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// was flagged by CodeQL for polynomial backtracking). Enforcement rules:
+//   - length is capped first: overall <= 254 and local part <= 64 (RFC 5321)
+//   - exactly one '@' with non-empty local and domain parts
+//   - no whitespace/control characters anywhere
+//   - no leading, trailing, or consecutive dots
+//   - the domain ends in a dot-separated TLD of 2+ ASCII letters
+function isValidInviteEmail(email) {
+  if (typeof email !== 'string' || email.length === 0 || email.length > 254) {
+    return false;
+  }
+
+  const at = email.indexOf('@');
+  if (at < 1 || at !== email.lastIndexOf('@')) return false; // single '@', non-empty local part
+
+  const local = email.slice(0, at);
+  const domain = email.slice(at + 1);
+  if (local.length > 64 || domain.length === 0) return false;
+
+  // Reject whitespace and control characters anywhere (linear scan, no regex).
+  for (let i = 0; i < email.length; i++) {
+    const code = email.charCodeAt(i);
+    if (code <= 32 || code === 127) return false;
+  }
+
+  // No leading, trailing, or consecutive dots.
+  if (email[0] === '.' || email[email.length - 1] === '.' || email.includes('..')) return false;
+
+  // The domain must contain a dot, and the TLD after the last dot must be
+  // 2+ ASCII letters (e.g. .com, .io).
+  const lastDot = domain.lastIndexOf('.');
+  if (lastDot < 1 || lastDot === domain.length - 1) return false;
+  const tld = domain.slice(lastDot + 1);
+  if (tld.length < 2) return false;
+  for (let i = 0; i < tld.length; i++) {
+    const code = tld.charCodeAt(i);
+    const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    if (!isLetter) return false;
+  }
+
+  return true;
+}
+
 export default function registerAuthRoutes(app) {
   app.get('/api/health', (req, res) => res.json({ ok: true }));
 
@@ -234,7 +279,7 @@ export default function registerAuthRoutes(app) {
     const email = String(req.body.email || '')
       .trim()
       .toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!isValidInviteEmail(email)) {
       return res.status(400).json({ error: 'Valid email is required' });
     }
 
