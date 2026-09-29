@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { cacheFlush } from '../services/cache.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import { triggerWorkflows } from '../services/workflows.js';
@@ -23,7 +23,7 @@ export default function registerWebhookEndpointRoutes(app) {
   app.get('/api/webhookEndpoints', auth, async (_req, res) => {
     const db = await readDb();
     const rows = (db.webhookEndpoints || []).map(w => ({ ...w, url: publicUrl(w.token) }));
-    res.json(rows);
+    res.json(paginateAndSort(rows, _req.query));
   });
 
   app.post('/api/webhookEndpoints', auth, requireRole('admin', 'member'), async (req, res) => {
@@ -126,7 +126,7 @@ export default function registerWebhookEndpointRoutes(app) {
     const db = await readDb();
     let rows = db.webhookDeliveries || [];
     if (req.query.endpointId) rows = rows.filter(d => d.endpointId === req.query.endpointId);
-    res.json(rows.slice(0, 50));
+    res.json(paginateAndSort(rows, req.query));
   });
 
   // Recent deliveries for a specific endpoint
@@ -136,8 +136,7 @@ export default function registerWebhookEndpointRoutes(app) {
     if (!endpoint) return res.status(404).json({ error: 'Webhook endpoint not found' });
     const rows = (db.webhookDeliveries || [])
       .filter(d => d.endpointId === req.params.id)
-      .sort((a, b) => String(b.receivedAt || '').localeCompare(String(a.receivedAt || '')))
-      .slice(0, 50);
-    res.json(rows);
+      .sort((a, b) => String(b.receivedAt || '').localeCompare(String(a.receivedAt || '')));
+    res.json(paginateAndSort(rows, req.query));
   });
 }

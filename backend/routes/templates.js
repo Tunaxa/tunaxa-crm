@@ -1,13 +1,13 @@
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { validate, TemplateSchema } from '../services/validate.js';
 
 export default function registerTemplateRoutes(app) {
   app.get('/api/templates', auth, async (req, res) => {
     const db = await readDb();
-    res.json(db.templates || []);
+    res.json(paginateAndSort(db.templates || [], req.query));
   });
 
   app.get('/api/templates/:id', auth, async (req, res) => {

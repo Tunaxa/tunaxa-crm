@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
 import { auth, sessionExpiresAt, sessionIsExpired } from '../middleware/auth.js';
-import { hashPassword, verifyPassword, publicUser, now, id } from '../helpers.js';
+import { hashPassword, verifyPassword, publicUser, now, id, paginateAndSort } from '../helpers.js';
 import { validate, SetupSchema, LoginSchema } from '../services/validate.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import { requireAdmin } from '../middleware/rbac.js';
@@ -61,14 +61,6 @@ export default function registerAuthRoutes(app) {
       db.sessions = db.sessions.filter(x => x.token !== token);
       db.sessions.push({ token: nextToken, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
       return { token: nextToken };
-    const db = await readDb();
-    const session = db.sessions.find(x => x.token === token);
-    const user = session ? db.users.find(x => x.id === session.userId) : null;
-    if (!session || sessionIsExpired(session) || !user) return res.status(401).json({ error: 'Session expired' });
-    const nextToken = crypto.randomBytes(32).toString('hex');
-    await mutateDb(next => {
-      next.sessions = next.sessions.filter(x => x.token !== token);
-      next.sessions.push({ token: nextToken, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
     });
     if (result.error) return res.status(401).json({ error: result.error });
     res.json(result);
@@ -139,7 +131,7 @@ export default function registerAuthRoutes(app) {
 
   app.get('/api/users', auth, async (req, res) => {
     const db = await readDb();
-    res.json(db.users.map(u => publicUser(u)));
+    res.json(paginateAndSort(db.users.map(u => publicUser(u)), req.query));
   });
 
   app.patch('/api/users/:id/role', auth, requireAdmin, async (req, res) => {

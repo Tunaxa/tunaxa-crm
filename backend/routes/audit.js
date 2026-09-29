@@ -1,6 +1,7 @@
 import { readDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/rbac.js';
+import { paginateAndSort } from '../helpers.js';
 
 export default function registerAuditRoutes(app) {
   app.get('/api/audit', auth, async (req, res) => {
@@ -10,15 +11,13 @@ export default function registerAuditRoutes(app) {
     if (req.query.action) audit = audit.filter(a => a.action.includes(req.query.action));
     if (req.query.from) audit = audit.filter(a => a.createdAt >= req.query.from);
     if (req.query.to) audit = audit.filter(a => a.createdAt <= req.query.to);
-    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
-    const offset = parseInt(req.query.offset) || 0;
-    const items = audit.slice(offset, offset + limit).map((entry) => ({
+    const items = audit.map((entry) => ({
       ...entry,
       ip: entry.ip || "",
       userAgent: entry.userAgent || "",
       resourceId: entry.resourceId || "",
     }));
-    res.json({ items, total: audit.length });
+    res.json(paginateAndSort(items, req.query));
   });
 
   app.get('/api/audit/stats', auth, async (req, res) => {

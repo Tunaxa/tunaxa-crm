@@ -10,6 +10,7 @@ import {
   coerceBuiltIns,
   coerceCustomFields,
   resources,
+  paginateAndSort,
 } from "../helpers.js";
 import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
 import {
@@ -45,13 +46,6 @@ export default function registerResourceRoutes(app) {
     if (!resources.has(req.params.resource)) return next();
 
     const db = req.db || (await readDb());
-
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(
-      50,
-      Math.max(1, Number(req.query.limit) || 20),
-    );
-    const start = (page - 1) * limit;
 
     let rows = db[req.params.resource] || [];
 
@@ -117,21 +111,7 @@ export default function registerResourceRoutes(app) {
       );
     }
 
-    // AXA-128: pagination for messages
-    if (req.params.resource === "messages") {
-      const total = rows.length;
-      const paginatedRows = rows.slice(start, start + limit);
-
-      return res.json({
-        items: paginatedRows,
-        total,
-        page,
-        limit,
-        hasMore: start + limit < total,
-      });
-    }
-
-    res.json(rows);
+    res.json(paginateAndSort(rows, req.query));
   });
 
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {

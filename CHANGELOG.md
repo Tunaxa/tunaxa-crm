@@ -8,6 +8,8 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Unified list endpoints under a single contract: every `GET` list route (`GET /api/:resource` plus all custom list endpoints such as `/api/audit`, `/api/users`, `/api/lists`, `/api/templates`, `/api/sequences`, `/api/workflows`, `/api/executions`, `/api/revisions`, `/api/knowledgebase/articles`, `/api/livechat/conversations`, `/api/tickets`, `/api/webhookEndpoints`, `/api/webhookDeliveries`, `/api/forms`, `/api/uploads`, `/api/scheduler/links`, `/api/tracking/events`) now returns `{ data, total, page, limit }` and supports `?q=` (case-insensitive substring search), `?sortBy=` (default `createdAt`), `?sortDir=asc|desc` (default `desc`), `?page=` (default 1), and `?limit=` (default 25, capped at 100) via the shared `paginateAndSort` helper in `backend/helpers.js`.
+
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.

@@ -1,7 +1,7 @@
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 
 const publicLimiter = createRateLimiter({ windowMs: 60_000, max: 60, prefix: 'booking' });
@@ -33,7 +33,7 @@ function findAvailableDate(daysOfWeek, fromDate) {
 export default function registerSchedulerRoutes(app) {
   app.get('/api/scheduler/links', auth, async (req, res) => {
     const db = await readDb();
-    res.json({ data: db.meetingLinks || [], total: (db.meetingLinks || []).length });
+    res.json(paginateAndSort(db.meetingLinks || [], req.query));
   });
 
   app.post('/api/scheduler/links', auth, requireRole('admin', 'member'), async (req, res) => {

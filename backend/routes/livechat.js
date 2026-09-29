@@ -1,7 +1,7 @@
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
-import { id, now } from "../helpers.js";
+import { id, now, paginateAndSort } from "../helpers.js";
 import { createRateLimiter } from "../services/rateLimit.js";
 
 const publicLimiter = createRateLimiter({
@@ -157,9 +157,6 @@ export default function registerLiveChatRoutes(app) {
 
   app.get("/api/livechat/conversations", auth, async (req, res) => {
     const db = await readDb();
-    res.json({
-      data: (db.chatConversations || []).slice(0, 200),
-      total: (db.chatConversations || []).length,
-    });
+    res.json(paginateAndSort(db.chatConversations || [], req.query));
   });
 }

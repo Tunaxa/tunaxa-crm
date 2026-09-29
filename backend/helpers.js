@@ -192,3 +192,68 @@ export const resources = new Set([
   'quotes','contracts','marketingEmails','marketingEvents','goals','surveys','surveyResponses',
   'webhookEndpoints','webhookDeliveries'
 ]);
+
+// Normalize a value so mixed types can be compared safely: numbers/booleans
+// and ISO date strings compare numerically, everything else falls back to a
+// case-insensitive string comparison.
+const toSortValue = value => {
+  if (typeof value === 'number') return { kind: 'number', value };
+  if (typeof value === 'boolean') return { kind: 'number', value: value ? 1 : 0 };
+  if (value instanceof Date) return { kind: 'number', value: value.getTime() };
+  if (typeof value === 'string' && value.trim() !== '') {
+    if (!Number.isNaN(Number(value))) return { kind: 'number', value: Number(value) };
+    const time = Date.parse(value);
+    if (!Number.isNaN(time)) return { kind: 'number', value: time };
+    return { kind: 'string', value: value.toLowerCase() };
+  }
+  return { kind: 'string', value: String(value ?? '').toLowerCase() };
+};
+
+const compareValues = (a, b) => {
+  if (a === b) return 0;
+  if (a === null || a === undefined) return 1; // missing values sort last
+  if (b === null || b === undefined) return -1;
+  const left = toSortValue(a);
+  const right = toSortValue(b);
+  if (left.kind === 'number' && right.kind === 'number') return left.value - right.value;
+  if (left.kind === 'string' && right.kind === 'string') {
+    return left.value < right.value ? -1 : left.value > right.value ? 1 : 0;
+  }
+  return String(left.value).localeCompare(String(right.value));
+};
+
+/**
+ * Apply the standard list contract to an in-memory collection:
+ *   ?q=        case-insensitive substring match over the serialized record
+ *   ?sortBy=   field to sort by (default "createdAt")
+ *   ?sortDir=  "asc" | "desc" (default "desc")
+ *   ?page=     page number, 1-based (default 1)
+ *   ?limit=    page size, 1..100 (default 25)
+ *
+ * Always returns { data, total, page, limit }. Route-specific filters should
+ * be applied to `items` before calling this helper.
+ */
+export const paginateAndSort = (items = [], query = {}) => {
+  const rows = Array.isArray(items) ? items : [];
+
+  const q = String(query.q || '').toLowerCase().trim();
+  let filtered = q
+    ? rows.filter(item => JSON.stringify(item).toLowerCase().includes(q))
+    : rows;
+
+  const sortBy = String(query.sortBy || 'createdAt');
+  const sortDir = String(query.sortDir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+  const direction = sortDir === 1 ? 1 : -1;
+
+  filtered = [...filtered].sort((a, b) => {
+    const av = a ? a[sortBy] : undefined;
+    const bv = b ? b[sortBy] : undefined;
+    return direction * compareValues(av, bv);
+  });
+
+  const page = Math.max(1, parseInt(String(query.page), 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(String(query.limit), 10) || 25));
+  const start = (page - 1) * limit;
+
+  return { data: filtered.slice(start, start + limit), total: filtered.length, page, limit };
+};

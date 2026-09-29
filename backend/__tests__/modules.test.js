@@ -94,7 +94,7 @@ describe("New module CRUD", () => {
     const list = await request(app)
       .get("/api/products")
       .set("Authorization", `Bearer ${token}`);
-    expect(list.body.find((x) => x.id === productId)).toBeUndefined();
+    expect(list.body.data.find((x) => x.id === productId)).toBeUndefined();
   });
 });
 

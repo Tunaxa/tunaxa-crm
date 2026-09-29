@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now, coerceCustomFields } from '../helpers.js';
+import { id, now, coerceCustomFields, paginateAndSort } from '../helpers.js';
 import { matchCondition } from '../services/conditions.js';
 import { triggerWorkflows, createdEvent, updatedEvent } from '../services/workflows.js';
 import { createRateLimiter } from '../services/rateLimit.js';
@@ -198,7 +198,7 @@ export default function registerFormRoutes(app) {
 
   app.get('/api/forms', auth, async (req, res) => {
     const db = await readDb();
-    res.json({ data: db.forms || [], total: (db.forms || []).length });
+    res.json(paginateAndSort(db.forms || [], req.query));
   });
 
   app.post('/api/forms', auth, requireRole('admin', 'member'), async (req, res) => {
