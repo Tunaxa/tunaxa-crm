@@ -1,9 +1,13 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import {
+  BUILT_IN_FIELDS,
+  OBJECT_MAP,
   id,
   now,
   auditEntry,
@@ -26,6 +30,28 @@ import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
+
+// Build the CSV header column order without scanning the whole dataset:
+// prefer the first record's keys (already field-masked), and fall back to the
+// built-in + custom field definitions so an empty dataset still gets a header.
+function csvColumns(db, resource, firstRow) {
+  if (firstRow && Object.keys(firstRow).length > 0) {
+    return Object.keys(firstRow);
+  }
+
+  const builtIn = (BUILT_IN_FIELDS[resource] || []).map((field) => field.key);
+  const object = OBJECT_MAP[resource];
+  const custom = object
+    ? (db.customFields || [])
+        .filter(
+          (field) =>
+            String(field.object || "").toLowerCase() === object.toLowerCase(),
+        )
+        .map((field) => field.key)
+    : [];
+
+  return [...new Set([...builtIn, ...custom])];
+}
 
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
@@ -138,14 +164,7 @@ export default function registerResourceRoutes(app) {
     if (!resources.has(req.params.resource)) return next();
 
     const db = req.db || (await readDb());
-
-    const rows = (db[req.params.resource] || []).map((item) =>
-      req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
-    );
-
-    const columns = [
-      ...new Set(rows.flatMap((row) => Object.keys(row))),
-    ];
+    const rows = db[req.params.resource] || [];
 
     const cell = (value) => {
       const text =
@@ -164,15 +183,37 @@ export default function registerResourceRoutes(app) {
       `attachment; filename="${req.params.resource}.csv"`,
     );
 
-    res.write(`${columns.map(cell).join(",")}\r\n`);
+    // Extract the header from the first record only (already field-masked),
+    // falling back to the schema definitions when the dataset is empty.
+    const firstRow =
+      rows[0] && req.fieldPerms
+        ? applyFieldMasking(rows[0], req.fieldPerms)
+        : rows[0];
+    const columns = csvColumns(db, req.params.resource, firstRow);
 
-    for (const row of rows) {
-      res.write(
-        `${columns.map((column) => cell(row[column])).join(",")}\r\n`,
-      );
+    const mask = req.fieldPerms
+      ? (item) => applyFieldMasking(item, req.fieldPerms)
+      : (item) => item;
+
+    // Stream rows one at a time instead of materializing the whole dataset:
+    // each chunk is field-masked on the fly as it passes through the pipeline.
+    function* csvLines() {
+      yield `${columns.map((column) => cell(column)).join(",")}\r\n`;
+
+      for (const item of rows) {
+        const row = mask(item);
+        yield `${columns.map((column) => cell(row[column])).join(",")}\r\n`;
+      }
     }
 
-    res.end();
+    try {
+      await pipeline(Readable.from(csvLines()), res);
+    } catch (error) {
+      // A client that disconnects mid-download is normal, not a server fault.
+      if (error?.code !== "EPIPE" && error?.code !== "ECONNRESET") {
+        throw error;
+      }
+    }
   });
 
   app.get("/api/:resource/:id", auth, async (req, res, next) => {
