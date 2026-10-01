@@ -111,7 +111,7 @@ export default function registerUploadRoutes(app, upload) {
     res.status(201).json(saved);
   });
 
-  app.get('/api/uploads', auth, async (req, res) => {
+  app.get('/api/uploads', auth, limiter, async (req, res) => {
     const db = await (await import('../store.js')).readDb();
     let files = db.uploads || [];
     if (req.query.contact) files = files.filter(f => f.contact === req.query.contact);
