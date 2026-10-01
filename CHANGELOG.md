@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Automated SQL migration runner (`backend/db/migrate.js`, run via `npm run migrate`): pending files in `backend/db/migrations/` are applied in lexicographic order, each wrapped atomically in a transaction together with its `schema_migrations` record so a mid-migration failure rolls back cleanly. The runner creates the tracking table when missing, is fully idempotent (re-runs skip applied files without duplicate-key errors), logs applied/skipped counts, and exits non-zero on failure so CI can provision an empty database.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
