@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Magic-byte file upload validation (`backend/services/fileSignature.js`): `POST /api/uploads` now reads the leading bytes of every uploaded file and checks the detected signature against the declared mimetype, so a client-supplied MIME header or extension is no longer trusted on its own. Disguised executables (PE/ELF/Mach-O/DEX), content that contradicts its declared type, and unsupported binaries are rejected with `400`, the whole batch is rejected before anything is stored, and all multer temp files are deleted. Covered by `backend/__tests__/upload-magic-bytes.test.js`.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
@@ -41,6 +42,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- Added the existing rate-limit middleware to `GET /api/uploads` so the DB-backed listing route is protected against denial-of-service (CodeQL "missing rate limiting", CWE-770).
 - Rate-limit buckets now use Redis `INCR`/`EXPIRE` when Redis is connected, with the existing in-memory fallback retained when it is unavailable.
 - Added `POST /api/auth/refresh` with 30-day session token rotation, invalidating the previous token after each successful refresh.
 - Added Helmet security headers, including `X-Frame-Options: DENY`, a permissive Content Security Policy, and Strict-Transport-Security.
