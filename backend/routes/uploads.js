@@ -6,6 +6,7 @@ import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
 import { createRateLimiter } from '../services/rateLimit.js';
+import { SIGNATURE_BYTES, verifyMagicBytes } from '../services/fileSignature.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, '..', 'uploads');
@@ -27,20 +28,61 @@ function sanitize(name) {
   return String(name).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);
 }
 
+// Read only the leading bytes of the temp file for signature inspection.
+async function readHeader(filePath, length = SIGNATURE_BYTES) {
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const buffer = Buffer.alloc(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+async function removeTempFiles(files) {
+  await Promise.all((files || []).map(file => fs.unlink(file.path).catch(() => {})));
+}
+
 export default function registerUploadRoutes(app, upload) {
   app.post('/api/uploads', auth, requireRole('admin', 'member'), limiter, upload.array('files', 10), async (req, res) => {
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'At least one file is required' });
 
-    const saved = [];
+    // Reject the whole request and clean up every temp file multer wrote.
+    const fail = async (error) => {
+      await removeTempFiles(req.files);
+      return res.status(400).json({ error });
+    };
+
+    // Validate the entire batch before writing anything, so a spoofed upload
+    // never leaves a stored record or an orphaned file behind.
     for (const file of req.files) {
       if (file.size > MAX_SIZE) {
-        await fs.unlink(file.path).catch(() => {});
-        continue;
+        return fail(`Upload rejected: "${file.originalname}" exceeds the 20 MB limit`);
       }
       if (!ALLOWED.has(file.mimetype)) {
-        await fs.unlink(file.path).catch(() => {});
-        continue;
+        return fail(`Upload rejected: file type not allowed (${file.mimetype})`);
       }
+
+      let header;
+      try {
+        header = await readHeader(file.path);
+      } catch {
+        return fail(`Upload rejected: could not read "${file.originalname}"`);
+      }
+
+      // The client-declared mimetype is never trusted: the buffer's own
+      // signature decides whether this is really an image/pdf/document.
+      const check = verifyMagicBytes({
+        buffer: header,
+        mimetype: file.mimetype,
+        filename: file.originalname,
+      });
+      if (!check.ok) return fail(check.error);
+    }
+
+    const saved = [];
+    for (const file of req.files) {
       const ext = path.extname(file.originalname);
       const filename = `${id('file')}-${sanitize(path.basename(file.originalname, ext))}${ext}`;
       const dest = path.join(uploadDir, filename);
