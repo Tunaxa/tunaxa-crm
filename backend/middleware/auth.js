@@ -1,9 +1,17 @@
 import { readDb } from '../store.js';
 
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// Access tokens are short lived; they are renewed by the refresh token cookie.
+export const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
 
+export function accessTokenExpiresAt() {
+  return new Date(Date.now() + ACCESS_TOKEN_TTL_MS).toISOString();
+}
+
+// Compatibility alias for endpoints that still mint a plain session row
+// (e.g. accept-invite). Access tokens are now short lived, so this returns the
+// access-token expiry rather than the old 30-day session TTL.
 export function sessionExpiresAt() {
-  return new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  return accessTokenExpiresAt();
 }
 
 export function sessionIsExpired(session) {
@@ -25,7 +33,9 @@ export function createAuth({ allowQueryToken = false } = {}) {
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
     const db = await readDb();
     const session = db.sessions.find(x => x.token === token);
-    if (!session || sessionIsExpired(session)) return res.status(401).json({ error: 'Session expired' });
+    if (!session || session.revokedAt || sessionIsExpired(session)) return res.status(401).json({ error: 'Session expired' });
+    // Refresh credentials are stored hashed and must never authenticate a request.
+    if (session.purpose === 'refresh') return res.status(401).json({ error: 'Unauthorized' });
     if (session.purpose === 'sse' && !allowQueryToken) return res.status(401).json({ error: 'Unauthorized' });
     if (queryToken && session.purpose !== 'sse') return res.status(401).json({ error: 'Unauthorized' });
     const user = db.users.find(x => x.id === session.userId);

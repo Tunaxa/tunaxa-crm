@@ -4,6 +4,17 @@ import { auth, sessionExpiresAt, sessionIsExpired } from '../middleware/auth.js'
 import { hashPassword, verifyPassword, publicUser, now, id, paginateAndSort } from '../helpers.js';
 import { validate, SetupSchema, LoginSchema } from '../services/validate.js';
 import { createRateLimiter } from '../services/rateLimit.js';
+import {
+  clearRefreshCookie,
+  findRefreshSession,
+  issueSessionPair,
+  readPresentedToken,
+  revokeAllUserSessions,
+  revokeRefreshFamily,
+  rotateLegacyAccessToken,
+  rotateRefreshToken,
+  setRefreshCookie,
+} from '../services/refreshTokens.js';
 import { requireAdmin } from '../middleware/rbac.js';
 import { broadcast } from './sse.js';
 import { getSettings } from '../services/config.js';
@@ -101,18 +112,20 @@ export default function registerAuthRoutes(app) {
    */
   app.post('/api/auth/setup', authLimiter, validate(SetupSchema), async (req, res) => {
     const { name, email, password } = req.body;
+    let refreshToken = null;
     const result = await mutateDb(db => {
       if (db.users.length) return null;
       db.sessions = db.sessions.filter(session => !sessionIsExpired(session));
       const user = { id: id('usr'), name: name.trim(), email: email.trim().toLowerCase(), password: hashPassword(password), role: 'Owner', workspaceId: id('ws'), createdAt: now() };
-      const token = crypto.randomBytes(32).toString('hex');
       db.users.push(user);
       db.team.push({ id: id('team'), name: user.name, email: user.email, role: 'Owner', status: 'Active', createdAt: now() });
-      db.sessions.push({ token, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
+      const pair = issueSessionPair(db, user.id);
+      refreshToken = pair.refreshToken;
       db.audit.unshift({ id: id('audit'), action: 'Workspace created', actor: user.name, createdAt: now() });
-      return { token, user: publicUser(user) };
+      return { token: pair.accessToken, user: publicUser(user), expiresIn: pair.expiresIn };
     });
     if (!result) return res.status(409).json({ error: 'Workspace is already configured' });
+    setRefreshCookie(res, refreshToken);
     res.json(result);
   });
 
@@ -127,13 +140,23 @@ export default function registerAuthRoutes(app) {
     const db = await readDb();
     const user = db.users.find(x => x.email === String(email || '').trim().toLowerCase());
     if (!user || !verifyPassword(String(password || ''), user.password)) return res.status(401).json({ error: 'Invalid email or password' });
-    const token = crypto.randomBytes(32).toString('hex');
-    await mutateDb(next => {
-      next.sessions = next.sessions.filter(x => x.userId !== user.id && !sessionIsExpired(x));
-      next.sessions.push({ token, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
+    let refreshToken = null;
+    const result = await mutateDb(next => {
+      // Signing in on a new device no longer revokes the other devices; only
+      // expired sessions are pruned. Revocation is an explicit logout-all.
+      next.sessions = next.sessions.filter(x => !sessionIsExpired(x));
+      const pair = issueSessionPair(next, user.id);
+      refreshToken = pair.refreshToken;
       next.audit.unshift({ id: id('audit'), action: 'Signed in', actor: user.name, createdAt: now() });
+      return { token: pair.accessToken, user: publicUser(user), expiresIn: pair.expiresIn };
     });
-    res.json({ token, user: publicUser({ ...user, preferences: toResponsePreferences(db.settings?.userPreferences?.[user.id]) }) });
+    setRefreshCookie(res, refreshToken);
+    res.json({
+      token: result.token,
+      refreshToken,
+      expiresIn: result.expiresIn,
+      user: publicUser({ ...user, preferences: toResponsePreferences(db.settings?.userPreferences?.[user.id]) }),
+    });
   });
 
   /**
@@ -205,65 +228,63 @@ export default function registerAuthRoutes(app) {
     res.json(result);
   });
 
-  // Exchanges a still-valid session token for a freshly minted one.
+  // Exchanges a still-valid refresh credential for a freshly minted access
+  // token pair. `auth` is deliberately not used: it rejects expired sessions,
+  // which is precisely the state a caller needs to refresh out of, so the
+  // credential is validated against the store instead.
   //
-  // This is session rotation, not a JWT refresh. Tokens in this app are opaque
-  // 32-byte random strings recorded in db.sessions and validated by lookup in
-  // middleware/auth.js -- there is no signature and no JWT_SECRET -- so
-  // "refreshing" means resolving the caller's session record and rotating it.
+  // Rotation marks the presented refresh token consumed and issues its
+  // replacement in the same family. Replaying a consumed token is treated as
+  // theft and revokes every session the user holds.
   //
-  // `auth` is deliberately not used here: it rejects expired sessions, which is
-  // precisely the state a caller needs to refresh out of. The presented token is
-  // therefore validated against the store instead.
-  //
-  // Rotation also revokes the presented token, so a captured token stops working
-  // as soon as the legitimate client refreshes once.
-  //
-  // No cookie lookup: there is no cookie parser in this app, so req.cookies is
-  // always undefined. Supporting it would mean adding a dependency for a code
-  // path nothing else uses.
-  app.post('/api/auth/refresh', refreshLimiter, async (req, res, next) => {
-    const token = req.body?.refreshToken
-      || req.body?.token
-      || req.headers['x-refresh-token']
-      || req.headers.authorization?.replace(/^Bearer\s+/i, '');
-    if (typeof token !== 'string' || !token.trim()) {
+  // Accepted credential sources, in order: the http-only refresh cookie,
+  // body.refreshToken, body.token, the x-refresh-token header, and
+  // Authorization: Bearer. A presented value that is not a known refresh token
+  // falls back to legacy access-token rotation so older clients keep working.
+  app.post('/api/auth/refresh', refreshLimiter, async (req, res) => {
+    const presented = readPresentedToken(req);
+    if (!presented) {
+      // Distinguish a malformed JSON call (400) from a bare request that simply
+      // carries no credential (401); the older client contract expects both.
       const hasJsonBody = req.headers['content-type']?.includes('application/json');
       return res.status(hasJsonBody ? 400 : 401).json({ error: 'Refresh token is required' });
     }
 
-    try {
-      const result = await mutateDb(db => {
-        const session = db.sessions.find(x => x.token === token);
-        if (!session) return { error: 'Invalid refresh token', status: 401 };
-        if (sessionIsExpired(session)) {
-          // Drop the dead record so it cannot be retried indefinitely.
-          db.sessions = db.sessions.filter(x => x.token !== token);
-          return { error: 'Refresh token has expired', status: 401 };
-        }
-        // The user model carries no status/active flag, so existence is the only
-        // check available. A deleted user's sessions are already cascaded away by
-        // DELETE /api/users/:id, so this also covers the "user removed" case.
-        const user = db.users.find(x => x.id === session.userId);
-        if (!user) {
-          db.sessions = db.sessions.filter(x => x.token !== token);
-          return { error: 'User not found', status: 401 };
-        }
+    const result = await mutateDb(db => {
+      // A hashed refresh session rotates within its family. Anything else is a
+      // legacy opaque session token (body.token, x-refresh-token, Bearer, or the
+      // pre-rotation refreshToken convention) and rotates in place.
+      const rotated = findRefreshSession(db, presented.value)
+        ? rotateRefreshToken(db, presented.value)
+        : rotateLegacyAccessToken(db, presented.value);
 
-        const nextToken = crypto.randomBytes(32).toString('hex');
-        db.sessions = db.sessions.filter(x => x.token !== token);
-        db.sessions.push({ token: nextToken, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
-        db.audit.unshift({ id: id('audit'), action: 'Session refreshed', actor: user.name, createdAt: now() });
-        const responseUser = publicUser(user);
-        delete responseUser.preferences;
-        return { token: nextToken, user: responseUser };
-      });
+      if (rotated.reuseDetected) {
+        db.audit.unshift({
+          id: id('audit'),
+          action: 'Refresh token reuse detected - all sessions revoked',
+          actor: 'Security',
+          createdAt: now(),
+        });
+      }
+      return rotated;
+    });
 
-      if (result.error) return res.status(result.status).json({ error: result.error });
-      res.json(result);
-    } catch (error) {
-      next(error);
+    if (result.error) {
+      if (result.reuseDetected) clearRefreshCookie(res);
+      return res.status(401).json({ error: result.error });
     }
+
+    if (result.refreshToken) setRefreshCookie(res, result.refreshToken);
+    // The refresh response is the same shape as legacy /login's token pair, and
+    // historically never carried UI preferences; keep that contract stable.
+    const responseUser = publicUser(result.user);
+    delete responseUser.preferences;
+    res.json({
+      token: result.accessToken,
+      user: responseUser,
+      expiresIn: result.expiresIn,
+      rotatedAt: now(),
+    });
   });
 
   /**
@@ -363,7 +384,18 @@ export default function registerAuthRoutes(app) {
    * Response: 200 { ok: true }
    */
   app.post('/api/auth/logout', auth, async (req, res) => {
-    await mutateDb(db => { db.sessions = db.sessions.filter(x => x.token !== req.token); });
+    const presented = readPresentedToken(req);
+    await mutateDb(db => {
+      db.sessions = db.sessions.filter(x => x.token !== req.token);
+      // The browser sends the refresh cookie here, so revoke the whole family
+      // too - otherwise the cookie would mint a fresh access token. Other
+      // devices keep their own families and access tokens.
+      if (presented) {
+        const family = findRefreshSession(db, presented.value);
+        if (family) revokeRefreshFamily(db, family);
+      }
+    });
+    clearRefreshCookie(res);
     res.json({ ok: true });
   });
 
@@ -373,8 +405,22 @@ export default function registerAuthRoutes(app) {
    * Response: 200 { ok: true }
    */
   app.post('/api/auth/logout-all', auth, async (req, res) => {
-    await mutateDb(db => { db.sessions = db.sessions.filter(x => x.userId !== req.user.id); });
-    res.json({ ok: true });
+    const result = await mutateDb(db => {
+      const revoked = revokeAllUserSessions(db, req.user.id);
+      db.audit.unshift({
+        id: id('audit'),
+        action: `Revoked all sessions for ${req.user.name}`,
+        actor: req.user.name,
+        createdAt: now(),
+      });
+      return revoked;
+    });
+    clearRefreshCookie(res);
+    res.json({
+      ok: true,
+      revokedSessions: result.total,
+      revokedRefreshTokens: result.refresh,
+    });
   });
 
   /**
