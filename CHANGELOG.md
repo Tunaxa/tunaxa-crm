@@ -51,6 +51,17 @@ and this project adheres to Semantic Versioning.
 - Backend failed to start locally: runtime data file `backend/data/db.json` was missing, so `app.listen(3001)` never ran; restored the tracked `db.json.bac` seed to `db.json`, unblocking `npm run server` and `npm start`. (Note: `db.json` is gitignored runtime data.)
 - `npm test` previously invoked `jest` (not installed); it now runs `vitest run`, matching the runner the backend suite actually uses (tests import from `vitest`, and `server.js` already skips `app.listen(3001)` when `VITEST === "true"`).
 - Duplicate merge now happens atomically: `POST /api/duplicates/merge` accepts a `mergeIds` array and merges an entire duplicate group in a single `mutateDb()` call, and the Duplicates page sends all IDs in one request instead of looping per-merge HTTP calls, so a mid-merge failure can no longer leave partial/corrupted state.
+- Configuration and documentation normalized around a single source of truth, `backend/runtime.js`, which removed contradictions between `README.md`, `backend/server.js`, `backend/db/pg.js`, and the frontend config:
+  - `backend/server.js` no longer hardcodes `app.listen(3001, "127.0.0.1")`; it binds `getPort()`/`getHost()` (default `3001` on `127.0.0.1`) and logs the resolved origin.
+  - `backend/routes/messages.js` and `backend/routes/webhookendpoints.js` no longer hardcode `http://127.0.0.1:3001` for email tracking pixels and webhook target URLs; both derive it from `getApiBaseUrl()` (`BASE_URL`, else `http://$HOST:$PORT`).
+  - `web/vite.config.ts` imports the same module for its `/api` and `/uploads` proxy target, so `PORT` moves the API and its dev proxy together.
+  - `web/src/App.tsx` built copyable public form URLs from a hardcoded `http://127.0.0.1:3000`, a port nothing listens on; it now uses `window.location.origin`, which is correct through the Vite proxy and behind a reverse proxy.
+  - `.devcontainer/devcontainer.json` forwarded port `3000`; it now forwards `3001` and `5173`.
+  - `backend/db/pg.js` reads its connection defaults from `PG_DEFAULTS` instead of repeating them inline.
+  - Added `.env.example`, which did not exist, so `cp .env.example .env` is now a real first step.
+  - `backend/server.js`, `start.js`, `backend/db/migrate.js`, and `scripts/migrate-json-to-pg.js` now call `loadEnvFile()` explicitly at startup. `npm run server` previously loaded no `.env` at all, so a fresh clone could not reach PostgreSQL; accessors read `process.env` lazily, and real environment variables still win over the file.
+  - `README.md` documented the PostgreSQL default password as `password` while `pg.js` defaulted to `tunaxa2024` (corrected to match the code), claimed PostgreSQL was the core data layer when workspace records live in the JSON store, and required Node.js 18 although `process.loadEnvFile()` needs 20.12. It now documents ports, the `PG*` convention (`DATABASE_URL`/`DB_*` are not read), the environment variable table, and an ordered scratch setup covering install, env, `createdb`, `npm run migrate`, `npm run seed`, and `npm start`.
+  - Added `backend/__tests__/runtime-config.test.js` (27 tests) that asserts the documented defaults equal the runtime ones, so README and code cannot drift apart silently again.
 
 ### Testing
 

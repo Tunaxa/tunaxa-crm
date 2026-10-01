@@ -8,7 +8,7 @@ The project is designed for operations teams that need CRM tracking, workflow au
 
 This repository contains:
 
-- A backend API in `backend/` built with Express and PostgreSQL
+- A backend API in `backend/` built with Express
 - A frontend app in `web/` built with React, Vite, and React Router
 - An orchestration launcher at `start.js` for starting both services together
 - Windows startup helper `start.bat`
@@ -17,7 +17,7 @@ This repository contains:
 
 - Frontend: React 18, Vite, React Router, i18next
 - Backend: Node.js, Express 5
-- Database: PostgreSQL via `pg`
+- Storage: JSON store at `backend/data/db.json`, plus PostgreSQL via `pg` for the V1 object API, reporting, and the migration runner
 - Background jobs: BullMQ and Redis (optional for queue/cache features)
 - Auth and permissions: custom session + RBAC middleware
 - Monitoring: Sentry
@@ -60,6 +60,7 @@ This repository contains:
 ├─ package.json
 ├─ start.js
 ├─ start.bat
+├─ .env.example
 ├─ README.md
 └─ .gitignore
 ```
@@ -68,37 +69,59 @@ This repository contains:
 
 Before running the project, install:
 
-- Node.js 18 or newer
-- PostgreSQL running locally or on a reachable host
-- Optional: Redis if you want queue and cache support enabled
+- Node.js 20.12 or newer — the runtime reads `.env` via `process.loadEnvFile()` and uses it with no extra flags. Node 22 LTS is recommended.
+- PostgreSQL running locally or on a reachable host — required by `npm run migrate`, `npm run migrate:data`, and the V1 object API. Not required to boot the CRM.
+- Optional: Redis, if you want the BullMQ webhook queue and query cache enabled.
 
 ## Environment and configuration
 
-The backend uses PostgreSQL connection settings from environment variables, with defaults defined in `backend/db/pg.js`:
-
-- Host: `127.0.0.1`
-- Port: `5432`
-- Database: `tunaxa`
-- User: `postgres`
-- Password: `password`
-
-If you want to override these values, define environment variables such as:
+Every setting has a default, so the app boots with no `.env` at all. To customise anything, copy the template and edit it:
 
 ```bash
-export PGHOST=127.0.0.1
-export PGPORT=5432
-export PGDATABASE=tunaxa
-export PGUSER=postgres
-export PGPASSWORD=password
+cp .env.example .env
 ```
 
-For Redis-backed services, set:
+Precedence is **real environment variable → `.env` → built-in default**. A shell export or CI secret always overrides the file, and `.env` never overrides the environment.
 
-```bash
-export REDIS_URL=redis://127.0.0.1:6380
-```
+### Where the defaults live
 
-If Redis is not configured, the app will still start in a reduced mode instead of failing outright.
+The single source of truth is `backend/runtime.js`. `backend/db/pg.js` reads its connection defaults from there, and `web/vite.config.ts` derives its proxy target from the same module, so the port and database settings cannot drift between the API, the dev proxy, and this document.
+
+### Ports
+
+| Service | Default | Override |
+| --- | --- | --- |
+| Backend API | `3001` | `PORT` |
+| Backend interface | `127.0.0.1` | `HOST` (use `0.0.0.0` in a container) |
+| Frontend dev server | `5173` | fixed by the `dev` / `start` scripts |
+
+`PORT` is honoured by the API **and** by the Vite dev proxy, so changing it once keeps both in sync. The frontend talks to the API through a same-origin `/api` proxy — there is no API origin to configure in the frontend.
+
+### PostgreSQL
+
+The backend reads the standard libpq `PG*` variables. `DATABASE_URL` and `DB_*` are **not** supported — there is no second naming convention to keep in sync.
+
+| Variable | Default |
+| --- | --- |
+| `PGHOST` | `127.0.0.1` |
+| `PGPORT` | `5432` |
+| `PGDATABASE` | `tunaxa` |
+| `PGUSER` | `postgres` |
+| `PGPASSWORD` | `tunaxa2024` |
+
+Set `PGPASSWORD` to the password of your own local `postgres` role — the default only matches a stock install that uses the project's password.
+
+### Other variables
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `BASE_URL` | Absolute origin third parties use to reach the API (webhook target URLs, email tracking pixels). Set this behind a reverse proxy. | `http://$HOST:$PORT` |
+| `API_HEALTH_URL` | Health probe used by the `start.js` launcher. | derived from `BASE_URL` |
+| `REDIS_URL` / `REDIS_ENABLED` | Redis connection and toggle. | unset |
+| `NODE_ENV` | `production` marks the auth cookie `Secure` and switches the Sentry environment. | `development` |
+| `SENTRY_DSN` | Sentry DSN. Errors are not reported when unset. | unset |
+
+If Redis is not configured, the app starts in a reduced mode instead of failing outright: no BullMQ webhook queue and no query cache, everything else works normally.
 
 ## Installation
 
@@ -106,9 +129,34 @@ From the repository root:
 
 ```bash
 npm install
+cp .env.example .env   # optional, but needed for PostgreSQL access
 ```
 
 ## Running the app
+
+### Database migrations
+
+PostgreSQL schema migrations are applied in filename order and recorded in a `schema_migrations` table, so this is safe to re-run:
+
+```bash
+npm run migrate
+```
+
+Create the database once before the first run:
+
+```bash
+createdb tunaxa
+```
+
+This step is only required for the V1 object API, reporting, and `npm run migrate:data`. The CRM's own workspace records live in `backend/data/db.json` and need no migration.
+
+To populate the JSON store with sample data (idempotent — re-running skips records that already exist):
+
+```bash
+npm run seed
+```
+
+This creates an `admin@tunaxa.com` / `tunaxa2024` login.
 
 ### Start everything together
 
@@ -118,8 +166,10 @@ npm start
 
 This launches:
 
-- the backend on `http://127.0.0.1:3001`
-- the frontend on `http://127.0.0.1:5173` by default
+- the backend on `http://127.0.0.1:3001` (or `PORT`)
+- the frontend on `http://127.0.0.1:5173`, which proxies `/api` and `/uploads` to the backend
+
+Both processes load the repository `.env`.
 
 ### Run backend only
 
@@ -127,16 +177,21 @@ This launches:
 npm run server
 ```
 
+This loads `.env` as well.
+
 ### Run frontend only
 
 ```bash
 npm run dev
 ```
 
+Start the backend separately first, otherwise API calls will fail.
+
 ### Production build
 
 ```bash
 npm run build
+npm run preview
 ```
 
 ### Run tests
@@ -156,18 +211,24 @@ If port `5173` is occupied, Vite will automatically choose the next available po
 - The repo is configured as a root-level project using `start.js`.
 - The frontend is in `web/` and should not be treated as the root project entry point.
 - The backend exposes REST and GraphQL-style CRM endpoints and also handles automation features.
-- PostgreSQL is the core data layer for the app.
+- Workspace records are stored in the JSON store at `backend/data/db.json`. PostgreSQL backs the V1 object API, reporting, and the migration runner.
 - Redis is optional but required for webhook queueing and cache features.
+- `.env` is git-ignored. `.env.example` is the checked-in template and contains no secrets.
 
 ## Development workflow
 
-Typical local workflow:
+Typical local workflow, in order:
 
-1. Start PostgreSQL and ensure the `tunaxa` database exists.
-2. Install dependencies with `npm install`.
-3. Run `npm start` to bring up API + frontend together.
-4. Open the frontend URL in the browser.
-5. Run tests with `npm test` during development.
+1. Install dependencies: `npm install`.
+2. Copy the environment template and set `PGPASSWORD` to your local `postgres` password: `cp .env.example .env`.
+3. Start PostgreSQL and ensure the `tunaxa` database exists: `createdb tunaxa`.
+4. Apply the schema: `npm run migrate`.
+5. Optionally load sample data: `npm run seed`.
+6. Bring up API + frontend together: `npm start`.
+7. Open `http://127.0.0.1:5173` in the browser. The first visit prompts you to create the workspace owner.
+8. Run `npm test` during development.
+
+Steps 3 and 4 can be skipped if you are only working on the JSON-store CRM features; steps 1, 2, 6, and 7 are the minimum for a working app.
 
 ## License
 
@@ -175,4 +236,4 @@ This project does not currently declare a license in the repository metadata.
 
 ## Support
 
-For project-specific configuration or production deployment issues, review the runtime scripts and environment variables above before changing the app structure.
+For project-specific configuration or production deployment issues, review `backend/runtime.js`, the variables listed above, and the runtime scripts before changing the app structure.
