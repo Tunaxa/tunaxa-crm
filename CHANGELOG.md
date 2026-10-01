@@ -7,6 +7,7 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Security
+- Security hardening: tightened Helmet CSP headers with `script-src-attr` restrictions and an explicit image allow-list, and enhanced the Origin/Referer CSRF guard with null-origin and `Sec-Fetch-Site: cross-site` protections.
 - **RBAC Field-Masking on Write (`backend/routes/permissions.js` & route handlers):**
   - Implemented write-side field-mask validation engine preventing unauthorized users from writing, updating, or clearing masked attributes via `POST`, `PUT`, `PATCH`, and batch endpoints.
   - Added `normalizeFieldKey` folding keys to snake_case so casing variations (`firstName`, `first_name`, `First Name`) cannot bypass field permission masks.
