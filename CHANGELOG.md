@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Authenticated, room-scoped Server-Sent Events: `/api/events` now rejects unauthenticated connections with `401`, and `broadcast()` delivers each event only to the sockets matching the supplied `workspaceId` and/or `userId` room. Events with no workspace/user scope are never delivered, and clients authenticated for another workspace (or another user) never receive the payload; added `broadcastToUser()` and isolation tests covering cross-workspace and cross-user delivery.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
