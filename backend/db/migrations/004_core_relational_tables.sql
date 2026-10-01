@@ -5,7 +5,8 @@
 -- migration cannot add missing columns by repeating CREATE TABLE IF NOT EXISTS.
 -- Idempotent: safe to re-run (IF NOT EXISTS, OR REPLACE, DROP IF EXISTS).
 
-BEGIN;
+-- (Transaction handled by the migration runner backend/db/migrate.js, which
+-- wraps each pending migration plus its schema_migrations record atomically.)
 
 -- ============================================
 -- 1. Reusable updated_at trigger function
@@ -257,5 +258,3 @@ CREATE INDEX IF NOT EXISTS idx_activities_workspace_id ON activities (workspace_
 CREATE INDEX IF NOT EXISTS idx_activities_user_id ON activities (user_id);
 CREATE INDEX IF NOT EXISTS idx_activities_contact_id ON activities (contact_id);
 CREATE INDEX IF NOT EXISTS idx_activities_deal_id ON activities (deal_id);
-
-COMMIT;

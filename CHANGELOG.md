@@ -38,6 +38,7 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- Database migration runner hardening: transactional execution, schema_migrations tracking table, and idempotency guarantees in backend/db/migrate.js.
 - Admin-only BullMQ observability endpoint GET /api/queue/status exposing waiting, active, and failed job counts with failure diagnostic details.
 - Webhook worker hardening: strict HMAC-SHA256 signatures, discrete delivery attempt logging in PostgreSQL, and exact exponential backoff retry scheduling.
 - Dynamic validation rules in schema reflection: GET /api/schema/:object exposes required, type, and maxLength metadata for built-in and custom fields.

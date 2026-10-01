@@ -1,7 +1,8 @@
 -- Migration 001: Initial schema for Tunaxa CRM
 -- Based on HubSpot-Style Data Integration Engine architecture
 
-BEGIN;
+-- (Transaction handled by the migration runner backend/db/migrate.js, which
+-- wraps each pending migration plus its schema_migrations record atomically.)
 
 -- ============================================
 -- 1. Dynamic Data Model (JSONB-based objects)
@@ -189,5 +190,3 @@ INSERT INTO property_definitions (object_type, field_name, field_type, label, re
 ('_association_types', 'activity_to_contact', 'string', 'Activity → Contact', false, '["primary"]'::jsonb),
 ('_association_types', 'activity_to_deal', 'string', 'Activity → Deal', false, '["primary"]'::jsonb)
 ON CONFLICT (object_type, field_name) DO NOTHING;
-
-COMMIT;
