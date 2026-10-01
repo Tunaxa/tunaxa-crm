@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import multer from "multer";
 import * as Sentry from "@sentry/node";
 import { fileURLToPath } from "node:url";
+import { loadEnvFile, getHost, getPort } from "./runtime.js";
 import { ensureSettingsDefaults } from "./services/config.js";
 import { startRateLimitSweeper } from "./services/rateLimit.js";
 import { backupDb } from "./services/backup.js";
@@ -56,6 +57,10 @@ import { startEmailSync, stopEmailSync } from "./services/emailSync.js";
 import { createRateLimiter } from "./services/rateLimit.js";
 import { initCache } from "./services/cache.js";
 import { seedPlaybooks } from "./services/seedPlaybooks.js";
+
+// Applied before anything reads configuration below. Real environment variables
+// already win, so this only fills in the gaps from the repository `.env`.
+loadEnvFile();
 
 const app = express();
 app.disable("x-powered-by");
@@ -261,8 +266,10 @@ app.use((err, req, res, next) => {
 export { app };
 
 if (process.env.VITEST !== "true") {
-  app.listen(3001, "127.0.0.1", () => {
-    console.log("Tunaxa API running on http://127.0.0.1:3001");
+  const host = getHost();
+  const port = getPort();
+  app.listen(port, host, () => {
+    console.log(`Tunaxa API running on http://${host}:${port}`);
     startWebhookWorker();
     startEmailSync();
   });

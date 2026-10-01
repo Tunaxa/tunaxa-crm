@@ -8116,7 +8116,9 @@ function FormsPage() {
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, []);
-  const publicBase = "http://127.0.0.1:3000";
+  // Public form URLs are served by the same origin the SPA is loaded from: the
+  // Vite dev server proxies /api, and in production a reverse proxy fronts both.
+  const publicBase = window.location.origin;
   return (
     <SimpleCards
       title="Forms"

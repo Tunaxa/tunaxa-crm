@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
+import { getApiBaseUrl } from '../runtime.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
@@ -16,7 +17,7 @@ function parseFlag(value, fallback = true) {
 }
 
 function publicUrl(token) {
-  return `${process.env.BASE_URL || 'http://127.0.0.1:3001'}/api/hooks/${token}`;
+  return `${getApiBaseUrl()}/api/hooks/${token}`;
 }
 
 export default function registerWebhookEndpointRoutes(app) {
