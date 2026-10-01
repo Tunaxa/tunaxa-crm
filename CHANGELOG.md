@@ -42,6 +42,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- Added the existing rate-limit middleware to `GET /api/uploads` so the DB-backed listing route is protected against denial-of-service (CodeQL "missing rate limiting", CWE-770).
 - Rate-limit buckets now use Redis `INCR`/`EXPIRE` when Redis is connected, with the existing in-memory fallback retained when it is unavailable.
 - Added `POST /api/auth/refresh` with 30-day session token rotation, invalidating the previous token after each successful refresh.
 - Added Helmet security headers, including `X-Frame-Options: DENY`, a permissive Content Security Policy, and Strict-Transport-Security.

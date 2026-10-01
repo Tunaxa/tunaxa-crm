@@ -155,3 +155,29 @@ describe("POST /api/uploads magic-byte enforcement", () => {
     expect(uploads.body.items.some((item) => item.originalName === "bad.png")).toBe(false);
   });
 });
+
+describe("GET /api/uploads rate limiting", () => {
+  it("returns 429 once the per-window budget is exhausted", async () => {
+    // The limiter allows 60 requests per 60s window per IP. This test drives
+    // GET /api/uploads past that budget to prove the route is actually wrapped
+    // in the middleware (CWE-770: missing rate limiting on a DB-backed route).
+    const statuses = [];
+    for (let attempt = 0; attempt < 70; attempt += 1) {
+      const res = await request(app)
+        .get("/api/uploads")
+        .set("Authorization", `Bearer ${token}`);
+      statuses.push(res.status);
+      if (res.status === 429) break;
+    }
+
+    expect(statuses[0]).toBe(200);
+    expect(statuses).toContain(429);
+
+    const limited = await request(app)
+      .get("/api/uploads")
+      .set("Authorization", `Bearer ${token}`);
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: "Too many requests, please try again shortly" });
+    expect(limited.headers["retry-after"]).toBeDefined();
+  });
+});
