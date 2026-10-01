@@ -10,6 +10,7 @@ import { ensureSettingsDefaults } from "./services/config.js";
 import { startRateLimitSweeper } from "./services/rateLimit.js";
 import { backupDb } from "./services/backup.js";
 import { cleanupExpiredSessions } from "./middleware/auth.js";
+import { createOriginGuard } from "./middleware/security.js";
 import registerAuthRoutes from "./routes/auth.js";
 import registerResourceRoutes from "./routes/resources.js";
 import registerSettingsRoutes from "./routes/settings.js";
@@ -59,16 +60,35 @@ import { seedPlaybooks } from "./services/seedPlaybooks.js";
 
 const app = express();
 app.disable("x-powered-by");
+const isProduction = process.env.NODE_ENV === "production";
 app.use(
   helmet({
-    frameguard: { action: "deny" },
     contentSecurityPolicy: {
+      // The API only serves JSON plus /uploads static files, so the policy can
+      // be genuinely strict instead of the previous `unsafe-eval` + `http:` +
+      // `https:` allow-everything default. The SPA is served separately and is
+      // unaffected by this header.
+      useDefaults: false,
       directives: {
-        defaultSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "data:", "blob:", "http:", "https:"],
-        connectSrc: ["'self'", "http:", "https:", "ws:", "wss:"],
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        connectSrc: ["'self'", "ws:", "wss:"],
+        fontSrc: ["'self'", "data:"],
+        formAction: ["'self'"],
         frameAncestors: ["'none'"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        ...(isProduction ? { upgradeInsecureRequests: [] } : {}),
       },
     },
+    // Defence against clickjacking and MIME sniffing (both also asserted in
+    // backend/__tests__/security-headers-csrf.test.js).
+    frameguard: { action: "deny" },
+    noSniff: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
     hsts: {
       maxAge: 31_536_000,
       includeSubDomains: true,
@@ -181,6 +201,8 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+app.use(createOriginGuard());
 
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));

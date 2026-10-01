@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Security headers and CSRF protection: strengthened the existing helmet configuration in `backend/server.js` with a strict Content-Security-Policy (`default-src 'self'`, `object-src 'none'`, `script-src-attr 'none'`, `base-uri 'self'`, plus `upgrade-insecure-requests` in production), and made `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, HSTS and `Referrer-Policy` explicit for this JSON API. New `backend/middleware/security.js` validates `Origin`/`Referer` on every state-changing request (POST, PUT, PATCH, DELETE) and returns `403` for untrusted origins, `Sec-Fetch-Site: cross-site`, and the opaque `null` origin; safe methods bypass the check, non-browser clients that send neither header are allowed, and the public cross-origin endpoints (inbound webhooks, embedded forms, tracking beacons, chat widget, booking pages) are exempted by path. Trusted origins are the request's own host plus any comma-separated `ALLOWED_ORIGINS`. Covered by `backend/__tests__/security-headers-csrf.test.js`.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
