@@ -4,12 +4,46 @@ const sseAuth = createAuth({ allowQueryToken: true });
 
 const clients = new Map();
 
-export function broadcast(event, data, workspaceId) {
+/**
+ * Broadcast an SSE event to the clients whose authenticated room matches the
+ * given scope.
+ *
+ * Events are never delivered globally: a workspaceId and/or userId scope is
+ * required. A client only receives the event when it matches every provided
+ * scope, so sockets authenticated for another workspace (or another user) never
+ * receive the payload.
+ *
+ * @param {string} event Event name.
+ * @param {unknown} data JSON-serializable payload.
+ * @param {string | { workspaceId?: string, userId?: string }} [scope]
+ *   A workspace id (legacy string form) or an explicit room scope object.
+ * @returns {number} Number of clients the event was written to.
+ */
+export function broadcast(event, data, scope) {
+  const { workspaceId, userId } =
+    typeof scope === "string" ? { workspaceId: scope } : scope || {};
+
+  if (!workspaceId && !userId) return 0; // never broadcast globally
+
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  let delivered = 0;
+
   for (const [, client] of clients) {
-    if (!workspaceId || client.workspaceId !== workspaceId) continue;
+    if (workspaceId && client.workspaceId !== workspaceId) continue;
+    if (userId && client.userId !== userId) continue;
     client.res.write(payload);
+    delivered += 1;
   }
+
+  return delivered;
+}
+
+/**
+ * Convenience helper for the user-room channel: deliver an event only to the
+ * sockets authenticated as `userId`.
+ */
+export function broadcastToUser(userId, event, data) {
+  return broadcast(event, data, { userId });
 }
 
 export default function registerSseRoutes(app) {
@@ -20,15 +54,16 @@ export default function registerSseRoutes(app) {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
+    const workspaceId = req.user.workspaceId || "default";
     res.write(
-      `event: connected\ndata: ${JSON.stringify({ userId: req.user.id })}\n\n`,
+      `event: connected\ndata: ${JSON.stringify({ userId: req.user.id, workspaceId })}\n\n`,
     );
 
-    const clientId = `${req.user.id}-${Date.now()}`;
+    const clientId = `${req.user.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     clients.set(clientId, {
       res,
       userId: req.user.id,
-      workspaceId: req.user.workspaceId || "default",
+      workspaceId,
     });
 
     const heartbeat = setInterval(() => {
