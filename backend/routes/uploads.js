@@ -119,14 +119,14 @@ export default function registerUploadRoutes(app, upload) {
     res.json(paginateAndSort(files, req.query));
   });
 
-  app.get('/api/uploads/:id', auth, async (req, res) => {
+  app.get('/api/uploads/:id', auth, limiter, async (req, res) => {
     const db = await (await import('../store.js')).readDb();
     const file = (db.uploads || []).find(f => f.id === req.params.id);
     if (!file) return res.status(404).json({ error: 'File not found' });
     res.json(file);
   });
 
-  app.delete('/api/uploads/:id', auth, requireRole('admin', 'member'), async (req, res) => {
+  app.delete('/api/uploads/:id', auth, requireRole('admin', 'member'), limiter, async (req, res) => {
     let deleted = null;
     await mutateDb(db => {
       const index = (db.uploads || []).findIndex(f => f.id === req.params.id);
