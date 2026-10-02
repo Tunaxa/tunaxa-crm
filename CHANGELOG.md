@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Bulk batch endpoints `PATCH /api/:resource/batch` and `DELETE /api/:resource/batch`
+  (P1-BE2-05) supporting up to 100 records per call with per-record existence
+  checks, immutable field stripping on PATCH, 207 Multi-Status for partial
+  success/failure, and audit/SSE/broadcast side effects.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.

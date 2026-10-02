@@ -175,6 +175,153 @@ export default function registerResourceRoutes(app) {
     res.end();
   });
 
+  // Bulk batch operations (must be registered before /:id routes)
+  app.patch(
+    "/api/:resource/batch",
+    auth,
+    requireRole("admin", "member"),
+    async (req, res, next) => {
+      if (!resources.has(req.params.resource)) return next();
+      const resource = req.params.resource;
+      const { ids, data } = req.body || {};
+
+      if (!ids || !Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
+        return res.status(400).json({
+          error: "ids must be an array containing between 1 and 100 items",
+        });
+      }
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        return res.status(400).json({ error: "data must be an object" });
+      }
+
+      const IMMUTABLE_FIELDS = new Set(["id", "createdAt"]);
+      const update = {};
+      for (const key of Object.keys(data)) {
+        if (!IMMUTABLE_FIELDS.has(key)) update[key] = data[key];
+      }
+
+      const errors = [];
+      const success = [];
+
+      await mutateDb((db) => {
+        const rows = db[resource] || [];
+        for (let i = 0; i < ids.length; i++) {
+          const idVal = ids[i];
+          const idxRec = rows.findIndex((x) => x.id === idVal);
+          if (idxRec < 0) {
+            errors.push({ id: idVal, reason: "Record not found" });
+            continue;
+          }
+          const previous = { ...rows[idxRec] };
+          const merged = {
+            ...rows[idxRec],
+            ...coerceBuiltIns(
+              resource,
+              coerceCustomFields(db, resource, { ...update }),
+            ),
+            updatedAt: now(),
+          };
+          rows[idxRec] = merged;
+          const revisionId = recordRevision(db, resource, previous, merged, req.user);
+          success.push({ id: idVal, revisionId });
+          db.audit.unshift(
+            auditEntry({
+              action: `Updated ${resource.slice(0, -1)}` + (ids.length > 1 ? " (batch)" : ""),
+              actor: req.user.name,
+              req,
+              resourceId: idVal,
+            }),
+          );
+        }
+      });
+
+      if (success.length) {
+        cacheFlush(resource);
+        for (const s of success) {
+          broadcast(
+            "record.updated",
+            { resource, item: undefined, id: s.id, revisionId: s.revisionId },
+            req.user.workspaceId || "default",
+          );
+        }
+        broadcast(
+          "records.batch",
+          { resource, count: success.length, operation: "patch" },
+          req.user.workspaceId || "default",
+        );
+      }
+
+      const status = errors.length === 0 ? 200 : errors.length === ids.length ? 400 : 207;
+      res.status(status).json({
+        successCount: success.length,
+        errorCount: errors.length,
+        errors,
+      });
+    },
+  );
+
+  app.delete(
+    "/api/:resource/batch",
+    auth,
+    requireRole("admin", "member"),
+    async (req, res, next) => {
+      if (!resources.has(req.params.resource)) return next();
+      const resource = req.params.resource;
+      const { ids } = req.body || {};
+
+      if (!ids || !Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
+        return res.status(400).json({
+          error: "ids must be an array containing between 1 and 100 items",
+        });
+      }
+
+      const errors = [];
+      const success = [];
+
+      await mutateDb((db) => {
+        const rows = db[resource] || [];
+        for (let i = 0; i < ids.length; i++) {
+          const idVal = ids[i];
+          const idxRec = rows.findIndex((x) => x.id === idVal);
+          if (idxRec < 0) {
+            errors.push({ id: idVal, reason: "Record not found" });
+            continue;
+          }
+          const [record] = rows.splice(idxRec, 1);
+          success.push({ id: idVal });
+          db.audit.unshift(
+            auditEntry({
+              action: `Deleted ${resource.slice(0, -1)}` + (ids.length > 1 ? " (batch)" : ""),
+              actor: req.user.name,
+              req,
+              resourceId: idVal,
+            }),
+          );
+          // file cleanup omitted for batch (matches single record patterns elsewhere); keep minimal
+        }
+      });
+
+      if (success.length) {
+        cacheFlush(resource);
+        for (const s of success) {
+          broadcast("record.deleted", { resource, id: s.id }, req.user.workspaceId || "default");
+        }
+        broadcast(
+          "records.batch",
+          { resource, count: success.length, operation: "delete" },
+          req.user.workspaceId || "default",
+        );
+      }
+
+      const status = errors.length === 0 ? 200 : errors.length === ids.length ? 400 : 207;
+      res.status(status).json({
+        successCount: success.length,
+        errorCount: errors.length,
+        errors,
+      });
+    },
+  );
+
   app.get("/api/:resource/:id", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
