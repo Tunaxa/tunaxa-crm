@@ -1,10 +1,19 @@
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { auditEntry, id, now, resources } from '../helpers.js';
+import { createRateLimiter } from '../services/rateLimit.js';
 import { broadcast } from './sse.js';
 
 export const LIFECYCLE_STAGES = ['Subscriber', 'Lead', 'MQL', 'SQL', 'Opportunity', 'Customer', 'Evangelist'];
+// Human-readable labels for stages whose key is an acronym. The key stays the
+// value persisted in `lifecycleStage`, so LIFECYCLE_STAGES remains the single
+// source of truth for ordering and validation.
+const STAGE_LABELS = {
+  MQL: 'Marketing Qualified Lead',
+  SQL: 'Sales Qualified Lead'
+};
+
 const REQUIRED_BY_STAGE = {
   MQL: ['email'],
   SQL: ['email', 'phone'],
@@ -32,12 +41,18 @@ function validateTransition(db, record, targetStage) {
 }
 
 export default function registerLifecycleRoutes(app) {
+  const lifecycleStageLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 60,
+    prefix: 'lifecycle'
+  });
+
   app.get('/api/lifecycle/stages', auth, async (req, res) => {
     const db = await readDb();
-    const stages = LIFECYCLE_STAGES.map(stage => {
+    const stages = LIFECYCLE_STAGES.map((stage, order) => {
       const records = (db.contacts || []).filter(c => (c.lifecycleStage || 'Subscriber') === stage)
         .concat((db.leads || []).filter(l => (l.lifecycleStage || 'Subscriber') === stage));
-      return { stage, count: records.length };
+      return { key: stage, label: STAGE_LABELS[stage] || stage, order, stage, count: records.length };
     });
     res.json({ stages, requiredByStage: REQUIRED_BY_STAGE });
   });
@@ -67,6 +82,77 @@ export default function registerLifecycleRoutes(app) {
     broadcast('lifecycle.transitioned', { recordId, stage }, req.user.workspaceId || 'default');
     res.json(saved);
   });
+
+  // Generic lifecycle stage update. Unlike POST /api/lifecycle/transition, which is
+  // lead/contact-only and enforces per-stage field requirements, this accepts any
+  // known resource so deals, companies and other records can carry a stage too.
+  app.patch(
+    '/api/:resource/:id/lifecycle',
+    auth,
+    requireRole('admin', 'member'),
+    lifecycleStageLimiter,
+    async (req, res, next) => {
+      const resource = req.params.resource;
+      if (!resources.has(resource)) return next();
+
+      const { stage } = req.body || {};
+      if (!stage) return res.status(400).json({ error: 'stage is required' });
+      if (!LIFECYCLE_STAGES.includes(stage)) {
+        return res.status(400).json({ error: `stage must be one of: ${LIFECYCLE_STAGES.join(', ')}` });
+      }
+
+      const recordId = req.params.id;
+      const actor = req.user.name;
+      const outcome = await mutateDb(db => {
+        const rows = db[resource] || [];
+        const index = rows.findIndex(x => x.id === recordId);
+        if (index < 0) return { missing: true };
+
+        const previous = rows[index];
+        const currentIndex = LIFECYCLE_STAGES.indexOf(previous.lifecycleStage);
+        if (currentIndex >= 0 && LIFECYCLE_STAGES.indexOf(stage) < currentIndex) {
+          return { invalid: `Cannot move from ${previous.lifecycleStage} back to ${stage}` };
+        }
+
+        const stamp = now();
+        const record = { ...previous, lifecycleStage: stage, lifecycleUpdatedAt: stamp, updatedAt: stamp };
+        rows[index] = record;
+
+        // Same shape as the entry POST /api/lifecycle/transition writes, so the
+        // activity renders in the record timeline through the recordId link.
+        db.activities.unshift({
+          id: id('activity'),
+          title: `Lifecycle → ${stage}`,
+          type: 'Lifecycle',
+          contact: record.name || record.email || '',
+          notes: `Lifecycle stage changed to ${stage}`,
+          date: stamp.slice(0, 10),
+          recordId,
+          createdAt: stamp,
+          updatedAt: stamp
+        });
+        db.audit.unshift(
+          auditEntry({
+            action: `Lifecycle stage changed to ${stage}`,
+            actor,
+            createdAt: stamp,
+            req,
+            resourceId: recordId
+          })
+        );
+        return { record };
+      });
+
+      if (outcome.missing) return res.status(404).json({ error: 'Record not found' });
+      if (outcome.invalid) return res.status(400).json({ error: outcome.invalid });
+      broadcast(
+        'lifecycle.transitioned',
+        { resource, recordId, stage },
+        req.user.workspaceId || 'default'
+      );
+      res.json(outcome.record);
+    }
+  );
 
   // Bulk lifecycle transitions
   app.post('/api/lifecycle/bulk', auth, requireRole('admin', 'member'), async (req, res) => {

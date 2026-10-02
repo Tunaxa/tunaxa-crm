@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- feat: lifecycle stage API. `GET /api/lifecycle/stages` now returns `key`, `label`, and `order` metadata alongside the existing `stage` and `count` (acronyms such as MQL/SQL are spelled out in `label`), and a new `PATCH /api/:resource/:id/lifecycle` sets `lifecycleStage` on any known resource. The update stamps `updatedAt` and `lifecycleUpdatedAt`, prepends an activity entry ("Lifecycle stage changed to [Stage]") linked by `recordId` so the transition renders in the record's activity timeline, writes an audit entry naming the actor and record, and broadcasts `lifecycle.transitioned`. Guarded by `auth`, `requireRole('admin', 'member')`, and a 60/min rate limit. Unknown resource and missing record return 404; an invalid stage and a backward move return 400. (P1-BE2-03)
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
