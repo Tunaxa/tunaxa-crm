@@ -215,6 +215,16 @@ export const matchesFilter = (record, node) => {
       : branches.every(branch => matchesFilter(record, branch));
   }
 
+  if (
+    !Object.prototype.hasOwnProperty.call(OPERATOR_FNS, node.operator) ||
+    typeof OPERATOR_FNS[node.operator] !== "function"
+  ) {
+    throw Object.assign(
+      new Error("Invalid or unsupported operator: " + node.operator),
+      { status: 400 },
+    );
+  }
+
   return OPERATOR_FNS[node.operator](record, node.field, node.value);
 };
 

@@ -12,6 +12,7 @@ beforeAll(async () => {
   await execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "migrate"], {
     cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
     env: process.env,
+    shell: true,
   });
 });
 
