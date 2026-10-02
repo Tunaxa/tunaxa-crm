@@ -9,6 +9,8 @@
     "migrate": "node backend/db/migrate.js",
     "seed": "node backend/db/seed.js",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "typecheck": "tsc --noEmit -p web/tsconfig.json",
+    "check": "npm run lint && npm run typecheck",
     "migrate:data": "node scripts/migrate-json-to-pg.js",
     "build": "vite build --config web/vite.config.ts",
     "preview": "vite preview --config web/vite.config.ts --host 127.0.0.1 --port 4173 --open",
