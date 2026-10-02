@@ -82,6 +82,7 @@ export const navGroups: NavGroup[] = [
       { path: "/reports", label: "nav.reports", icon: "reports" },
       { path: "/goals", label: "nav.goals", icon: "goal" },
       { path: "/duplicates", label: "nav.duplicates", icon: "duplicate" },
+      { path: "/audit", label: "nav.audit", icon: "shield" },
     ],
   },
   {
