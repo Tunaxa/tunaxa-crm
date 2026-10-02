@@ -1,6 +1,17 @@
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
-
+import { ActivitiesPage } from "./pages/activities/ActivitiesPage";
+import { SequencesPage } from "./pages/communication/SequencesPage";
+import { OrdersPage } from "./pages/revenue/OrdersPage";
+import { WebhooksPage } from "./pages/communication/WebhooksPage";
 import { useForm } from "react-hook-form";
+import { ActivitiesPage } from "./pages/activities/ActivitiesPage";
+import { InboxPage } from "./pages/communication/InboxPage";
+import { QuotesPage } from "./pages/revenue/QuotesPage";
+import { ProductsPage } from "./pages/revenue/ProductsPage";
+import { ContractsPage } from "./pages/revenue/ContractsPage";
+import { InvoicesPage } from "./pages/revenue/InvoicesPage";
+import { RecordingsPage } from "./pages/communication/RecordingsPage";
+import { CallsPage } from "./pages/communication/CallsPage";
 import {
   Bar,
   CartesianGrid,
@@ -809,6 +820,16 @@ function AppRoutes() {
                   </ErrorBoundary>
                 }
               />
+
+              <Route
+  path="/activities"
+  element={
+    <ActivitiesPage
+      SimpleCards={SimpleCards}
+      RecordForm={RecordForm}
+    />
+  }
+/>
               <Route
                 path="/leads/:id"
                 element={
@@ -1016,16 +1037,55 @@ function AppRoutes() {
               <Route path="/calls" element={<CallsPage />} />
               <Route path="/recordings" element={<RecordingsPage />} />
               <Route path="/inbox" element={<InboxPage />} />
-              <Route path="/sequences" element={<SequencesPage />} />
-              <Route path="/webhooks" element={<WebhooksPage />} />
+              <Route
+  path="/sequences"
+  element={
+    <SequencesPage
+      SimpleCards={SimpleCards}
+      RecordForm={RecordForm}
+    />
+  }
+/>
+       <Route
+  path="/webhooks"
+  element={
+    <WebhooksPage
+      SimpleCards={SimpleCards}
+    />
+  }
+/>
               <Route path="/campaigns" element={<CampaignsPage />} />
               <Route path="/email-lists" element={<EmailListsPage />} />
               <Route path="/landing-pages" element={<LandingPagesPage />} />
               <Route path="/forms" element={<FormsPage />} />
-              <Route path="/products" element={<ProductsPage />} />
-              <Route path="/orders" element={<OrdersPage />} />
+              <Route
+  path="/products"
+  element={
+    <ProductsPage
+      CrudTablePage={CrudTablePage}
+      productFields={productFields}
+    />
+  }
+/>
+              <Route
+  path="/orders"
+  element={
+    <OrdersPage
+      CrudTablePage={CrudTablePage}
+      orderFields={orderFields}
+    />
+  }
+/>
               <Route path="/finance" element={<FinancePage />} />
-              <Route path="/invoices" element={<InvoicesPage />} />
+              <Route
+  path="/invoices"
+  element={
+    <InvoicesPage
+      CrudTablePage={CrudTablePage}
+      invoiceFields={invoiceFields}
+    />
+  }
+/>
               <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/forecast" element={<ForecastPage />} />
               <Route path="/employees" element={<EmployeesPage />} />
@@ -1056,7 +1116,16 @@ function AppRoutes() {
                   />
                 }
               />
-              <Route path="/quotes" element={<QuotesPage />} />
+             <Route
+  path="/quotes"
+  element={
+    <QuotesPage
+      CrudTablePage={CrudTablePage}
+      quoteFields={quoteFields}
+      QuoteForm={QuoteForm}
+    />
+  }
+/>
               <Route
                 path="/quotes/:id"
                 element={
@@ -1067,7 +1136,15 @@ function AppRoutes() {
                   />
                 }
               />
-              <Route path="/contracts" element={<ContractsPage />} />
+              <Route
+  path="/contracts"
+  element={
+    <ContractsPage
+      CrudTablePage={CrudTablePage}
+      contractFields={contractFields}
+    />
+  }
+/>
               <Route
                 path="/contracts/:id"
                 element={
@@ -3485,59 +3562,7 @@ function LegacyPipelinePage() {
   );
 }
 
-function ActivitiesPage() {
-  const { items, create, update, remove } = useResource<Row>("activities");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const fields: FieldSpec[] = [
-    { key: "title", label: "Activity title" },
-    {
-      key: "type",
-      label: "Type",
-      type: "select",
-      options: ["Note", "Meeting", "Email", "SMS", "Call"],
-    },
-    { key: "contact", label: "Contact" },
-    { key: "date", label: "Date", type: "date" },
-    { key: "notes", label: "Notes", type: "textarea" },
-  ];
-  return (
-    <SimpleCards
-      title="Activities"
-      description="Meetings, notes and customer touchpoints."
-      icon="activity"
-      items={items}
-      onAdd={() => setEdit(null)}
-      onEdit={setEdit}
-      onDelete={remove}
-      render={(item) => (
-        <>
-          <div className="activity-item-head">
-            <Badge tone="blue">{item.type || "Note"}</Badge>
-            <small>
-              {item.date || new Date(item.createdAt).toLocaleDateString()}
-            </small>
-          </div>
-          <h3>{item.title || "Untitled activity"}</h3>
-          <p>{item.contact || item.notes || "No details"}</p>
-        </>
-      )}
-      modal={
-        edit !== undefined ? (
-          <RecordForm
-            title={`${edit ? "Edit" : "Add"} activity`}
-            fields={fields}
-            initial={edit || {}}
-            onClose={() => setEdit(undefined)}
-            onSave={async (data) => {
-              edit ? await update(edit.id, data) : await create(data);
-              setEdit(undefined);
-            }}
-          />
-        ) : null
-      }
-    />
-  );
-}
+
 
 function TasksPage() {
   const { items, create, update, remove } = useResource<Row>("tasks");
@@ -4293,1201 +4318,8 @@ function WorkflowsPage() {
   );
 }
 
-function CallsPage() {
-  const { items, load, create, remove } = useResource<Row>("calls");
-  const { toast } = useApp();
-  const [number, setNumber] = useState("");
-  const [active, setActive] = useState<Row | null>(null);
-  const [started, setStarted] = useState<number | null>(null);
-  const [ending, setEnding] = useState(false);
-  const [twilio, setTwilio] = useState(false);
-  const keypad = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
-  useEffect(() => {
-    api<{ configured: boolean }>("/twilio/status")
-      .then((result) => setTwilio(result.configured))
-      .catch(() => {});
-  }, []);
 
-  useEffect(() => {
-    if (active) return;
-    const existing = items.find((call) => call.status === "Connected");
-    if (!existing) return;
-    setActive(existing);
-    setNumber(existing.phone || "");
-    setStarted(
-      existing.startedAt ? new Date(existing.startedAt).getTime() : Date.now(),
-    );
-  }, [items, active]);
-
-  async function startCall() {
-    if (!number.trim()) return toast("Enter a phone number", "error");
-    try {
-      let call;
-      if (twilio) {
-        call = await api<Row>(
-          "/calls/dial",
-          json("POST", { phone: number.trim() }),
-        );
-        toast("Call placed via Twilio");
-      } else {
-        call = await create({
-          phone: number.trim(),
-          direction: "Outbound",
-          status: "Connected",
-          startedAt: new Date().toISOString(),
-          duration: 0,
-        });
-        toast("Call session started");
-      }
-      setActive(call);
-      setStarted(Date.now());
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
-  }
-
-  async function endCall() {
-    if (!active || ending) return;
-    setEnding(true);
-    try {
-      const duration = started
-        ? Math.max(1, Math.floor((Date.now() - started) / 1000))
-        : 0;
-      const result = await api<{ call: Row; recording?: Row; activity?: Row }>(
-        `/calls/${active.id}/complete`,
-        json("POST", { duration, endedAt: new Date().toISOString() }),
-      );
-      await load();
-      setActive(null);
-      setStarted(null);
-      setNumber("");
-      toast(
-        result.recording
-          ? "Call completed and recording record created"
-          : "Call completed",
-      );
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setEnding(false);
-    }
-  }
-
-  return (
-    <div className="page">
-      <PageHeader
-        title="Telephony"
-        description="Start calls from the dialer. With Twilio configured, real calls are placed; otherwise Tunaxa logs the local call session."
-      />
-      <div className="calls-grid">
-        <section className="surface dialer-card">
-          <div className="dialer-head">
-            <span className={`phone-status ${active ? "calling" : ""}`}>
-              <i />
-              {active ? "Connected" : "Ready"}
-            </span>
-            <button
-              className="icon-btn"
-              disabled={Boolean(active)}
-              onClick={() => setNumber("")}
-              title="Clear"
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-          <input
-            className="dial-input"
-            aria-label="Phone number"
-            value={number}
-            onChange={(e) => setNumber(e.target.value)}
-            placeholder="Enter a number"
-            disabled={Boolean(active)}
-          />
-          <div className="keypad">
-            {keypad.map((key) => (
-              <button
-                key={key}
-                disabled={Boolean(active)}
-                onClick={() => setNumber((value) => value + key)}
-              >
-                {key}
-              </button>
-            ))}
-          </div>
-          {active ? (
-            <button
-              className="call-button danger"
-              disabled={ending}
-              onClick={endCall}
-            >
-              <Icon name="phone" /> {ending ? "Ending…" : "End call"}
-            </button>
-          ) : (
-            <button className="call-button" onClick={startCall}>
-              <Icon name="phone" /> {twilio ? "Call via Twilio" : "Start call"}
-            </button>
-          )}
-          <div className="call-note">
-            <Icon name="warning" />
-            <span>
-              {twilio
-                ? "Twilio is configured. Calls are placed through your provider and require a public webhook URL in Settings."
-                : "Actual phone connectivity requires a configured telephony provider. Tunaxa still logs the local call session and related CRM activity."}
-            </span>
-          </div>
-        </section>
-        <section className="surface call-history">
-          <div className="section-head">
-            <div>
-              <h2>Call history</h2>
-              <p>
-                {items.length
-                  ? `${items.length} calls logged`
-                  : "Calls will appear here automatically"}
-              </p>
-            </div>
-          </div>
-          {items.length ? (
-            items.map((call) => (
-              <article className="call-row" key={call.id}>
-                <span
-                  className={`call-direction ${call.direction === "Inbound" ? "received" : ""}`}
-                >
-                  <Icon name="phone" />
-                </span>
-                <div>
-                  <b>{call.contact || call.phone || "Unknown number"}</b>
-                  <small>
-                    {call.direction || "Outbound"} · {call.status || "Logged"} ·{" "}
-                    {call.duration || 0}s
-                    {call.provider ? ` · ${call.provider}` : ""}
-                  </small>
-                </div>
-                <time>{new Date(call.createdAt).toLocaleString()}</time>
-                <button
-                  className="icon-btn tiny danger-link"
-                  onClick={() =>
-                    confirm("Delete this call log?") && remove(call.id)
-                  }
-                  title="Delete call"
-                >
-                  <Icon name="trash" />
-                </button>
-              </article>
-            ))
-          ) : (
-            <Empty
-              icon="phone"
-              title="No calls"
-              text="Use the dialer to make your first call. Call logs are created automatically."
-            />
-          )}
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function RecordingsPage() {
-  const { items, load, remove } = useResource<Row>("recordings");
-  const { toast } = useApp();
-  const [selected, setSelected] = useState<Row | null>(null);
-  const [transcribing, setTranscribing] = useState(false);
-
-  async function summarize(item: Row) {
-    try {
-      const result = await api<Row>(
-        `/recordings/${item.id}/summarize`,
-        json("POST"),
-      );
-      setSelected(result);
-      toast("Summary updated");
-      load();
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
-  }
-
-  async function transcribe(item: Row) {
-    setTranscribing(true);
-
-    try {
-      const result = await api<Row>(
-        `/recordings/${item.id}/transcribe`,
-        json("POST"),
-      );
-
-      setSelected(result);
-      toast("Transcription ready");
-      await load();
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setTranscribing(false);
-    }
-  }
-
-  return (
-    <div className="page">
-      <PageHeader
-        title="Recordings"
-        description="Recording records are created automatically from completed calls."
-      />
-      {items.length ? (
-        <section className="surface recordings-list">
-          {items.map((item) => (
-            <article className="recording-row" key={item.id}>
-              <button
-                className="play-btn"
-                disabled={!item.fileUrl}
-                onClick={() => setSelected(item)}
-                title={
-                  item.fileUrl
-                    ? "Open recording"
-                    : "Audio will be available when a provider supplies media"
-                }
-              >
-                <Icon name={item.fileUrl ? "play" : "recording"} />
-              </button>
-              <div className="recording-person">
-                <button
-                  className="recording-title"
-                  onClick={() => setSelected(item)}
-                >
-                  {item.title || item.originalName || "Call recording"}
-                </button>
-                <small>
-                  {item.contact || item.phone || "No linked contact"} ·{" "}
-                  {new Date(item.createdAt).toLocaleString()}
-                </small>
-              </div>
-              <Badge tone={item.fileUrl ? "green" : "amber"}>
-                {item.mediaStatus ||
-                  (item.fileUrl ? "Audio ready" : "Awaiting audio")}
-              </Badge>
-              <div className="row-actions">
-                <button
-                  className="btn secondary compact"
-                  onClick={() => setSelected(item)}
-                >
-                  Open
-                </button>
-                <button
-                  className="icon-btn tiny danger-link"
-                  onClick={() =>
-                    confirm("Delete this recording record?") && remove(item.id)
-                  }
-                  title="Delete"
-                >
-                  <Icon name="trash" />
-                </button>
-              </div>
-            </article>
-          ))}
-        </section>
-      ) : (
-        <Empty
-          icon="recording"
-          title="No recordings"
-          text="Complete a call and Tunaxa will create its recording record automatically when call recording is enabled."
-        />
-      )}
-      {selected ? (
-        <Modal
-          title={selected.title || "Recording"}
-          onClose={() => setSelected(null)}
-          footer={
-            <>
-              <button
-                className="btn secondary"
-                onClick={() => setSelected(null)}
-              >
-                Close
-              </button>
-              <button
-                className="btn secondary"
-                disabled={!selected.fileUrl || transcribing}
-                onClick={() => transcribe(selected)}
-              >
-                <Icon name="ai" />
-                {transcribing ? "Processing transcript..." : "Transcribe"}
-              </button>
-              <button
-                className="btn primary"
-                disabled={!selected.transcript}
-                onClick={() => summarize(selected)}
-              >
-                <Icon name="spark" /> Generate summary
-              </button>
-            </>
-          }
-        >
-          {selected.fileUrl ? (
-            <audio controls src={selected.fileUrl} className="audio-player" />
-          ) : (
-            <div className="media-pending">
-              <Icon name="recording" />
-              <div>
-                <b>Audio is not available yet</b>
-                <p>
-                  This call record was created automatically. A connected
-                  telephony provider can attach the actual call media here.
-                </p>
-              </div>
-            </div>
-          )}
-          <div className="recording-detail">
-            <h3>
-              Summary{" "}
-              {selected.summaryAi ? <Badge tone="green">AI</Badge> : null}
-            </h3>
-            <p>{selected.summary || "No summary yet."}</p>
-            <h3>Transcript</h3>
-
-            <div
-              className="transcript-text"
-              style={{
-                maxHeight: "280px",
-                overflowY: "auto",
-                whiteSpace: "pre-wrap",
-                padding: "12px",
-              }}
-            >
-              {transcribing ? (
-                <span>Processing transcript...</span>
-              ) : selected.transcript ? (
-                selected.transcript
-              ) : (
-                <span>No transcript is available yet.</span>
-              )}
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-    </div>
-  );
-}
-
-function InboxPage() {
-  const { toast } = useApp();
-
-  const [messages, setMessages] = useState<Row[]>([]);
-  const [selectedThread, setSelectedThread] = useState<Row[]>([]);
-  const [activeFilter, setActiveFilter] = useState<
-    "All" | "Unread" | "Sent" | "Tracked"
-  >("All");
-
-  const [page, setPage] = useState(1);
-  const [limit] = useState(20);
-  const [total, setTotal] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const [compose, setCompose] = useState(false);
-  const [sending, setSending] = useState(false);
-
-  const [templates, setTemplates] = useState<Row[]>([]);
-  const [templateId, setTemplateId] = useState("");
-  const {
-  register,
-  handleSubmit,
-  reset,
-  watch,
-  setValue,
-} = useForm<{
-  channel: string;
-  to: string;
-  subject: string;
-  body: string;
-}>({
-  defaultValues: {
-    channel: "Email",
-    to: "",
-    subject: "",
-    body: "",
-  },
-});
-
-  const [draft, setDraft] = useState<Row>({
-    id: "",
-    channel: "Email",
-    to: "",
-    subject: "",
-    body: "",
-  });
-
-  async function loadMessages(targetPage = page) {
-    setLoading(true);
-
-    try {
-      const response = await api<{
-        items: Row[];
-        total: number;
-        page: number;
-        limit: number;
-        hasMore: boolean;
-      }>(
-        `/messages?type=email&page=${targetPage}&limit=${limit}`,
-      );
-
-      setMessages(response.items || []);
-      setTotal(response.total || 0);
-      setHasMore(Boolean(response.hasMore));
-
-      if (response.items?.length && !selectedThread.length) {
-        setSelectedThread([response.items[0]]);
-      }
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadMessages(page);
-  }, [page]);
-
-  useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
-      .catch(() => {});
-  }, []);
-
-  function applyTemplate(id: string) {
-    setTemplateId(id);
-
-    const template = templates.find((item) => item.id === id);
-
-    if (!template) return;
-
-    setDraft((prev) => ({
-      ...prev,
-      subject: template.subject || "",
-      body: template.body || "",
-    }));
-  }
-
-  function getThreadKey(message: Row) {
-    return `${String(message.to || "").toLowerCase()}::${String(
-      message.subject || "",
-    )
-      .trim()
-      .toLowerCase()}`;
-  }
-
-  const threads = Array.from(
-    messages.reduce((map, message) => {
-      const key = getThreadKey(message);
-
-      if (!map.has(key)) {
-        map.set(key, []);
-      }
-
-      map.get(key)!.push(message);
-
-      return map;
-    }, new Map<string, Row[]>()),
-  ).map(([key, thread]) => ({
-    key,
-    messages: thread.sort(
-      (a, b) =>
-        new Date(a.createdAt || 0).getTime() -
-        new Date(b.createdAt || 0).getTime(),
-    ),
-  }));
-
-  const filteredThreads = threads.filter(({ messages: thread }) => {
-    if (!thread.length) return false;
-
-    if (activeFilter === "Unread") {
-      return thread.some((message) => !message.read);
-    }
-
-    if (activeFilter === "Sent") {
-      return thread.some(
-        (message) =>
-          message.direction === "Outbound" ||
-          message.status === "Sent",
-      );
-    }
-
-    if (activeFilter === "Tracked") {
-      return thread.some(
-        (message) =>
-          Boolean(message.openedAt) || Boolean(message.clickedAt),
-      );
-    }
-
-    return true;
-  });
-
-  function openThread(thread: Row[]) {
-    setSelectedThread(thread);
-
-    const unread = thread.filter((message) => !message.read);
-
-    unread.forEach((message) => {
-      api(`/messages/${message.id}`, json("PATCH", { read: true })).catch(
-        () => {},
-      );
-    });
-
-    setMessages((current) =>
-      current.map((message) =>
-        thread.some((item) => item.id === message.id)
-          ? { ...message, read: true }
-          : message,
-      ),
-    );
-  }
-
-  async function sendMessage(message: Row) {
-    setSending(true);
-
-    try {
-      const saved = await api<Row>(
-        "/messages/send",
-        json("POST", {
-          id: message.id,
-          channel: "Email",
-          to: message.to,
-          subject: message.subject,
-          body: message.body,
-          contact: message.contact,
-        }),
-      );
-
-      setCompose(false);
-      setTemplateId("");
-      setDraft({
-        id: "",
-        channel: "Email",
-        to: "",
-        subject: "",
-        body: "",
-      });
-
-      await loadMessages(page);
-
-      setSelectedThread([saved]);
-
-      toast(
-        saved.deliveredAt
-          ? "Message sent"
-          : saved.status === "Failed"
-            ? "Delivery failed"
-            : "Message saved for later",
-      );
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function deleteMessage(message: Row) {
-    if (!confirm("Delete this message?")) return;
-
-    try {
-      await api(`/messages/${message.id}`, json("DELETE"));
-
-      setSelectedThread([]);
-
-      await loadMessages(page);
-
-      toast("Message deleted");
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
-  }
-
-  const selectedLastMessage =
-    selectedThread[selectedThread.length - 1] || null;
-
-  return (
-    <div className="page">
-      <PageHeader
-        title="Unified Inbox"
-        description="Manage your email conversations from one place."
-      >
-        <button
-          className="btn primary"
-          onClick={() => {
-            setDraft({
-              id: "",
-              channel: "Email",
-              to: "",
-              subject: "",
-              body: "",
-            });
-            setTemplateId("");
-            setCompose(true);
-          }}
-        >
-          <Icon name="send" /> Compose
-        </button>
-      </PageHeader>
-
-      <section
-        className="surface"
-        style={{
-          overflow: "hidden",
-          minHeight: "650px",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* FILTERS */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "14px 18px",
-            borderBottom: "1px solid var(--border, #e5e7eb)",
-          }}
-        >
-          {(["All", "Unread", "Sent", "Tracked"] as const).map((filter) => (
-            <button
-              key={filter}
-              className={
-                activeFilter === filter
-                  ? "btn primary compact"
-                  : "btn secondary compact"
-              }
-              onClick={() => setActiveFilter(filter)}
-            >
-              {filter}
-            </button>
-          ))}
-
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: "12px",
-              opacity: 0.65,
-            }}
-          >
-            {total} email{total !== 1 ? "s" : ""}
-          </span>
-        </div>
-
-        {/* SPLIT PANE */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "360px minmax(0, 1fr)",
-            minHeight: "580px",
-            flex: 1,
-          }}
-        >
-          {/* LEFT PANE */}
-          <aside
-            style={{
-              borderRight: "1px solid var(--border, #e5e7eb)",
-              overflowY: "auto",
-            }}
-          >
-            {loading ? (
-              <div style={{ padding: "30px", textAlign: "center" }}>
-                Loading conversations…
-              </div>
-            ) : filteredThreads.length ? (
-              filteredThreads.map(({ key, messages: thread }) => {
-                const last = thread[thread.length - 1];
-                const unread = thread.some((message) => !message.read);
-                const active = selectedThread.some(
-                  (message) => message.id === last.id,
-                );
-
-                return (
-                  <button
-                    key={key}
-                    onClick={() => openThread(thread)}
-                    style={{
-                      width: "100%",
-                      display: "block",
-                      textAlign: "left",
-                      padding: "16px",
-                      border: "0",
-                      borderBottom:
-                        "1px solid var(--border, #e5e7eb)",
-                      background: active
-                        ? "rgba(59, 130, 246, 0.08)"
-                        : "transparent",
-                      cursor: "pointer",
-                      fontWeight: unread ? 700 : 400,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                      }}
-                    >
-                      <span>
-                        {last.to || "Unknown recipient"}
-                      </span>
-
-                      <time
-                        style={{
-                          fontSize: "11px",
-                          opacity: 0.6,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {last.createdAt
-                          ? new Date(
-                              last.createdAt,
-                            ).toLocaleDateString()
-                          : ""}
-                      </time>
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: "6px",
-                        fontSize: "13px",
-                        fontWeight: unread ? 700 : 500,
-                      }}
-                    >
-                      {last.subject || "No subject"}
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: "5px",
-                        fontSize: "12px",
-                        opacity: 0.65,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {last.body || "No content"}
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "8px",
-                        marginTop: "9px",
-                        alignItems: "center",
-                      }}
-                    >
-                      {unread ? (
-                        <Badge tone="blue">Unread</Badge>
-                      ) : null}
-
-                      {last.status ? (
-                        <Badge
-                          tone={
-                            last.status === "Sent"
-                              ? "green"
-                              : last.status === "Failed"
-                                ? "red"
-                                : "amber"
-                          }
-                        >
-                          {last.status}
-                        </Badge>
-                      ) : null}
-
-                      {last.openedAt || last.clickedAt ? (
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            opacity: 0.7,
-                          }}
-                        >
-                          <Icon name="eye" /> Tracked
-                        </span>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              <div style={{ padding: "40px 20px" }}>
-                <Empty
-                  icon="inbox"
-                  title="No conversations"
-                  text="No email conversations match this filter."
-                />
-              </div>
-            )}
-
-            {/* PAGINATION */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "12px",
-                borderTop: "1px solid var(--border, #e5e7eb)",
-                position: "sticky",
-                bottom: 0,
-                background: "var(--surface, white)",
-              }}
-            >
-              <button
-                className="btn secondary compact"
-                disabled={page <= 1 || loading}
-                onClick={() => {
-                  setPage((current) => Math.max(1, current - 1));
-                  setSelectedThread([]);
-                }}
-              >
-                Previous
-              </button>
-
-              <span style={{ fontSize: "12px", opacity: 0.65 }}>
-                Page {page}
-              </span>
-
-              <button
-                className="btn secondary compact"
-                disabled={!hasMore || loading}
-                onClick={() => {
-                  setPage((current) => current + 1);
-                  setSelectedThread([]);
-                }}
-              >
-                Next
-              </button>
-            </div>
-          </aside>
-
-          {/* RIGHT PANE */}
-          <main
-            style={{
-              minWidth: 0,
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {selectedThread.length ? (
-              <>
-                <header
-                  style={{
-                    padding: "18px 22px",
-                    borderBottom:
-                      "1px solid var(--border, #e5e7eb)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "16px",
-                  }}
-                >
-                  <div>
-                    <h3 style={{ margin: 0 }}>
-                      {selectedLastMessage?.subject || "No subject"}
-                    </h3>
-
-                    <small style={{ opacity: 0.65 }}>
-                      {selectedLastMessage?.to}
-                    </small>
-                  </div>
-
-                  {selectedLastMessage ? (
-                    <button
-                      className="icon-btn danger-link"
-                      title="Delete message"
-                      onClick={() =>
-                        deleteMessage(selectedLastMessage)
-                      }
-                    >
-                      <Icon name="trash" />
-                    </button>
-                  ) : null}
-                </header>
-
-                <div
-                  style={{
-                    flex: 1,
-                    overflowY: "auto",
-                    padding: "22px",
-                  }}
-                >
-                  {selectedThread.map((message) => {
-                    const outbound =
-                      message.direction === "Outbound";
-
-                    return (
-                      <article
-                        key={message.id}
-                        style={{
-                          marginBottom: "18px",
-                          maxWidth: "85%",
-                          marginLeft: outbound ? "auto" : "0",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            opacity: 0.6,
-                            marginBottom: "6px",
-                          }}
-                        >
-                          {outbound ? "You" : message.to} ·{" "}
-                          {message.createdAt
-                            ? new Date(
-                                message.createdAt,
-                              ).toLocaleString()
-                            : ""}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "16px",
-                            borderRadius: "12px",
-                            background: outbound
-                              ? "rgba(59, 130, 246, 0.10)"
-                              : "var(--surface-muted, #f5f5f5)",
-                            border:
-                              "1px solid var(--border, #e5e7eb)",
-                            whiteSpace: "pre-wrap",
-                          }}
-                        >
-                          {message.body || "No content"}
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "8px",
-                            marginTop: "6px",
-                            fontSize: "11px",
-                            opacity: 0.65,
-                          }}
-                        >
-                          {message.status ? (
-                            <span>{message.status}</span>
-                          ) : null}
-
-                          {message.openedAt ? (
-                            <span>
-                              <Icon name="eye" /> Opened{" "}
-                              {message.openCount || 1}×
-                            </span>
-                          ) : null}
-
-                          {message.clickedAt ? (
-                            <span>
-                              Clicked {message.clickCount || 1}×
-                            </span>
-                          ) : null}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-
-                <footer
-                  style={{
-                    padding: "14px 20px",
-                    borderTop:
-                      "1px solid var(--border, #e5e7eb)",
-                    display: "flex",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  <button
-                    className="btn primary"
-                    disabled={sending}
-                    onClick={() =>
-                      sendMessage({
-                        ...selectedLastMessage,
-                        id: "",
-                        body: "",
-                      })
-                    }
-                  >
-                    <Icon name="send" /> Reply
-                  </button>
-                </footer>
-              </>
-            ) : (
-              <div
-                style={{
-                  flex: 1,
-                  display: "grid",
-                  placeItems: "center",
-                }}
-              >
-                <Empty
-                  icon="inbox"
-                  title="Select a conversation"
-                  text="Choose an email thread from the list."
-                />
-              </div>
-            )}
-          </main>
-        </div>
-      </section>
-
-      {/* COMPOSE */}
-      {compose ? (
-        <Drawer
-          title="New email"
-          subtitle="Compose a new email message."
-          onClose={() => {
-  setCompose(false);
-  setTemplateId("");
-  reset();
-}}
-          footer={
-            <button
-              className="btn secondary"
-              onClick={() => {
-                setCompose(false);
-                setTemplateId("");
-              }}
-            >
-              Cancel
-            </button>
-          }
-        >
-          <div className="drawer-form">
-            {templates.length ? (
-              <label className="field">
-                <span>Template</span>
-
-                <select
-                  value={templateId}
-                  onChange={(e) => applyTemplate(e.target.value)}
-                >
-                  <option value="">No template</option>
-
-                  {templates.map((template) => (
-                    <option
-                      key={template.id}
-                      value={template.id}
-                    >
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            <label className="field">
-              <span>Recipient *</span>
-
-              <input
-                type="email"
-                value={draft.to || ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    to: e.target.value,
-                  }))
-                }
-                placeholder="recipient@example.com"
-              />
-            </label>
-
-            <label className="field">
-              <span>Subject</span>
-
-              <input
-                type="text"
-                value={draft.subject || ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    subject: e.target.value,
-                  }))
-                }
-                placeholder="Email subject"
-              />
-            </label>
-
-            <label className="field">
-              <span>Message *</span>
-
-              <textarea
-                value={draft.body || ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    body: e.target.value,
-                  }))
-                }
-                placeholder="Write your email…"
-                rows={8}
-              />
-            </label>
-
-            <button
-              className="btn primary"
-              disabled={!draft.to || !draft.body || sending}
-              onClick={() => sendMessage(draft)}
-            >
-              {sending ? "Sending…" : "Send email"}
-            </button>
-          </div>
-        </Drawer>
-      ) : null}
-    </div>
-  );
-}
-
-function SequencesPage() {
-  const { items, create, update, remove } = useResource<Row>("sequences");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const fields: FieldSpec[] = [
-    { key: "name", label: "Sequence name" },
-    { key: "audience", label: "Audience / segment" },
-    { key: "steps", label: "Steps description", type: "textarea" },
-  ];
-  return (
-    <SimpleCards
-      title="Sequences"
-      description="Reusable multi-step outreach plans."
-      icon="sequence"
-      items={items}
-      onAdd={() => setEdit(null)}
-      onEdit={setEdit}
-      onDelete={remove}
-      render={(item) => (
-        <>
-          <div className="deal-top">
-            <Badge tone={item.enabled ? "green" : "neutral"}>
-              {item.enabled ? "Active" : "Paused"}
-            </Badge>
-            <Toggle
-              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "sequence"}`}
-              value={Boolean(item.enabled)}
-              onChange={(enabled) => update(item.id, { enabled })}
-            />
-          </div>
-          <h3>{item.name || "Untitled sequence"}</h3>
-          <p>{item.audience || "No audience selected"}</p>
-          <small>{item.steps || "No steps added"}</small>
-        </>
-      )}
-      modal={
-        edit !== undefined ? (
-          <RecordForm
-            title={`${edit ? "Edit" : "New"} sequence`}
-            fields={fields}
-            initial={edit || {}}
-            onClose={() => setEdit(undefined)}
-            onSave={async (data) => {
-              edit
-                ? await update(edit.id, data)
-                : await create({ ...data, enabled: false });
-              setEdit(undefined);
-            }}
-          />
-        ) : null
-      }
-    />
-  );
-}
 
 function CampaignsPage() {
   return (
@@ -5534,50 +4366,8 @@ function LandingPagesPage() {
     />
   );
 }
-function ProductsPage() {
-  return (
-    <CrudTablePage
-      resource="products"
-      title="Products"
-      description="Product catalog with pricing and inventory."
-      icon="cart"
-      fields={productFields}
-      nameKey="name"
-      statusField="status"
-      synopsis={(r) => r.sku || r.category || ""}
-    />
-  );
-}
-function OrdersPage() {
-  return (
-    <CrudTablePage
-      resource="orders"
-      title="Orders"
-      description="Commerce orders, statuses and totals."
-      icon="send"
-      fields={orderFields}
-      nameKey="orderNumber"
-      statusField="status"
-      synopsis={(r) => r.customer || r.email || ""}
-      moneyColumn={["subtotal", "tax", "shipping", "total"]}
-    />
-  );
-}
-function InvoicesPage() {
-  return (
-    <CrudTablePage
-      resource="invoices"
-      title="Invoices"
-      description="Bill customers and track payments."
-      icon="invoice"
-      fields={invoiceFields}
-      nameKey="number"
-      statusField="status"
-      synopsis={(r) => r.customerName || r.customerEmail || ""}
-      moneyColumn={["amount", "tax"]}
-    />
-  );
-}
+
+
 function ExpensesPage() {
   return (
     <CrudTablePage
@@ -5638,44 +4428,7 @@ function AttendancePage() {
   );
 }
 
-function QuotesPage() {
-  return (
-    <CrudTablePage
-      resource="quotes"
-      title="Quotes"
-      description="Generate and track quotes (estimate-to-contract)."
-      icon="quote"
-      fields={quoteFields}
-      columns={quoteFields.filter((field) =>
-        ["number", "customer", "total", "status", "expiryDate"].includes(
-          field.key,
-        ),
-      )}
-      nameKey="number"
-      statusField="status"
-      synopsis={(r) => r.customer || r.deal || ""}
-      moneyColumn={["total"]}
-      renderEditor={(props) => <QuoteForm {...props} />}
-    />
-  );
-}
-function ContractsPage() {
-  return (
-    <CrudTablePage
-      resource="contracts"
-      title="Contracts"
-      description="Subscription terms, renewals and recurring revenue."
-      icon="contract"
-      fields={contractFields}
-      nameKey="name"
-      statusField="status"
-      synopsis={(r) =>
-        `${r.customer || ""}${r.billingFrequency ? " · " + r.billingFrequency : ""}`
-      }
-      moneyColumn={["value", "mrr"]}
-    />
-  );
-}
+
 function MarketingEmailsPage() {
   return (
     <CrudTablePage
@@ -8393,146 +7146,7 @@ function FormEditor({
   );
 }
 
-function WebhooksPage() {
-  const { toast } = useApp();
-  const { items, create, update, remove } =
-    useResource<Row>("webhookEndpoints");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  return (
-    <SimpleCards
-      title="Webhooks"
-      description="Inbound webhook endpoints that trigger workflows."
-      icon="webhook"
-      items={items}
-      onAdd={() => setEdit(null)}
-      onEdit={setEdit}
-      onDelete={remove}
-      render={(item) => (
-        <>
-          <div className="deal-top">
-            <Badge tone={item.enabled ? "green" : "neutral"}>
-              {item.enabled ? "Active" : "Disabled"}
-            </Badge>
-            <Toggle
-              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "webhook endpoint"}`}
-              value={Boolean(item.enabled)}
-              onChange={(enabled) => update(item.id, { enabled })}
-            />
-          </div>
-          <h3>{item.name || "Untitled endpoint"}</h3>
-          <p>{item.description || "No description"}</p>
-          <small>
-            {item.requestCount || 0} requests ·{" "}
-            {item.lastReceivedAt
-              ? new Date(item.lastReceivedAt).toLocaleString()
-              : "No deliveries yet"}
-          </small>
-          {item.url ? (
-            <button
-              className="btn ghost compact"
-              onClick={() =>
-                navigator.clipboard
-                  .writeText(item.url)
-                  .then(() => toast("Webhook URL copied"))
-              }
-            >
-              <Icon name="copy" /> Copy URL
-            </button>
-          ) : null}
-        </>
-      )}
-      modal={
-        edit !== undefined ? (
-          <WebhookEditor
-            initial={edit || null}
-            onClose={() => setEdit(undefined)}
-            onSave={async (data) => {
-              edit ? await update(edit.id, data) : await create(data);
-              setEdit(undefined);
-            }}
-          />
-        ) : null
-      }
-    />
-  );
-}
 
-function WebhookEditor({
-  initial,
-  onClose,
-  onSave,
-}: {
-  initial: Row | null;
-  onClose: () => void;
-  onSave: (data: Record<string, any>) => Promise<void>;
-}) {
-  const { toast } = useApp();
-  const [name, setName] = useState(initial?.name || "");
-  const [description, setDescription] = useState(initial?.description || "");
-  const [enabled, setEnabled] = useState(initial?.enabled ?? true);
-  const [busy, setBusy] = useState(false);
-  async function save() {
-    if (!String(name).trim())
-      return toast("Endpoint name is required", "error");
-    setBusy(true);
-    try {
-      await onSave({
-        name: name.trim(),
-        description: description.trim(),
-        enabled,
-      });
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Drawer
-      title={initial?.id ? "Edit webhook" : "New webhook"}
-      subtitle="A URL you can POST JSON payloads to in order to trigger workflows."
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn primary" disabled={busy} onClick={save}>
-            {busy ? "Saving…" : initial?.id ? "Save webhook" : "Create webhook"}
-          </button>
-        </>
-      }
-    >
-      <div className="drawer-form">
-        <label className="field">
-          <span>Endpoint name *</span>
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Product signup webhook"
-          />
-        </label>
-        <label className="field">
-          <span>Description</span>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            placeholder="What triggers this webhook?"
-          />
-        </label>
-        <div className="setting-toggle">
-          <div>
-            <b>Enabled</b>
-            <p>Accept inbound deliveries at this endpoint.</p>
-          </div>
-          <Toggle label="Enable webhook endpoint" value={enabled} onChange={setEnabled} />
-        </div>
-      </div>
-    </Drawer>
-  );
-}
 
 function SimpleCards({
   title,
