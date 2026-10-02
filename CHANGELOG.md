@@ -8,6 +8,14 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Advanced filter query engine for `GET /api/:resource`: a JSON-encoded
+  `filters` query parameter carrying recursive `$and`/`$or` groups and the
+  `eq`, `neq`, `contains`, `starts_with`, `gt`, `lt`, and `is_set` field
+  operators (P1-BE2-04). The payload is validated up front, so malformed JSON,
+  unknown operators, and structurally invalid groups are answered with
+  `400` instead of silently returning an unfiltered listing. Filters compound
+  with the existing `q` text search, the activity/message type filters, and
+  message pagination, so `total` reflects the filtered set.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
