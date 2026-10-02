@@ -42,6 +42,7 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- Advanced query filters: added structured filter query engine ($and, $or, comparison operators) for GET /api/:resource with validated operator dispatch.
 - Database migration runner hardening: transactional execution, schema_migrations tracking table, and idempotency guarantees in backend/db/migrate.js.
 - Local Docker Compose stack: configured PostgreSQL 16, Redis 7, and Ollama services with comprehensive environment variable documentation.
 - Admin-only BullMQ observability endpoint GET /api/queue/status exposing waiting, active, and failed job counts with failure diagnostic details.
