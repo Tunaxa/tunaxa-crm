@@ -21,6 +21,7 @@ import {
 import { broadcast } from "./sse.js";
 import { cacheFlush } from "../services/cache.js";
 import { recordRevision } from "../services/revisions.js";
+import { parseFilters, applyFilters } from "../services/queryFilter.js";
 import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
 import { fileURLToPath } from "node:url";
 
@@ -43,6 +44,22 @@ export default function registerResourceRoutes(app) {
 
   app.get("/api/:resource", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
+
+    // Advanced filter payload: validated up front so a malformed schema is a
+    // 400 rather than a silently unfiltered (or silently empty) listing.
+    // The catch is not strictly required for the status code - the error
+    // handler in server.js also honours err.status === 400 - but it keeps a
+    // client-side mistake out of console.error and Sentry as an unhandled
+    // server error.
+    let advancedFilters = null;
+
+    if (req.query.filters !== undefined) {
+      try {
+        advancedFilters = parseFilters(req.query.filters);
+      } catch (error) {
+        return res.status(400).json({ error: error.message });
+      }
+    }
 
     const db = req.db || (await readDb());
 
@@ -110,6 +127,10 @@ export default function registerResourceRoutes(app) {
         );
       }
     }
+
+    // Compounds with q / type / recordId above, and feeds the pagination
+    // below so `total` reflects the filtered set.
+    rows = applyFilters(rows, advancedFilters);
 
     if (req.fieldPerms) {
       rows = rows.map((item) =>
