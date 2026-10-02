@@ -42,6 +42,10 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- Bulk batch endpoints `PATCH /api/:resource/batch` and `DELETE /api/:resource/batch`
+  (P1-BE2-05) supporting up to 100 records per call with per-record existence
+  checks, immutable field stripping on PATCH, 207 Multi-Status for partial
+  success/failure, and audit/SSE/broadcast side effects.
 - Advanced query filters: added structured filter query engine ($and, $or, comparison operators) for GET /api/:resource with validated operator dispatch.
 - feat: lifecycle stage API. `GET /api/lifecycle/stages` now returns `key`, `label`, and `order` metadata alongside the existing `stage` and `count` (acronyms such as MQL/SQL are spelled out in `label`), and a new `PATCH /api/:resource/:id/lifecycle` sets `lifecycleStage` on any known resource. The update stamps `updatedAt` and `lifecycleUpdatedAt`, prepends an activity entry ("Lifecycle stage changed to [Stage]") linked by `recordId` so the transition renders in the record's activity timeline, writes an audit entry naming the actor and record, and broadcasts `lifecycle.transitioned`. Guarded by `auth`, `requireRole('admin', 'member')`, and a 60/min rate limit. Unknown resource and missing record return 404; an invalid stage and a backward move return 400. (P1-BE2-03)
 - Database migration runner hardening: transactional execution, schema_migrations tracking table, and idempotency guarantees in backend/db/migrate.js.
