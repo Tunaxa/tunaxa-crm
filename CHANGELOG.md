@@ -41,6 +41,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `PATCH /api/:resource/:id` now exists and performs a true partial update instead of returning `404`. The payload is merged over the stored record rather than replacing it, so inline editing that sends only the changed fields (for example `{ phone: "555-0199" }`) leaves every other field untouched; only `updatedAt` is refreshed. `id` and `createdAt` are stripped from incoming payloads, so `PUT` can no longer rewind `createdAt` either. This also repairs the frontend's mark-message-as-read call, which was failing silently behind a swallowed `.catch()`. `PUT` and `PATCH` now share one handler, so audit entries, revisions, workflow events, SSE broadcasts, and cache flushes are identical for both.
 - Rate-limit buckets now use Redis `INCR`/`EXPIRE` when Redis is connected, with the existing in-memory fallback retained when it is unavailable.
 - Added `POST /api/auth/refresh` with 30-day session token rotation, invalidating the previous token after each successful refresh.
 - Added Helmet security headers, including `X-Frame-Options: DENY`, a permissive Content Security Policy, and Strict-Transport-Security.
