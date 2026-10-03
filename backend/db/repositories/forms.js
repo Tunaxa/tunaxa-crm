@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 import { toJsonb } from "./json.js";
 
 const SORT_COLUMNS = new Set([
@@ -180,33 +181,20 @@ export async function create(data = {}) {
 }
 
 export async function update(id, data = {}, workspaceId) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
+  const statement = buildUpdateStatement({
+    id,
+    table: "forms",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields", "fields", "settings"],
+    jsonbFallback: {"custom_fields":"{}"},
+  });
+  if (!statement) return null;
 
-  const JSONB_FIELDS = new Set(["fields", "settings", "custom_fields"]);
-  const values = fields.map((field) =>
-    JSONB_FIELDS.has(field) ? toJsonb(data[field], null) : data[field],
-  );
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  const scoped = workspaceId !== undefined && workspaceId !== null;
-  values.push(id);
-  if (scoped) values.push(workspaceId);
-  const result = await query(
-    `UPDATE forms
-     SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}${scoped ? ` AND (workspace_id = $${fields.length + 2} OR ($${fields.length + 2} = 'default' AND workspace_id IS NULL))` : ''}
-     RETURNING *`,
-    values,
-  );
+  const result = await query(statement.sql, statement.values);
   return result.rows[0] || null;
 }
-
 /**
  * Bump the public submission counter.
  *
