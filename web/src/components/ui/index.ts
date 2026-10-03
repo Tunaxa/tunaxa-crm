@@ -10,3 +10,4 @@ export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
 export { Modal, Drawer, PageHeader, Empty, Avatar, Toggle, PhotoField, money } from '../ui';
 
+export { DataTable } from './DataTable';
