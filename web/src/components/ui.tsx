@@ -119,7 +119,7 @@ export function Drawer({ title, subtitle, children, onClose, footer, width = 520
   }, [onClose]);
 
   return <div className="drawer-backdrop" onMouseDown={onClose}>
-    <aside ref={drawerRef} className="side-drawer" role="dialog" aria-modal="true" tabIndex={-1} style={{ width }} onMouseDown={event => event.stopPropagation()}>
+    <aside ref={drawerRef} className="side-drawer" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} style={{ width }} onMouseDown={event => event.stopPropagation()}>
       <header className="side-drawer-head">
         <div><h2>{title}</h2>{subtitle ? <p>{subtitle}</p> : null}</div>
         <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
@@ -223,3 +223,4 @@ export function PhotoField({ label, name, value, radius = 56, onChange }: PhotoF
     </div>
   </div>;
 }
+export { DataTable } from './ui/DataTable';
