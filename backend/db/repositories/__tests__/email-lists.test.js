@@ -156,7 +156,9 @@ describe("email_lists repository", () => {
 
     expect(result).toBe(record);
     const [sql, params] = pg.query.mock.calls[0];
-    expect(sql).toContain("subscribers = $1, custom_fields = $2");
+    expect(sql).toContain(
+      "subscribers = $1, custom_fields = COALESCE(custom_fields, '{}'::jsonb) || $2::jsonb",
+    );
     expect(sql).toContain("WHERE id = $3");
     expect(sql).not.toContain("workspace_id = $");
     expect(params).toEqual([50, '{"tier":"gold"}', "list-1"]);

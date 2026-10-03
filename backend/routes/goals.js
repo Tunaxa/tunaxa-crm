@@ -1,5 +1,6 @@
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
+import { checkWriteFieldMask } from './permissions.js';
 import { repoFor } from '../db/repositories/index.js';
 import { pgToLegacy, legacyToPg } from '../db/legacy-shape.js';
 import { coerceBuiltIns, id, now } from '../helpers.js';
@@ -114,7 +115,7 @@ export default function registerGoalRoutes(app) {
    * POST /api/goals
    * Create a performance goal.
    */
-  app.post('/api/goals', auth, requireRole('admin', 'member'), async (req, res, next) => {
+  app.post('/api/goals', auth, requireRole('admin', 'member'), checkWriteFieldMask('goal'), async (req, res, next) => {
     try {
       const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
       const body = req.body || {};
@@ -291,7 +292,7 @@ export default function registerGoalRoutes(app) {
    * PUT /api/goals/:id
    * Update a performance goal.
    */
-  app.put('/api/goals/:id', auth, requireRole('admin', 'member'), async (req, res, next) => {
+  app.put('/api/goals/:id', auth, requireRole('admin', 'member'), checkWriteFieldMask('goal'), async (req, res, next) => {
     try {
       const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
       const body = req.body || {};
