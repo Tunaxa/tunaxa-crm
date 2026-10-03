@@ -4,7 +4,6 @@ import { WorkflowPicker } from "./pages/workflows/WorkflowPicker";
 import { WorkflowDetailPage } from "./pages/workflows/WorkflowDetailPage";
 import { DuplicateResolution } from "./components/DuplicateResolution";
 import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
-
 import { useForm } from "react-hook-form";
 import {
   Bar,
@@ -50,6 +49,7 @@ import {
   Modal,
   PageHeader,
   PhotoField,
+  SectionHeader,
   Toggle,
   money,
   CornerBrackets,
@@ -2512,8 +2512,9 @@ function RecordDetailPage({
           />
          <div>
   <div className="lead-detail-name">
-    <h1>{recordName}</h1>
-
+<SectionHeader
+  title={recordName}
+/>
     {resource === "leads" &&
     typeof record.leadScore === "number" ? (
       <span title="AI Score — based on engagement signals">
