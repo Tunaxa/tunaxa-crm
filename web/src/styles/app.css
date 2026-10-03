@@ -9801,3 +9801,54 @@ summary:focus-visible,
     width: calc(100vw - 32px);
   }
 }
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 50;
+    width: 220px;
+    height: 100dvh;
+    transform: translateX(-105%);
+    box-shadow: var(--shadow-lg);
+    transition: transform 0.2s ease;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    background: rgba(15, 23, 42, 0.35);
+  }
+
+  .mobile-overlay.show {
+    display: block;
+  }
+
+  .pipeline-board,
+  .task-board {
+    display: flex;
+    overflow-x: auto;
+    gap: 12px;
+    padding-bottom: 12px;
+  }
+
+  .pipeline-column,
+  .task-column {
+    min-width: 0;
+    flex: 0 0 min(85vw, 340px);
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
