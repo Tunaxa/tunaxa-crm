@@ -9,6 +9,8 @@ import {
   auditEntry,
   coerceBuiltIns,
   coerceCustomFields,
+  partialDelta,
+  applyPartialUpdate,
   resources,
 } from "../helpers.js";
 import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
@@ -451,6 +453,94 @@ export default function registerResourceRoutes(app) {
           resourceId: req.params.id,
         }));
         return db[resource][index];
+      });
+      if (!item) return res.status(404).json({ error: "Record not found" });
+      const event =
+        eventFor(resource, previous, item) || updatedEvent(resource);
+      if (event) triggerWorkflows(resource, event, item);
+      broadcast("record.updated", { resource, item, revisionId });
+      cacheFlush(resource);
+      res.json(revisionId ? { ...item, revisionId } : item);
+    },
+  );
+
+  app.patch(
+    "/api/:resource/:id",
+    auth,
+    requireRole("admin", "member"),
+    validate(ResourceSchema),
+    async (req, res, next) => {
+      const resource = req.params.resource;
+      if (!resources.has(resource)) return next();
+
+      // The body is a delta, not a replacement. partialDelta() is what makes
+      // that true: it drops the server-owned fields (id, workspace,
+      // createdAt/updatedAt) and every key the body did not mention, so nothing
+      // downstream can read an absent key as "set it to null".
+      const delta = partialDelta(req.body);
+
+      // ── PG path ──────────────────────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = repoFor(resource);
+        try {
+          // `partial` skips the NOT NULL title fallback: that exists so a body
+          // carrying only an invoice number can still be inserted, and on a
+          // delta it would copy some other field over the stored title.
+          const pgData = legacyToPg(delta, resource, { partial: true });
+          coerceBuiltIns(resource, pgData);
+          const tenant = tenantOf(req);
+          // A PATCH with nothing in it is not a missing record. Read the row
+          // back so an inline editor that submits an unchanged field still gets
+          // the full state it expects to render.
+          const row =
+            Object.keys(pgData).length === 0
+              ? await repo.findById(req.params.id, tenant)
+              : await repo.update(req.params.id, pgData, tenant);
+          if (!row) return res.status(404).json({ error: "Record not found" });
+          const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
+          const event = updatedEvent(resource);
+          if (event) triggerWorkflows(resource, event, item);
+          broadcast("record.updated", { resource, item });
+          cacheFlush(resource);
+          return res.json(item);
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
+      let previous = null;
+      let revisionId = null;
+      const item = await mutateDb((db) => {
+        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        if (index < 0) return null;
+        previous = { ...db[resource][index] };
+        const merged = applyPartialUpdate(
+          db[resource][index],
+          coerceBuiltIns(resource, coerceCustomFields(db, resource, delta)),
+        );
+        // Re-asserted rather than spread: the delta cannot carry them, but a
+        // stored record that is missing one of them keeps the value it had.
+        merged.id = db[resource][index].id;
+        if (db[resource][index].createdAt !== undefined) {
+          merged.createdAt = db[resource][index].createdAt;
+        }
+        merged.updatedAt = now();
+        db[resource][index] = merged;
+        revisionId = recordRevision(
+          db,
+          resource,
+          previous,
+          merged,
+          req.user,
+        );
+        db.audit.unshift(auditEntry({
+          action: `Updated ${resource.slice(0, -1)}`,
+          actor: req.user.name,
+          req,
+          resourceId: req.params.id,
+        }));
+        return merged;
       });
       if (!item) return res.status(404).json({ error: "Record not found" });
       const event =
