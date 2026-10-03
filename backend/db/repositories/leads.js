@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -223,47 +224,36 @@ export async function create(data = {}) {
 }
 
 export async function update(id, data = {}, workspaceId) {
+  // The lead score has no column of its own: enrichLead() reads it back out of
+  // the custom_fields bag, so a score change is a bag change. The bag itself is
+  // merged in SQL (see update-builder.js), so folding the score keys in here
+  // only adds the scored keys - the keys already on the row survive.
   const updateData = { ...data };
-  if (
-    updateData.score !== undefined ||
-    updateData.last_scored_at !== undefined ||
-    updateData.lead_score !== undefined ||
-    updateData.score_factors !== undefined
-  ) {
-    const existingCf =
+  const SCORE_KEYS = ["score", "lead_score", "score_factors", "last_scored_at"];
+  const scored = SCORE_KEYS.filter((key) => updateData[key] !== undefined);
+  if (scored.length) {
+    const bag =
       typeof updateData.custom_fields === "object" && updateData.custom_fields !== null
         ? updateData.custom_fields
         : {};
     updateData.custom_fields = {
-      ...existingCf,
-      ...(updateData.score !== undefined ? { score: updateData.score } : {}),
-      ...(updateData.lead_score !== undefined ? { lead_score: updateData.lead_score } : {}),
-      ...(updateData.score_factors !== undefined ? { score_factors: updateData.score_factors } : {}),
-      ...(updateData.last_scored_at !== undefined ? { last_scored_at: updateData.last_scored_at } : {}),
+      ...bag,
+      ...Object.fromEntries(scored.map((key) => [key, updateData[key]])),
     };
   }
 
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(updateData, field) &&
-      updateData[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
+  const statement = buildUpdateStatement({
+    id,
+    table: "leads",
+    allowedFields: UPDATE_FIELDS,
+    data: updateData,
+    workspaceId,
+    jsonbFields: ["custom_fields"],
+    jsonbFallback: { custom_fields: "{}" },
+  });
+  if (!statement) return null;
 
-  const values = fields.map((field) => updateData[field]);
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  const scoped = workspaceId !== undefined && workspaceId !== null;
-  values.push(id);
-  if (scoped) values.push(workspaceId);
-  const result = await query(
-    `UPDATE leads
-     SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}${scoped ? ` AND (workspace_id = $${fields.length + 2} OR ($${fields.length + 2} = 'default' AND workspace_id IS NULL))` : ''}
-     RETURNING *`,
-    values,
-  );
+  const result = await query(statement.sql, statement.values);
   return enrichLead(result.rows[0]) || null;
 }
 

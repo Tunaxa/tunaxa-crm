@@ -868,8 +868,13 @@ function genericPgToLegacy(row) {
  * Splits `name` into first_name / last_name for contacts and leads; routes
  * known camelCase keys to their column and everything else into the
  * custom_fields bag for the four core entities.
+ *
+ * `options.partial` marks the body as a PATCH delta. It only changes the NOT
+ * NULL title fallback; everything else about the translation is the same, so a
+ * partial write reaches the repository as the same shape a full write does and
+ * the repository can treat the two identically.
  */
-export function legacyToPg(body, resource) {
+export function legacyToPg(body, resource, options = {}) {
   const mapping = mappingFor(resource);
   if (!mapping) return genericLegacyToPg(body);
 
@@ -903,9 +908,14 @@ export function legacyToPg(body, resource) {
   // a legacy body keyed only on a number or a vendor would otherwise fail the
   // insert with 23502. Fall back through the candidate fields, in order, taking
   // the first one that carries a value.
-  applyTitleFallback(mapping, out, body);
+  //
+  // Skipped for a partial write. On a delta the fallback is actively harmful:
+  // PATCHing `{ description }` on a campaign would read `description` off the
+  // titleFallbacks list and write it over the stored `name`. The column is
+  // already filled in, so there is nothing to fall back for.
+  if (!options.partial) applyTitleFallback(mapping, out, body);
 
-  // Left unset when empty so a partial PUT does not wipe the stored bag.
+  // Left unset when empty so a partial write does not wipe the stored bag.
   if (Object.keys(extra).length) out.custom_fields = extra;
   return out;
 }

@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -167,30 +168,20 @@ export async function create(data = {}) {
 }
 
 export async function update(id, data = {}, workspaceId) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
+  const statement = buildUpdateStatement({
+    id,
+    table: "contracts",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields"],
+    jsonbFallback: {"custom_fields":"{}"},
+  });
+  if (!statement) return null;
 
-  const values = fields.map((field) => data[field]);
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  const scoped = workspaceId !== undefined && workspaceId !== null;
-  values.push(id);
-  if (scoped) values.push(workspaceId);
-  const result = await query(
-    `UPDATE contracts
-     SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}${scoped ? ` AND (workspace_id = $${fields.length + 2} OR ($${fields.length + 2} = 'default' AND workspace_id IS NULL))` : ''}
-     RETURNING *`,
-    values,
-  );
+  const result = await query(statement.sql, statement.values);
   return result.rows[0] || null;
 }
-
 async function remove(id, workspaceId) {
   const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(

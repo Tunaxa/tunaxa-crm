@@ -116,6 +116,75 @@ export function customFieldSpecs(db, resource) {
     });
 }
 
+// ── Partial (PATCH) update ────────────────────────────────────────────────
+//
+// A PATCH body describes a delta, not a replacement. Two things have to hold for
+// that to be true, and both are enforced here rather than at each call site:
+//
+//  1. the fields the server owns never come out of the body. `id` is the primary
+//     key, `workspaceId`/`workspace_id` is the tenant boundary - honouring a
+//     client-supplied one would move a record into another tenant - and
+//     `createdAt`/`created_at` is the audit anchor. `updatedAt` goes too: it is
+//     restamped on every write, so a client value could only ever be a lie.
+//  2. a key that is absent stays absent. A JSON body cannot express "leave this
+//     alone" other than by omission, so a spread of the body over the record has
+//     to be the only thing that writes, and it must not carry the keys the body
+//     never mentioned.
+export const SERVER_OWNED_FIELDS = new Set([
+  'id', 'workspaceId', 'workspace_id', 'createdAt', 'created_at', 'updatedAt', 'updated_at',
+]);
+
+/**
+ * Reduce a PATCH body to the keys that may be applied to an existing record.
+ *
+ * Drops undefined (absent, and therefore "leave alone"), drops the server-owned
+ * fields, and lifts a `customFields` bag into top-level keys - the legacy record
+ * shape is flat, and pgToLegacy() flattens the Postgres bag back out to the top
+ * level on read, so merging at the top level is what keeps the two in step.
+ */
+export function partialDelta(body = {}) {
+  const delta = {};
+  for (const [key, value] of Object.entries(body || {})) {
+    if (SERVER_OWNED_FIELDS.has(key) || value === undefined) continue;
+    if (key === 'customFields' || key === 'custom_fields') {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const [customKey, customValue] of Object.entries(value)) {
+          if (customValue !== undefined) delta[customKey] = customValue;
+        }
+      }
+      continue;
+    }
+    delta[key] = value;
+  }
+  return delta;
+}
+
+/**
+ * Apply a delta to a stored record, leaving every key the delta does not name
+ * exactly as it was.
+ *
+ * A plain top-level spread is already the shallow merge the flat legacy shape
+ * needs. The one nested object in that shape is the `customFields` bag (rows
+ * written before the Postgres cutover keep it), so it gets an explicit merge
+ * rather than a replacement - otherwise editing one custom field drops the rest.
+ */
+export function applyPartialUpdate(existing = {}, delta = {}) {
+  const merged = { ...existing, ...delta };
+  if (delta.customFields && typeof delta.customFields === 'object') {
+    merged.customFields = {
+      ...(existing.customFields && typeof existing.customFields === 'object' ? existing.customFields : {}),
+      ...delta.customFields,
+    };
+  }
+  if (delta.custom_fields && typeof delta.custom_fields === 'object') {
+    merged.custom_fields = {
+      ...(existing.custom_fields && typeof existing.custom_fields === 'object' ? existing.custom_fields : {}),
+      ...delta.custom_fields,
+    };
+  }
+  return merged;
+}
+
 export function completeCall(db, call, { endedAt, duration, actorName } = {}) {
   const completedAt = endedAt || now();
   call.status = 'Completed';
