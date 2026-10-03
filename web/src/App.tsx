@@ -1,5 +1,5 @@
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
-
+import { SectionHeader } from "./components/ui";
 import { useForm } from "react-hook-form";
 import {
   Bar,
@@ -2712,8 +2712,9 @@ function RecordDetailPage({
           />
          <div>
   <div className="lead-detail-name">
-    <h1>{recordName}</h1>
-
+<SectionHeader
+  title={recordName}
+/>
     {resource === "leads" &&
     typeof record.leadScore === "number" ? (
       <span title="AI Score — based on engagement signals">
