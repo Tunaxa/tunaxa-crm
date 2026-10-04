@@ -117,24 +117,22 @@ export async function api<T>(
     throw new Error("Request retry limit exceeded");
   };
 
-  let response = await requestWithRetry();
+   let response = await requestWithRetry();
   let body = await response.json().catch(() => ({}));
+
   if (response.status === 401 && path !== "/auth/refresh") {
     const token = await refreshToken();
+
     if (token) {
-      response = await requestWithRetry();
+      response = await request();
       body = await response.json().catch(() => ({}));
+
       if (response.ok) return body as T;
-      if (response.status !== 401) {
-        const error = new Error(
-          body.error || `Request failed (${response.status})`,
-        ) as ApiError;
-        error.status = response.status;
-        throw error;
-      }
+    } else {
+      await notifyAuthFailure();
     }
-    await notifyAuthFailure();
   }
+
   if (!response.ok) {
     const error = new Error(
       body.error || `Request failed (${response.status})`,
@@ -142,6 +140,7 @@ export async function api<T>(
     error.status = response.status;
     throw error;
   }
+
   return body as T;
 }
 
