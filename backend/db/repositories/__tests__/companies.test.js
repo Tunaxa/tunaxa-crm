@@ -67,7 +67,7 @@ describe("companies repository", () => {
     expect(pg.query.mock.calls[1][1]).toEqual([100, 200]);
   });
 
-  it("searches company name, domain, and industry with parameterized ILIKE", async () => {
+  it("searches every company search column with a parameterized ILIKE", async () => {
     setFindAllResult(1, [{ id: "company-1" }]);
 
     await findAll({ q: "acme" });
@@ -77,9 +77,20 @@ describe("companies repository", () => {
     expect(countSql).toContain("name ILIKE $1");
     expect(countSql).toContain("domain ILIKE $1");
     expect(countSql).toContain("industry ILIKE $1");
+    expect(countSql).toContain("website ILIKE $1");
+    expect(countSql).toContain("country ILIKE $1");
     expect(countParams).toEqual(["%acme%"]);
     expect(dataSql).toContain("LIMIT $2 OFFSET $3");
     expect(dataParams).toEqual(["%acme%", 20, 0]);
+  });
+
+  it("treats a blank search term as no filter", async () => {
+    setFindAllResult(0);
+
+    await findAll({ q: "   " });
+
+    expect(pg.query.mock.calls[0][0]).not.toContain("ILIKE");
+    expect(pg.query.mock.calls[0][1]).toEqual([]);
   });
 
   it("allows every whitelisted sort and rejects malformed sorts", async () => {
@@ -90,6 +101,7 @@ describe("companies repository", () => {
       "domain",
       "industry",
       "size",
+      "employees",
     ];
     for (const column of sortColumns) {
       setFindAllResult(0);
@@ -125,7 +137,11 @@ describe("companies repository", () => {
       name: "Acme",
       domain: "acme.example",
       industry: "Technology",
+      website: "https://acme.example",
+      country: "FR",
       size: "100-499",
+      employees: 250,
+      owner: "Test User",
       custom_fields: { region: "emea" },
     };
     const record = { id: "company-1", ...data };
@@ -135,14 +151,27 @@ describe("companies repository", () => {
     const [sql, params] = pg.query.mock.calls[0];
     expect(sql).toContain("INSERT INTO companies");
     expect(sql).toContain("RETURNING *");
+    expect(sql).toContain("$10");
     expect(params).toEqual([
       data.workspace_id,
       data.name,
       data.domain,
       data.industry,
+      data.website,
+      data.country,
       data.size,
+      data.employees,
+      data.owner,
       data.custom_fields,
     ]);
+  });
+
+  it("defaults custom_fields to an empty object on create", async () => {
+    pg.query.mockResolvedValueOnce({ rows: [] });
+
+    await create({ name: "Acme" });
+
+    expect(pg.query.mock.calls[0][1].at(-1)).toEqual({});
   });
 
   it("updates only whitelisted company fields and appends the id", async () => {
@@ -151,6 +180,7 @@ describe("companies repository", () => {
 
     const result = await update("company-1", {
       name: "Acme Corp",
+      employees: 300,
       custom_fields: { verified: true },
       workspace_id: "ignored",
       unknown: "ignored",
@@ -158,11 +188,16 @@ describe("companies repository", () => {
 
     expect(result).toBe(record);
     const [sql, params] = pg.query.mock.calls[0];
-    expect(sql).toContain("name = $1, custom_fields = $2");
-    expect(sql).toContain("WHERE id = $3");
+    expect(sql).toContain("name = $1, employees = $2, custom_fields = $3");
+    expect(sql).toContain("WHERE id = $4");
     expect(sql).not.toContain("workspace_id = $");
     expect(sql).not.toContain("unknown = $");
-    expect(params).toEqual(["Acme Corp", { verified: true }, "company-1"]);
+    expect(params).toEqual([
+      "Acme Corp",
+      300,
+      { verified: true },
+      "company-1",
+    ]);
   });
 
   it("returns null for empty or non-matching updates", async () => {
