@@ -101,12 +101,14 @@ const uploadDir = path.join(root, "..", "uploads");
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
     if (!resources.has(req.params.resource) || !req.user) return next();
+
     req.db = await readDb();
     req.fieldPerms = getFieldPermissions(
       req.db,
       req.params.resource.replace(/s$/, ""),
       req.user.role,
     );
+
     next();
   });
 
@@ -125,46 +127,119 @@ export default function registerResourceRoutes(app) {
 
     // ── Legacy JSON path: all other resources ──────────────────────────────
     const db = req.db || (await readDb());
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(
+      50,
+      Math.max(1, Number(req.query.limit) || 20),
+    );
+    const start = (page - 1) * limit;
+
     let rows = db[req.params.resource] || [];
+
     const q = String(req.query.q || "")
       .toLowerCase()
       .trim();
-    if (q)
+
+    if (q) {
       rows = rows.filter((item) =>
         JSON.stringify(item).toLowerCase().includes(q),
       );
+    }
+
     if (req.params.resource === "activities") {
       const type = String(req.query.type || "").toLowerCase();
+
       if (type) {
         const directTypes = ["email", "call", "meeting", "note"];
+
         rows = rows.filter((item) => {
           const itemType = String(item.type || "").toLowerCase();
+
           return type === "system"
             ? !directTypes.includes(itemType)
             : itemType === type;
         });
       }
+
       const recordId = String(req.query.recordId || "");
-      const contact = String(req.query.contact || "").trim().toLowerCase();
+      const contact = String(req.query.contact || "")
+        .trim()
+        .toLowerCase();
+
       if (recordId || contact) {
-        rows = rows.filter((item) =>
-          (recordId && item.recordId === recordId) ||
-          (contact && (
-            String(item.contact || "").toLowerCase() === contact ||
-            String(item.company || "").toLowerCase() === contact ||
-            String(item.title || "").toLowerCase().includes(contact)
-          )),
+        rows = rows.filter(
+          (item) =>
+            (recordId && item.recordId === recordId) ||
+            (contact &&
+              (String(item.contact || "").toLowerCase() === contact ||
+                String(item.company || "").toLowerCase() === contact ||
+                String(item.title || "")
+                  .toLowerCase()
+                  .includes(contact))),
         );
       }
     }
-    if (req.fieldPerms)
-      rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
+
+    // AXA-128: only return email messages when type=email is requested
+    if (req.params.resource === "messages") {
+      const type = String(req.query.type || "").toLowerCase();
+
+      if (type === "email") {
+        rows = rows.filter(
+          (item) =>
+            String(item.channel || "").toLowerCase() === "email",
+        );
+      }
+    }
+
+    if (req.fieldPerms) {
+      rows = rows.map((item) =>
+        applyFieldMasking(item, req.fieldPerms),
+      );
+    }
+
+    // AXA-128: pagination for messages
+    if (req.params.resource === "messages") {
+      const total = rows.length;
+      const paginatedRows = rows.slice(start, start + limit);
+
+      return res.json({
+        items: paginatedRows,
+        total,
+        page,
+        limit,
+        hasMore: start + limit < total,
+      });
+    }
+
     res.json(rows);
   });
 
 
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
+
+    const db = req.db || (await readDb());
+
+    const rows = (db[req.params.resource] || []).map((item) =>
+      req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
+    );
+
+    const columns = [
+      ...new Set(rows.flatMap((row) => Object.keys(row))),
+    ];
+
+    const cell = (value) => {
+      const text =
+        value == null
+          ? ""
+          : typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value);
+
+      return `"${text.replace(/"/g, '""')}"`;
+    };
 
     let rows;
     if (PG_RESOURCES.has(req.params.resource)) {
@@ -192,6 +267,7 @@ export default function registerResourceRoutes(app) {
     for (const row of rows) {
       res.write(`${buildCsvRow(columns, row)}\r\n`);
     }
+
     res.end();
   });
 
@@ -214,8 +290,16 @@ export default function registerResourceRoutes(app) {
     const db = req.db || (await readDb());
     const rows = db[req.params.resource] || [];
     const item = rows.find((x) => x.id === req.params.id);
-    if (!item) return res.status(404).json({ error: "Record not found" });
-    res.json(req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item);
+
+    if (!item) {
+      return res.status(404).json({ error: "Record not found" });
+    }
+
+    res.json(
+      req.fieldPerms
+        ? applyFieldMasking(item, req.fieldPerms)
+        : item,
+    );
   });
 
   app.post(
@@ -225,6 +309,7 @@ export default function registerResourceRoutes(app) {
     validate(ResourceSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
+
       if (!resources.has(resource)) return next();
 
       // ── PG path ──────────────────────────────────────────────────────────
@@ -250,17 +335,25 @@ export default function registerResourceRoutes(app) {
       const item = await mutateDb((db) => {
         const createdAt = now();
         const data = { ...req.body };
+
         const record = {
           id: id(resource.slice(0, -1) || "item"),
-          ...coerceBuiltIns(resource, coerceCustomFields(db, resource, data)),
+          ...coerceBuiltIns(
+            resource,
+            coerceCustomFields(db, resource, data),
+          ),
           createdAt,
           updatedAt: createdAt,
         };
+
         db[resource].unshift(record);
+
         if (resource === "messages") {
           db.activities.unshift({
             id: id("activity"),
-            title: `${record.channel || "Message"} to ${record.to || "recipient"}`,
+            title: `${record.channel || "Message"} to ${
+              record.to || "recipient"
+            }`,
             type: record.channel || "Email",
             contact: record.to || "",
             notes: record.subject || record.body || "",
@@ -270,20 +363,27 @@ export default function registerResourceRoutes(app) {
             updatedAt: createdAt,
           });
         }
-        if (resource !== "audit")
-          db.audit.unshift(auditEntry({
-            action: `Created ${resource.slice(0, -1)}`,
-            actor: req.user.name,
-            createdAt,
-            req,
-            resourceId: record.id,
-          }));
+
+        if (resource !== "audit") {
+          db.audit.unshift(
+            auditEntry({
+              action: `Created ${resource.slice(0, -1)}`,
+              actor: req.user.name,
+              createdAt,
+              req,
+              resourceId: record.id,
+            }),
+          );
+        }
+
         return record;
       });
+
       const event = createdEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.created", { resource, item });
+      broadcast("record.created", { resource, item }, req.user.workspaceId || "default");
       cacheFlush(resource);
+
       res.status(201).json(item);
     },
   );
@@ -295,6 +395,7 @@ export default function registerResourceRoutes(app) {
     validate(BatchSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
+
       if (!resources.has(resource)) return next();
 
       // ── PG path ──────────────────────────────────────────────────────────
@@ -319,6 +420,7 @@ export default function registerResourceRoutes(app) {
 
       // ── Legacy JSON path ──────────────────────────────────────────────────
       const incoming = req.body;
+
       const saved = await mutateDb((db) => {
         const rows = incoming.map((data) => ({
           id: id(resource.slice(0, -1) || "item"),
@@ -329,17 +431,23 @@ export default function registerResourceRoutes(app) {
           createdAt: now(),
           updatedAt: now(),
         }));
+
         db[resource].unshift(...rows);
-        db.audit.unshift(auditEntry({
-          action: `Imported ${rows.length} ${resource}`,
-          actor: req.user.name,
-          req,
-          resourceId: rows.map((row) => row.id).join(","),
-        }));
+
+        db.audit.unshift(
+          auditEntry({
+            action: `Imported ${rows.length} ${resource}`,
+            actor: req.user.name,
+            req,
+            resourceId: rows.map((row) => row.id).join(","),
+          }),
+        );
+
         return rows;
       });
-      broadcast("records.batch", { resource, count: saved.length });
+      broadcast("records.batch", { resource, count: saved.length }, req.user.workspaceId || "default");
       cacheFlush(resource);
+
       res.status(201).json(saved);
     },
   );
@@ -351,6 +459,7 @@ export default function registerResourceRoutes(app) {
     validate(ResourceSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
+
       if (!resources.has(resource)) return next();
 
       // ── PG path ──────────────────────────────────────────────────────────
@@ -375,17 +484,28 @@ export default function registerResourceRoutes(app) {
       // ── Legacy JSON path ──────────────────────────────────────────────────
       let previous = null;
       let revisionId = null;
+
       const item = await mutateDb((db) => {
-        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        const index = db[resource].findIndex(
+          (x) => x.id === req.params.id,
+        );
+
         if (index < 0) return null;
+
         previous = { ...db[resource][index] };
+
         const data = { ...req.body };
+
         db[resource][index] = {
           ...db[resource][index],
-          ...coerceBuiltIns(resource, coerceCustomFields(db, resource, data)),
+          ...coerceBuiltIns(
+            resource,
+            coerceCustomFields(db, resource, data),
+          ),
           id: db[resource][index].id,
           updatedAt: now(),
         };
+
         revisionId = recordRevision(
           db,
           resource,
@@ -393,21 +513,36 @@ export default function registerResourceRoutes(app) {
           db[resource][index],
           req.user,
         );
-        db.audit.unshift(auditEntry({
-          action: `Updated ${resource.slice(0, -1)}`,
-          actor: req.user.name,
-          req,
-          resourceId: req.params.id,
-        }));
+
+        db.audit.unshift(
+          auditEntry({
+            action: `Updated ${resource.slice(0, -1)}`,
+            actor: req.user.name,
+            req,
+            resourceId: req.params.id,
+          }),
+        );
+
         return db[resource][index];
       });
-      if (!item) return res.status(404).json({ error: "Record not found" });
+
+      if (!item) {
+        return res.status(404).json({
+          error: "Record not found",
+        });
+      }
+
       const event =
         eventFor(resource, previous, item) || updatedEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.updated", { resource, item, revisionId });
+      broadcast("record.updated", { resource, item, revisionId }, req.user.workspaceId || "default");
       cacheFlush(resource);
-      res.json(revisionId ? { ...item, revisionId } : item);
+
+      res.json(
+        revisionId
+          ? { ...item, revisionId }
+          : item,
+      );
     },
   );
 
@@ -417,6 +552,7 @@ export default function registerResourceRoutes(app) {
     requireRole("admin", "member"),
     async (req, res, next) => {
       const resource = req.params.resource;
+
       if (!resources.has(resource)) return next();
 
       // ── PG path ──────────────────────────────────────────────────────────
@@ -435,56 +571,96 @@ export default function registerResourceRoutes(app) {
 
       // ── Legacy JSON path ──────────────────────────────────────────────────
       const result = await mutateDb((db) => {
-        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        const index = db[resource].findIndex(
+          (x) => x.id === req.params.id,
+        );
+
         if (index < 0) return null;
+
         const [record] = db[resource].splice(index, 1);
         const files = [];
+
         if (resource === "calls") {
           db.activities = db.activities.filter(
             (item) => item.callId !== record.id,
           );
+
           const linked = db.recordings.filter(
             (item) => item.callId === record.id,
           );
-          files.push(...linked.map((item) => item.fileUrl).filter(Boolean));
+
+          files.push(
+            ...linked
+              .map((item) => item.fileUrl)
+              .filter(Boolean),
+          );
+
           db.recordings = db.recordings.filter(
             (item) => item.callId !== record.id,
           );
         }
+
         if (resource === "recordings") {
-          if (record.fileUrl) files.push(record.fileUrl);
+          if (record.fileUrl) {
+            files.push(record.fileUrl);
+          }
+
           if (record.callId) {
-            const call = db.calls.find((item) => item.id === record.callId);
-            if (call?.recordingId === record.id) delete call.recordingId;
+            const call = db.calls.find(
+              (item) => item.callId === record.id,
+            );
+
+            if (call?.recordingId === record.id) {
+              delete call.recordingId;
+            }
           }
         }
-        if (resource === "messages")
+
+        if (resource === "messages") {
           db.activities = db.activities.filter(
             (item) => item.messageId !== record.id,
           );
-        db.audit.unshift(auditEntry({
-          action: `Deleted ${resource.slice(0, -1)}`,
-          actor: req.user.name,
-          req,
-          resourceId: record.id,
-        }));
+        }
+
+        db.audit.unshift(
+          auditEntry({
+            action: `Deleted ${resource.slice(0, -1)}`,
+            actor: req.user.name,
+            req,
+            resourceId: record.id,
+          }),
+        );
+
         return { files };
       });
-      if (!result) return res.status(404).json({ error: "Record not found" });
+
+      if (!result) {
+        return res.status(404).json({
+          error: "Record not found",
+        });
+      }
+
       await Promise.all(
         result.files.map(async (fileUrl) => {
           const name = path.basename(String(fileUrl));
+
           if (!name) return;
+
           try {
             await fs.unlink(path.join(uploadDir, name));
           } catch (error) {
-            if (process.env.NODE_ENV !== "production")
-              console.warn("Failed to remove uploaded file", error.message);
+            if (process.env.NODE_ENV !== "production") {
+              console.warn(
+                "Failed to remove uploaded file",
+                error.message,
+              );
+            }
           }
         }),
       );
-      broadcast("record.deleted", { resource, id: req.params.id });
+      broadcast("record.deleted", { resource, id: req.params.id }, req.user.workspaceId || "default");
       cacheFlush(resource);
+
       res.json({ ok: true });
     },
   );

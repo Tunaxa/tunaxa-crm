@@ -116,14 +116,6 @@ export async function api<T>(
     }
     throw new Error("Request retry limit exceeded");
   };
-        await waitForRetry(attempt, response);
-      } catch (error) {
-        if (attempt === MAX_REQUEST_ATTEMPTS - 1) throw error;
-        await waitForRetry(attempt);
-      }
-    }
-    throw new Error("Request retry limit exceeded");
-  };
 
   let response = await requestWithRetry();
   let body = await response.json().catch(() => ({}));

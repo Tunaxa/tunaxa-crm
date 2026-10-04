@@ -68,7 +68,7 @@ export default function registerLeadScoringRoutes(app) {
       db.audit.unshift({ id: id('audit'), action: `Added lead scoring rule: ${rule.name}`, actor: req.user.name, createdAt: now() });
       return rule;
     });
-    broadcast('leadscoring.rules_changed');
+    broadcast('leadscoring.rules_changed', null, req.user.workspaceId || 'default');
     res.status(201).json(saved);
   });
 
@@ -141,7 +141,7 @@ export default function registerLeadScoringRoutes(app) {
       db.audit.unshift({ id: id('audit'), action: `Recalculated lead scores for ${updated} leads`, actor: req.user.name, createdAt: now() });
       return { updated, breakdown: { sql, mql, cold } };
     });
-    broadcast('leadscoring.recalculated', result);
+    broadcast('leadscoring.recalculated', result, req.user.workspaceId || 'default');
     res.json(result);
   });
 }
