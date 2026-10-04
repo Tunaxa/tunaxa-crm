@@ -2,7 +2,6 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { closePool } from '../db/pg.js';
 import { resetTestDb, seedTestUser, loginAs } from './setup.js';
-import { readDb } from '../store.js';
 
 let app, token;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -127,8 +126,9 @@ describe('Visual Workflow Builder (node-based branching)', () => {
     const lead = await request(app).post('/api/leads').set(auth()).send({ name: 'Big Buyer', email: 'bigbuyer@corp.com', value: 90000 });
     expect(lead.status).toBe(201);
     await sleep(80);
-    const db = await readDb();
-    const activity = db.activities.find(a => a.workflowId === workflowId && a.title === 'High value lead');
+    const res = await request(app).get('/api/activities').set(auth());
+    expect(res.status).toBe(200);
+    const activity = res.body.find(a => a.workflowId === workflowId && a.title === 'High value lead');
     expect(activity).toBeTruthy();
   });
 
@@ -136,8 +136,9 @@ describe('Visual Workflow Builder (node-based branching)', () => {
     const lead = await request(app).post('/api/leads').set(auth()).send({ name: 'Small Buyer', email: 'smallbuyer@corp.com', value: 100 });
     expect(lead.status).toBe(201);
     await sleep(80);
-    const db = await readDb();
-    const activity = db.activities.find(a => a.workflowId === workflowId && a.title === 'Low value lead');
+    const res = await request(app).get('/api/activities').set(auth());
+    expect(res.status).toBe(200);
+    const activity = res.body.find(a => a.workflowId === workflowId && a.title === 'Low value lead');
     expect(activity).toBeTruthy();
   });
 });
@@ -164,12 +165,14 @@ describe('Execution Queue', () => {
     const res = await request(app).post('/api/executions/process').set(auth());
     expect(res.status).toBe(200);
     expect(res.body.executed).toBeGreaterThanOrEqual(1);
-    const db = await readDb();
-    const task = db.tasks.find(t => t.title === 'Queued follow-up call');
+    // Queued task actions now land in Postgres, so read them back over the API
+    // rather than the legacy JSON snapshot.
+    const tasks = await request(app).get('/api/tasks').set(auth());
+    const task = tasks.body.find(t => t.title === 'Queued follow-up call');
     expect(task).toBeTruthy();
     expect(task.workflowId).toBe('');
-    const done = db.executionQueue.filter(i => i.status === 'done');
-    expect(done.length).toBeGreaterThanOrEqual(1);
+    const queued = await request(app).get('/api/executions').set(auth());
+    expect(queued.body.data.filter(i => i.status === 'done').length).toBeGreaterThanOrEqual(1);
   });
 
   it('workflow delay nodes schedule a queue item', async () => {
@@ -186,8 +189,8 @@ describe('Execution Queue', () => {
     await request(app).post(`/api/workflows/${res.body.id}/enable`).set(auth());
     await request(app).post('/api/leads').set(auth()).send({ name: 'Drip Lead', email: 'drip@corp.com' });
     await sleep(80);
-    const db = await readDb();
-    const queued = db.executionQueue.filter(i => i.flowId === res.body.id && i.action.title === 'Nurture follow-up');
+    const execs = await request(app).get('/api/executions').set(auth());
+    const queued = execs.body.data.filter(i => i.flowId === res.body.id && i.action.title === 'Nurture follow-up');
     expect(queued.length).toBe(1);
     expect(queued[0].dueAt).toBeTruthy();
   });

@@ -14,8 +14,19 @@ const SORT_COLUMNS = new Set([
   "domain",
   "industry",
   "size",
+  "employees",
 ]);
-const UPDATE_FIELDS = ["name", "domain", "industry", "size", "custom_fields"];
+const UPDATE_FIELDS = [
+  "name",
+  "domain",
+  "industry",
+  "website",
+  "country",
+  "size",
+  "employees",
+  "owner",
+  "custom_fields",
+];
 
 function validatePositiveInteger(value, name) {
   if (!Number.isInteger(value) || value <= 0) {
@@ -66,7 +77,7 @@ export async function findAll(params = {}) {
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
   const whereClause = searchTerm
-    ? "WHERE (name ILIKE $1 OR domain ILIKE $1 OR industry ILIKE $1)"
+    ? "WHERE (name ILIKE $1 OR domain ILIKE $1 OR industry ILIKE $1 OR website ILIKE $1 OR country ILIKE $1)"
     : "";
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
@@ -87,7 +98,7 @@ export async function findAll(params = {}) {
       : [normalizedLimit, offset],
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const result = {
+  return {
     data: dataResult.rows,
     total,
     page: normalizedPage,
@@ -106,19 +117,23 @@ export async function findById(id) {
 export async function create(data = {}) {
   const result = await query(
     `INSERT INTO companies (
-       workspace_id, name, domain, industry, size, custom_fields
-     ) VALUES ($1, $2, $3, $4, $5, $6)
+       workspace_id, name, domain, industry, website, country, size,
+       employees, owner, custom_fields
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       data.workspace_id,
       data.name,
       data.domain,
       data.industry,
+      data.website,
+      data.country,
       data.size,
+      data.employees,
+      data.owner,
       data.custom_fields ?? {},
     ],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 

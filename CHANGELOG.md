@@ -9,6 +9,7 @@ and this project adheres to Semantic Versioning.
 ### Added
 
 - Unified contact associations endpoint `GET /api/contacts/:id/associations` (`backend/routes/contacts.js`) that powers the 360° profile view: one authenticated, rate-limited call returns every related company, deal, task, and meeting for a contact, grouped as `{ companies, deals, tasks, meetings }`, and it responds `404` when the contact does not exist. Records that belong to a company are linked through the contact's `company` name; records that point at a person are linked through `contactId`, `contactIds`, `recordId`, `contact`, `contacts`, or `contactName` (holding an id, name, email, or phone), all matched case-insensitively. Meetings are activities with `type: "meeting"`. Every group is always present as an array, and the same per-field permission masking the generic resource routes apply is applied per group.
+- Docker Compose development environment with PostgreSQL 16, Redis 7, and Ollama, plus a tracked `.env.example` configuration template.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
 - A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
