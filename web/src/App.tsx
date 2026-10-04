@@ -1241,21 +1241,73 @@ function QuickCreate({ onClose }: { onClose: () => void }) {
     </Drawer>
   );
 }
-
 function GlobalSearch({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Row[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
   useEffect(() => {
-    const timer = window.setTimeout(
-      () =>
-        q.trim()
-          ? api<Row[]>(`/search?q=${encodeURIComponent(q)}`).then(setResults)
-          : setResults([]),
-      180,
-    );
+    const timer = window.setTimeout(() => {
+      if (!q.trim()) {
+        setResults([]);
+        setSelectedIndex(0);
+        return;
+      }
+
+      api<Row[]>(`/search?q=${encodeURIComponent(q)}`)
+        .then((data) => {
+          setResults(data);
+          setSelectedIndex(0);
+        })
+        .catch(() => {
+          setResults([]);
+          setSelectedIndex(0);
+        });
+    }, 180);
+
     return () => window.clearTimeout(timer);
   }, [q]);
+
+  const openResult = (item: Row) => {
+    navigate(item.route);
+    onClose();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      onClose();
+      return;
+    }
+
+    if (!results.length) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIndex((index) => (index + 1) % results.length);
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex(
+        (index) => (index - 1 + results.length) % results.length,
+      );
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      openResult(results[selectedIndex]);
+    }
+  };
+
+  const grouped = results.reduce<Record<string, Row[]>>((groups, item) => {
+    if (!groups[item.type]) groups[item.type] = [];
+    groups[item.type].push(item);
+    return groups;
+  }, {});
+
+  let resultIndex = 0;
+
   return (
     <div className="search-overlay" onMouseDown={onClose}>
       <div className="global-search" onMouseDown={(e) => e.stopPropagation()}>
@@ -1266,6 +1318,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             aria-label="Search workspace"
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Search leads, contacts, deals, tasks..."
           />
           <button
@@ -1276,6 +1329,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             <Icon name="close" />
           </button>
         </div>
+
         <div className="search-results">
           {!q ? (
             <Empty
@@ -1284,40 +1338,55 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
               text="Start typing to search stored CRM records."
             />
           ) : results.length ? (
-            results.map((item) => (
-              <button
-                key={`${item.type}-${item.id}`}
-                onClick={() => {
-                  navigate(item.route);
-                  onClose();
-                }}
-              >
-                <span>
-                  <Icon
-                    name={
-                      item.type === "Deal"
-                        ? "pipeline"
-                        : item.type === "Company"
-                          ? "companies"
-                          : item.type === "Contact"
-                            ? "contacts"
-                            : item.type === "Task"
-                              ? "tasks"
-                              : item.type === "Recording"
-                                ? "recording"
-                                : "lead"
-                    }
-                  />
-                </span>
-                <div>
-                  <b>{item.name}</b>
-                  <small>
-                    {item.type}
-                    {item.detail ? ` · ${item.detail}` : ""}
-                  </small>
+            Object.entries(grouped).map(([type, items]) => (
+              <div key={type}>
+                <div className="px-3 py-2 text-xs font-mono uppercase opacity-60">
+                  {type}
                 </div>
-                <Icon name="arrowRight" />
-              </button>
+
+                {items.map((item) => {
+                  const currentIndex = resultIndex++;
+
+                  return (
+                    <button
+                      key={`${item.type}-${item.id}`}
+                      className={
+                        currentIndex === selectedIndex ? "active" : ""
+                      }
+                      onMouseEnter={() => setSelectedIndex(currentIndex)}
+                      onClick={() => openResult(item)}
+                    >
+                      <span>
+                        <Icon
+                          name={
+                            item.type === "Deal"
+                              ? "pipeline"
+                              : item.type === "Company"
+                                ? "companies"
+                                : item.type === "Contact"
+                                  ? "contacts"
+                                  : item.type === "Task"
+                                    ? "tasks"
+                                    : item.type === "Recording"
+                                      ? "recording"
+                                      : "lead"
+                          }
+                        />
+                      </span>
+
+                      <div>
+                        <b>{item.name}</b>
+                        <small>
+                          {item.type}
+                          {item.detail ? ` · ${item.detail}` : ""}
+                        </small>
+                      </div>
+
+                      <Icon name="arrowRight" />
+                    </button>
+                  );
+                })}
+              </div>
             ))
           ) : (
             <Empty
@@ -1326,7 +1395,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
               text="No results found for your search."
             />
           )}
-        </div>git
+        </div>
       </div>
     </div>
   );
