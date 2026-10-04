@@ -4,7 +4,7 @@ import { EcosystemMenu } from "../components/layout/EcosystemMenu";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import i18n from "../i18n";
-
+import { api, json } from "../lib/api";
 export function Shell({
   children,
   renderQuickCreate,
@@ -23,7 +23,14 @@ export function Shell({
   const [theme, setTheme] = useState(document.documentElement.classList.contains("dark"));
   const [isEcosystemOpen, setIsEcosystemOpen] = useState(false);
 
-  useEffect(() => localStorage.setItem("tunaxa.sidebar", collapsed ? "1" : "0"), [collapsed]);
+  useEffect(() => {
+  localStorage.setItem("tunaxa.sidebar", collapsed ? "1" : "0");
+
+  api(
+    "/users/me/preferences",
+    json("PUT", { sidebarCollapsed: collapsed }),
+  ).catch(() => {});
+}, [collapsed]);
   useEffect(() => {
     setMobile(false);
     setProfile(false);
@@ -43,12 +50,17 @@ export function Shell({
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  function toggleTheme() {
-    const next = !theme;
-    setTheme(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
-  }
+ function toggleTheme() {
+  const next = !theme;
+  setTheme(next);
+  document.documentElement.classList.toggle("dark", next);
+  localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
+
+  api(
+    "/users/me/preferences",
+    json("PUT", { theme: next ? "dark" : "light" }),
+  ).catch(() => {});
+}
 
   function toggleLanguage() {
     const current = i18n.language || "en";
