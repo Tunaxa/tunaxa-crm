@@ -3,6 +3,8 @@ import { mutateDb } from '../store.js';
 import { isEmailConfigured, isTwilioConfigured } from './config.js';
 import { sendEmail } from './smtp.js';
 import { sendSms } from './twilio.js';
+import { repoFor } from '../db/repositories/index.js';
+import { legacyToPg } from '../db/legacy-shape.js';
 
 export function render(template, record) {
   return String(template ?? '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
@@ -13,13 +15,13 @@ export function render(template, record) {
 
 // Applies a single workflow action to the mutable db snapshot.
 // Returns an array of outbound messages (email/sms) that still need delivery.
-export function runAction(db, action, record, { resource, flowId = '', flowName = '' } = {}) {
+export async function runAction(db, action, record, { resource, flowId = '', flowName = '' } = {}) {
   const messages = [];
   if (!action || !action.type) return messages;
   const createdAt = now();
 
   if (action.type === 'task') {
-    db.tasks.unshift({
+    const task = {
       id: id('task'),
       title: render(action.title, record) || 'Workflow task',
       owner: render(action.owner, record),
@@ -30,12 +32,17 @@ export function runAction(db, action, record, { resource, flowId = '', flowName 
       workflowId: flowId,
       createdAt,
       updatedAt: createdAt
-    });
+    };
+    try {
+      await repoFor('tasks').create(legacyToPg(task, 'tasks'));
+    } catch (error) {
+      console.error('[workflow] Failed to persist task action', error);
+    }
     db.audit.unshift({ id: id('audit'), action: `Workflow "${flowName}" created a task`, actor: 'Workflow', createdAt });
   }
 
   if (action.type === 'activity') {
-    db.activities.unshift({
+    const activity = {
       id: id('activity'),
       title: render(action.title, record) || 'Workflow activity',
       type: action.subtype || action.type || 'Note',
@@ -46,7 +53,12 @@ export function runAction(db, action, record, { resource, flowId = '', flowName 
       workflowId: flowId,
       createdAt,
       updatedAt: createdAt
-    });
+    };
+    try {
+      await repoFor('activities').create(legacyToPg(activity, 'activities'));
+    } catch (error) {
+      console.error('[workflow] Failed to persist activity action', error);
+    }
     db.audit.unshift({ id: id('audit'), action: `Workflow "${flowName}" logged an activity`, actor: 'Workflow', createdAt });
   }
 
