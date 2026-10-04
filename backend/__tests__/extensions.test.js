@@ -90,7 +90,7 @@ describe('Duplicate management', () => {
     expect(list.body.filter(c => c.email === 'jane@test.com').length).toBe(1);
   });
 
-  it('returns confidence for fuzzy company name matches', async () => {
+  it('groups fuzzy company name matches', async () => {
     await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Acme Corporation' });
     await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Acme Corporaton' });
 

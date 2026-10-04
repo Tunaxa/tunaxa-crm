@@ -13,13 +13,18 @@ const SORT_COLUMNS = new Set([
   "title",
   "value",
   "stage",
+  "company",
   "expected_close_date",
 ]);
 const UPDATE_FIELDS = [
-  "contact_id",
-  "company_id",
-  "owner_id",
   "title",
+  "company",
+  "company_id",
+  "contact",
+  "contact_id",
+  "pipeline_id",
+  "owner",
+  "owner_id",
   "value",
   "stage",
   "expected_close_date",
@@ -74,13 +79,30 @@ export async function findAll(params = {}) {
   const offset = (normalizedPage - 1) * normalizedLimit;
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
-  const whereClause = searchTerm
-    ? "WHERE (title ILIKE $1 OR stage ILIKE $1)"
-    : "";
+  // The pipeline board groups on an exact stage label, so match it exactly
+  // rather than fuzzily the way `q` does.
+  const stageFilter = String(stage || "").trim().toLowerCase();
+  const conditions = [];
+  const params = [];
+  if (searchTerm) {
+    params.push(searchTerm);
+    const p = `$${params.length}`;
+    conditions.push(
+      `(title ILIKE ${p} OR company ILIKE ${p} OR stage ILIKE ${p})`,
+    );
+  }
+  if (stageFilter) {
+    params.push(stageFilter);
+    conditions.push(`LOWER(COALESCE(stage, '')) = $${params.length}`);
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
      FROM deals
      ${whereClause}`,
+    [...params],
+  );
+  const params2 = [...params, normalizedLimit, offset];
     searchTerm ? [searchTerm] : [],
   );
   const limitParameter = searchTerm ? 2 : 1;
@@ -90,13 +112,11 @@ export async function findAll(params = {}) {
      FROM deals
      ${whereClause}
      ORDER BY ${column} ${direction}
-     LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
-    searchTerm
-      ? [searchTerm, normalizedLimit, offset]
-      : [normalizedLimit, offset],
+     LIMIT $${params2.length - 1} OFFSET $${params2.length}`,
+    params2,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const result = {
+  return {
     data: dataResult.rows,
     total,
     page: normalizedPage,
@@ -115,16 +135,21 @@ export async function findById(id) {
 export async function create(data = {}) {
   const result = await query(
     `INSERT INTO deals (
-       workspace_id, contact_id, company_id, owner_id, title, value, stage,
-       expected_close_date, custom_fields
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       workspace_id, title, company, company_id, contact, contact_id,
+       pipeline_id, owner, owner_id, value, stage, expected_close_date,
+       custom_fields
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING *`,
     [
       data.workspace_id,
-      data.contact_id,
-      data.company_id,
-      data.owner_id,
       data.title,
+      data.company,
+      data.company_id,
+      data.contact,
+      data.contact_id,
+      data.pipeline_id,
+      data.owner,
+      data.owner_id,
       data.value,
       data.stage,
       data.expected_close_date,

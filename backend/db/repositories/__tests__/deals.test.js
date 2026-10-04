@@ -67,7 +67,7 @@ describe("deals repository", () => {
     expect(pg.query.mock.calls[1][1]).toEqual([100, 200]);
   });
 
-  it("searches deal title and stage with parameterized ILIKE", async () => {
+  it("searches deal title, company and stage with a parameterized ILIKE", async () => {
     setFindAllResult(1, [{ id: "deal-1" }]);
 
     await findAll({ q: "proposal" });
@@ -75,10 +75,49 @@ describe("deals repository", () => {
     const [countSql, countParams] = pg.query.mock.calls[0];
     const [dataSql, dataParams] = pg.query.mock.calls[1];
     expect(countSql).toContain("title ILIKE $1");
+    expect(countSql).toContain("company ILIKE $1");
     expect(countSql).toContain("stage ILIKE $1");
     expect(countParams).toEqual(["%proposal%"]);
     expect(dataSql).toContain("LIMIT $2 OFFSET $3");
     expect(dataParams).toEqual(["%proposal%", 20, 0]);
+  });
+
+  it("filters on an exact stage label for the pipeline board", async () => {
+    setFindAllResult(1, [{ id: "deal-1" }]);
+
+    await findAll({ stage: "Proposal" });
+
+    const [countSql, countParams] = pg.query.mock.calls[0];
+    const [dataSql, dataParams] = pg.query.mock.calls[1];
+    expect(countSql).toContain("LOWER(COALESCE(stage, '')) = $1");
+    // The SQL compares LOWER(stage), so the bound parameter is folded to match.
+    expect(countParams).toEqual(["proposal"]);
+    expect(dataSql).toContain("LIMIT $2 OFFSET $3");
+    expect(dataParams).toEqual(["proposal", 20, 0]);
+  });
+
+  it("combines search and stage filters with independent parameters", async () => {
+    setFindAllResult(1, [{ id: "deal-1" }]);
+
+    await findAll({ q: "acme", stage: "won" });
+
+    const [countSql, countParams] = pg.query.mock.calls[0];
+    const [dataSql, dataParams] = pg.query.mock.calls[1];
+    expect(countSql).toContain("title ILIKE $1");
+    expect(countSql).toContain("LOWER(COALESCE(stage, '')) = $2");
+    expect(countSql).toContain("AND");
+    expect(countParams).toEqual(["%acme%", "won"]);
+    expect(dataSql).toContain("LIMIT $3 OFFSET $4");
+    expect(dataParams).toEqual(["%acme%", "won", 20, 0]);
+  });
+
+  it("ignores a blank stage filter", async () => {
+    setFindAllResult(0);
+
+    await findAll({ stage: "  " });
+
+    expect(pg.query.mock.calls[0][0]).not.toContain("COALESCE(stage");
+    expect(pg.query.mock.calls[0][1]).toEqual([]);
   });
 
   it("allows every whitelisted deal sort and rejects malformed sorts", async () => {
@@ -88,6 +127,7 @@ describe("deals repository", () => {
       "title",
       "value",
       "stage",
+      "company",
       "expected_close_date",
     ];
     for (const column of sortColumns) {
@@ -121,13 +161,17 @@ describe("deals repository", () => {
   it("creates a deal with parameterized fields", async () => {
     const data = {
       workspace_id: "workspace-1",
-      contact_id: "contact-1",
-      company_id: "company-1",
-      owner_id: "user-1",
       title: "Expansion",
+      company: "Acme",
+      company_id: "company-1",
+      contact: "Ada Lovelace",
+      contact_id: "contact-1",
+      pipeline_id: "pipeline-1",
+      owner: "Test User",
+      owner_id: "user-1",
       value: 1250.5,
       stage: "Proposal",
-      expected_close_date: "2026-12-31",
+      expected_close_date: "2026-12-31T00:00:00.000Z",
       custom_fields: { priority: "high" },
     };
     const record = { id: "deal-1", ...data };
@@ -137,17 +181,30 @@ describe("deals repository", () => {
     const [sql, params] = pg.query.mock.calls[0];
     expect(sql).toContain("INSERT INTO deals");
     expect(sql).toContain("RETURNING *");
+    expect(sql).toContain("$13");
     expect(params).toEqual([
       data.workspace_id,
-      data.contact_id,
-      data.company_id,
-      data.owner_id,
       data.title,
+      data.company,
+      data.company_id,
+      data.contact,
+      data.contact_id,
+      data.pipeline_id,
+      data.owner,
+      data.owner_id,
       data.value,
       data.stage,
       data.expected_close_date,
       data.custom_fields,
     ]);
+  });
+
+  it("passes the deal value through uncoerced so DOUBLE PRECISION stays a number", async () => {
+    pg.query.mockResolvedValueOnce({ rows: [] });
+
+    await create({ title: "Big Deal", value: 12345.5, stage: "new" });
+
+    expect(pg.query.mock.calls[0][1][9]).toBe(12345.5);
   });
 
   it("updates only whitelisted deal fields and appends the id", async () => {
@@ -157,17 +214,18 @@ describe("deals repository", () => {
     const result = await update("deal-1", {
       stage: "Won",
       value: 2000,
+      pipeline_id: "pipeline-2",
       workspace_id: "ignored",
       unknown: "ignored",
     });
 
     expect(result).toBe(record);
     const [sql, params] = pg.query.mock.calls[0];
-    expect(sql).toContain("value = $1, stage = $2");
-    expect(sql).toContain("WHERE id = $3");
+    expect(sql).toContain("pipeline_id = $1, value = $2, stage = $3");
+    expect(sql).toContain("WHERE id = $4");
     expect(sql).not.toContain("workspace_id = $");
     expect(sql).not.toContain("unknown = $");
-    expect(params).toEqual([2000, "Won", "deal-1"]);
+    expect(params).toEqual(["pipeline-2", 2000, "Won", "deal-1"]);
   });
 
   it("returns null for empty or non-matching updates", async () => {
@@ -191,15 +249,12 @@ describe("deals repository", () => {
   });
 
   it("returns a workspace-scoped pipeline summary grouped by stage", async () => {
-    const rows = [
-      { stage: "new", count: 2, total_value: "1500.00" },
-      { stage: "won", count: 1, total_value: "3000.00" },
-    ];
+    const rows = [{ stage: "new", count: 2, total_value: 1500 }];
     pg.query.mockResolvedValueOnce({ rows });
 
-    await expect(getPipelineSummary({ workspace_id: "workspace-1" })).resolves.toEqual(
-      rows,
-    );
+    await expect(
+      getPipelineSummary({ workspace_id: "workspace-1" }),
+    ).resolves.toEqual(rows);
     const [sql, params] = pg.query.mock.calls[0];
     expect(sql).toContain("COUNT(*)::int AS count");
     expect(sql).toContain("COALESCE(SUM(value), 0) AS total_value");

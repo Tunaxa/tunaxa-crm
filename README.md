@@ -80,7 +80,7 @@ The backend uses PostgreSQL connection settings from environment variables, with
 - Port: `5432`
 - Database: `tunaxa`
 - User: `postgres`
-- Password: `password`
+- Password: `tunaxa2024`
 
 If you want to override these values, define environment variables such as:
 
@@ -89,7 +89,7 @@ export PGHOST=127.0.0.1
 export PGPORT=5432
 export PGDATABASE=tunaxa
 export PGUSER=postgres
-export PGPASSWORD=password
+export PGPASSWORD=tunaxa2024
 ```
 
 For Redis-backed services, set:
@@ -118,7 +118,7 @@ npm start
 
 This launches:
 
-- the backend on `http://127.0.0.1:3001`
+- the backend on `http://127.0.0.1:3000`
 - the frontend on `http://127.0.0.1:5173` by default
 
 ### Run backend only

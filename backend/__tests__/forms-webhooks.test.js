@@ -7,6 +7,19 @@ import { mutateDb } from '../store.js';
 let app;
 let token;
 
+// Workflow actions persist to Postgres from an async continuation, and
+// triggerWorkflows is deliberately fire-and-forget, so the write can land just
+// after the request that caused it returns. Poll briefly instead of assuming it
+// is already visible.
+async function waitForActivities(match) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const res = await request(app).get('/api/activities').set('Authorization', `Bearer ${token}`);
+    if (res.status === 200 && res.body.some(match)) return true;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return false;
+}
+
 beforeAll(async () => {
   await resetTestDb();
   const mod = await import('../server.js');
@@ -183,7 +196,6 @@ describe('Webhook-triggered workflow execution', () => {
     const hit = await request(app).post('/api/hooks/whk_test_endpoint').send({ foo: 'bar' });
     expect(hit.status).toBe(200);
 
-    const activities = await request(app).get('/api/activities').set('Authorization', `Bearer ${token}`);
-    expect(activities.body.some(a => a.title === 'Got webhook')).toBe(true);
+    expect(await waitForActivities(a => a.title === 'Got webhook')).toBe(true);
   });
 });
