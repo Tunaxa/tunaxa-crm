@@ -17,6 +17,7 @@ and this project adheres to Semantic Versioning.
 - **Repository Registry Integration:** Registered all six revenue repositories in `backend/db/repositories/index.js` and `repoFor()`.
 - **Data Migration Script:** Added `scripts/migrate-revenue-to-pg.js` for idempotent batch backfilling from `readDb()` into PostgreSQL. All six source arrays in `backend/data/db.json` are currently empty, so it currently migrates 0 rows; it is safe to re-run once data exists.
 - **Unit & Integration Tests:** Added repository unit test suites under `backend/db/repositories/__tests__/` and updated test database truncation in `backend/__tests__/setup.js`.
+- Unified contact associations endpoint `GET /api/contacts/:id/associations` (`backend/routes/contacts.js`) that powers the 360° profile view: one authenticated, rate-limited call returns every related company, deal, task, and meeting for a contact, grouped as `{ companies, deals, tasks, meetings }`, and it responds `404` when the contact does not exist. Records that belong to a company are linked through the contact's `company` name; records that point at a person are linked through `contactId`, `contactIds`, `recordId`, `contact`, `contacts`, or `contactName` (holding an id, name, email, or phone), all matched case-insensitively. Meetings are activities with `type: "meeting"`. Every group is always present as an array, and the same per-field permission masking the generic resource routes apply is applied per group.
 - Docker Compose development environment with PostgreSQL 16, Redis 7, and Ollama, plus a tracked `.env.example` configuration template.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
 - Pipeline: added total and weighted pipeline value summary
@@ -56,6 +57,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- `PATCH /api/:resource/:id` now exists and performs a true partial update instead of returning `404`. The payload is merged over the stored record rather than replacing it, so inline editing that sends only the changed fields (for example `{ phone: "555-0199" }`) leaves every other field untouched; only `updatedAt` is refreshed. `id` and `createdAt` are stripped from incoming payloads, so `PUT` can no longer rewind `createdAt` either. This also repairs the frontend's mark-message-as-read call, which was failing silently behind a swallowed `.catch()`. `PUT` and `PATCH` now share one handler, so audit entries, revisions, workflow events, SSE broadcasts, and cache flushes are identical for both.
 - Rate-limit buckets now use Redis `INCR`/`EXPIRE` when Redis is connected, with the existing in-memory fallback retained when it is unavailable.
 - Added `POST /api/auth/refresh` with 30-day session token rotation, invalidating the previous token after each successful refresh.
 - Added Helmet security headers, including `X-Frame-Options: DENY`, a permissive Content Security Policy, and Strict-Transport-Security.

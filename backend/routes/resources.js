@@ -98,6 +98,11 @@ async function pgFindAll(resource, query = {}) {
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
 
+// Fields the client may never set when updating a record: the stored values
+// always win. Stripped from the payload rather than re-pinned after the merge,
+// so there is a single mechanism to reason about.
+const IMMUTABLE_FIELDS = ["id", "createdAt"];
+
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
     if (!resources.has(req.params.resource) || !req.user) return next();
@@ -452,16 +457,16 @@ export default function registerResourceRoutes(app) {
     },
   );
 
-  app.put(
-    "/api/:resource/:id",
-    auth,
-    requireRole("admin", "member"),
-    validate(ResourceSchema),
-    async (req, res, next) => {
-      const resource = req.params.resource;
+  // PUT and PATCH are the same operation in this store. The payload is merged
+  // over the stored record rather than replacing it, so a client that sends only
+  // the fields it changed (inline editing) leaves every other field untouched.
+  const updateRecord = async (req, res, next) => {
+    const resource = req.params.resource;
 
-      if (!resources.has(resource)) return next();
+    if (!resources.has(resource)) return next();
 
+    let previous = null;
+    let revisionId = null;
       // ── PG path ──────────────────────────────────────────────────────────
       if (PG_RESOURCES.has(resource)) {
         const repo = repoFor(resource);
@@ -485,65 +490,81 @@ export default function registerResourceRoutes(app) {
       let previous = null;
       let revisionId = null;
 
-      const item = await mutateDb((db) => {
-        const index = db[resource].findIndex(
-          (x) => x.id === req.params.id,
-        );
-
-        if (index < 0) return null;
-
-        previous = { ...db[resource][index] };
-
-        const data = { ...req.body };
-
-        db[resource][index] = {
-          ...db[resource][index],
-          ...coerceBuiltIns(
-            resource,
-            coerceCustomFields(db, resource, data),
-          ),
-          id: db[resource][index].id,
-          updatedAt: now(),
-        };
-
-        revisionId = recordRevision(
-          db,
-          resource,
-          previous,
-          db[resource][index],
-          req.user,
-        );
-
-        db.audit.unshift(
-          auditEntry({
-            action: `Updated ${resource.slice(0, -1)}`,
-            actor: req.user.name,
-            req,
-            resourceId: req.params.id,
-          }),
-        );
-
-        return db[resource][index];
-      });
-
-      if (!item) {
-        return res.status(404).json({
-          error: "Record not found",
-        });
-      }
-
-      const event =
-        eventFor(resource, previous, item) || updatedEvent(resource);
-      if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.updated", { resource, item, revisionId }, req.user.workspaceId || "default");
-      cacheFlush(resource);
-
-      res.json(
-        revisionId
-          ? { ...item, revisionId }
-          : item,
+    const item = await mutateDb((db) => {
+      const index = db[resource].findIndex(
+        (x) => x.id === req.params.id,
       );
-    },
+
+      if (index < 0) return null;
+
+      previous = { ...db[resource][index] };
+
+      const data = { ...req.body };
+
+      for (const field of IMMUTABLE_FIELDS) delete data[field];
+
+      db[resource][index] = {
+        ...db[resource][index],
+        ...coerceBuiltIns(
+          resource,
+          coerceCustomFields(db, resource, data),
+        ),
+        updatedAt: now(),
+      };
+
+      revisionId = recordRevision(
+        db,
+        resource,
+        previous,
+        db[resource][index],
+        req.user,
+      );
+
+      db.audit.unshift(
+        auditEntry({
+          action: `Updated ${resource.slice(0, -1)}`,
+          actor: req.user.name,
+          req,
+          resourceId: req.params.id,
+        }),
+      );
+
+      return db[resource][index];
+    });
+
+    if (!item) {
+      return res.status(404).json({
+        error: "Record not found",
+      });
+    }
+
+    const event =
+      eventFor(resource, previous, item) || updatedEvent(resource);
+    if (event) triggerWorkflows(resource, event, item);
+    broadcast("record.updated", { resource, item, revisionId }, req.user.workspaceId || "default");
+    cacheFlush(resource);
+
+    res.json(
+      revisionId
+        ? { ...item, revisionId }
+        : item,
+    );
+  };
+
+  app.put(
+    "/api/:resource/:id",
+    auth,
+    requireRole("admin", "member"),
+    validate(ResourceSchema),
+    updateRecord,
+  );
+
+  app.patch(
+    "/api/:resource/:id",
+    auth,
+    requireRole("admin", "member"),
+    validate(ResourceSchema),
+    updateRecord,
   );
 
   app.delete(
