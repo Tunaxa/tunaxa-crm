@@ -1,4 +1,12 @@
 import { query } from "../pg.js";
+import {
+  cacheFlush,
+  cacheGet,
+  cacheSet,
+  hashParams,
+} from "../../services/cache.js";
+
+const RESOURCE = "activities";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -148,6 +156,10 @@ export async function findAll({
     [...params],
   );
   const dataParams = [...params, normalizedLimit, offset];
+    searchTerm ? [searchTerm] : [],
+  );
+  const limitParameter = searchTerm ? 2 : 1;
+  const offsetParameter = searchTerm ? 3 : 2;
   const dataResult = await query(
     `SELECT *
      FROM activities
@@ -164,6 +176,8 @@ export async function findAll({
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
+  await cacheSet(cacheKey, result, 60);
+  return result;
 }
 
 export async function findById(id) {
@@ -221,6 +235,7 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
@@ -229,6 +244,7 @@ async function remove(id) {
     "DELETE FROM activities WHERE id = $1 RETURNING id",
     [id],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rowCount > 0;
 }
 

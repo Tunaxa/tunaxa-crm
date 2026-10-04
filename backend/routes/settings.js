@@ -149,7 +149,7 @@ export default function registerSettingsRoutes(app) {
       resetEmailTransporter();
       resetSmtpTransporter();
       cacheFlush();
-      broadcast("settings.updated", { by: req.user.name });
+      broadcast("settings.updated", { by: req.user.name }, req.user.workspaceId || "default");
       res.json(saved);
     },
   );
