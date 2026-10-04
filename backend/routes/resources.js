@@ -457,6 +457,15 @@ export default function registerResourceRoutes(app) {
     },
   );
 
+  app.put(
+    "/api/:resource/:id",
+    auth,
+    requireRole("admin", "member"),
+    validate(ResourceSchema),
+    async (req, res, next) => {
+      const resource = req.params.resource;
+      if (!resources.has(resource)) return next();
+
   // PUT and PATCH are the same operation in this store. The payload is merged
   // over the stored record rather than replacing it, so a client that sends only
   // the fields it changed (inline editing) leaves every other field untouched.

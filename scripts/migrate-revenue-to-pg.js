@@ -221,6 +221,16 @@ function buildRow(entity, record, config) {
   return row;
 }
 
+/**
+ * Insert-only columns, appended after the mapped ones.
+ *
+ * created_at/updated_at are listed here rather than left to the column
+ * defaults: a backfill that stamps every historical record with NOW() destroys
+ * the only record of when the data was actually captured. main() populates
+ * both from the legacy record's createdAt/updatedAt.
+ */
+const TIMESTAMP_COLUMNS = ["created_at", "updated_at"];
+
 function updateSet(config) {
   const set = ["workspace_id = EXCLUDED.workspace_id", "custom_fields = EXCLUDED.custom_fields"];
   // Several legacy keys can alias to one column (title/name, total/amount, ...).
@@ -241,7 +251,7 @@ async function upsert(client, table, config, rows) {
   if (config.items) columns.push("items");
   columns.push("workspace_id", "custom_fields");
 
-  const insertColumns = ["id", ...columns.slice(1)];
+  const insertColumns = ["id", ...columns.slice(1), ...TIMESTAMP_COLUMNS];
   const placeholders = insertColumns.map((_, i) => `$${i + 1}`).join(", ");
   const sql =
     `INSERT INTO ${table} (${insertColumns.join(", ")}) VALUES (${placeholders}) ` +
@@ -253,6 +263,8 @@ async function upsert(client, table, config, rows) {
       if (column === "id" || column === "workspace_id") continue;
       record[column] = row[column] === undefined ? null : row[column];
     }
+    record.created_at = row.created_at;
+    record.updated_at = row.updated_at;
     record.custom_fields = JSON.stringify(row.custom_fields || {});
     if (config.items) record.items = JSON.stringify(row.items || []);
     await client.query(sql, insertColumns.map((c) => record[c] ?? null));
