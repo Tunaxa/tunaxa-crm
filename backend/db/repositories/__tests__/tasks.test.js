@@ -240,6 +240,7 @@ describe("tasks repository", () => {
     expect(sql).not.toContain("workspace_id = $");
     expect(sql).not.toContain("unknown = $");
     expect(params).toEqual(["Completed", true, "user-2", "task-1"]);
+    expect(sql).toContain("description = $1, status = $2");
   });
 
   it("returns null for empty or non-matching updates", async () => {

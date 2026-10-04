@@ -27,7 +27,7 @@ function crud(resource, singular, payload) {
     it('GET lists records', async () => {
       const res = await request(app).get(`/api/${resource}`).set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
-      expect(res.body.length).toBeGreaterThanOrEqual(1);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
     });
     it('PUT updates a record', async () => {
       const res = await request(app).put(`/api/${resource}/${id}`).set('Authorization', `Bearer ${token}`).send({ status: payload.status === 'Draft' || payload.status === 'Planned' ? (payload.status === 'Planned' ? 'Completed' : 'Sent') : 'Active' });
@@ -96,6 +96,8 @@ describe('Duplicate management', () => {
     const find = await request(app).get('/api/duplicates?resource=companies').set('Authorization', `Bearer ${token}`);
     const group = find.body.duplicates.find(g => g.names.includes('Acme Corporation'));
     expect(group).toBeTruthy();
+    expect(group.confidence).toBeGreaterThan(80);
+    expect(group.confidence).toBeLessThan(100);
   });
 
   it('detects fuzzy-near-match duplicates for companies and scores them below 1', async () => {

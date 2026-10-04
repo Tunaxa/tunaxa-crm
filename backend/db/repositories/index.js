@@ -14,7 +14,6 @@ import * as tasks from "./tasks.js";
 import * as activities from "./activities.js";
 import * as products from "./products.js";
 import * as quotes from "./quotes.js";
-import * as contracts from "./contracts.js";
 import * as orders from "./orders.js";
 import * as invoices from "./invoices.js";
 import * as expenses from "./expenses.js";
@@ -28,7 +27,6 @@ export const repositories = {
   activities,
   products,
   quotes,
-  contracts,
   orders,
   invoices,
   expenses,
