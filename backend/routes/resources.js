@@ -79,12 +79,19 @@ async function pgFindAll(resource, query = {}) {
   if (query.sortBy) filters.sortBy = query.sortBy;
 
   const hasPaging = query.page !== undefined || query.limit !== undefined;
-  if (hasPaging) {
-    filters.page = Number(query.page) || 1;
-    filters.limit = Number(query.limit) || 20;
-    const result = await repo.findAll(filters);
-    return result.data.map((row) => pgToLegacy(row, resource));
-  }
+ if (hasPaging) {
+  filters.page = Number(query.page) || 1;
+  filters.limit = Number(query.limit) || 20;
+  const result = await repo.findAll(filters);
+
+  return {
+    data: result.data.map((row) => pgToLegacy(row, resource)),
+    total: result.total,
+    page: result.page,
+    limit: result.limit,
+    totalPages: result.totalPages,
+  };
+}
 
   const rows = [];
   for (let page = 1; page <= MAX_PG_PAGES; page++) {
@@ -204,37 +211,22 @@ export default function registerResourceRoutes(app) {
       );
     }
 
-    // AXA-128: pagination for messages
-    if (req.params.resource === "messages") {
-      const total = rows.length;
-      const paginatedRows = rows.slice(start, start + limit);
+       const total = rows.length;
+    const paginatedRows = rows.slice(start, start + limit);
 
-      return res.json({
-        items: paginatedRows,
-        total,
-        page,
-        limit,
-        hasMore: start + limit < total,
-      });
-    }
-
-    res.json(rows);
-  });
-
+    return res.json({
+      data: paginatedRows,
+      total,
+      page,
+      limit,
+      hasMore: start + limit < total,
+    });
+ });
 
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
     const db = req.db || (await readDb());
-
-    const rows = (db[req.params.resource] || []).map((item) =>
-      req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
-    );
-
-    const columns = [
-      ...new Set(rows.flatMap((row) => Object.keys(row))),
-    ];
-
     const cell = (value) => {
       const text =
         value == null
@@ -247,10 +239,9 @@ export default function registerResourceRoutes(app) {
     };
 
     let rows;
+
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
-        // Already legacy-shaped by the time it gets here, so the header keeps
-        // the same camelCase names the JSON-backed exports have always used.
         rows = await pgFindAll(req.params.resource, {});
       } catch (err) {
         return next(err);
@@ -263,12 +254,19 @@ export default function registerResourceRoutes(app) {
     }
 
     const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
-    // buildCsvRow indexes by column name, so the header is the same shape with
-    // each column named after itself.
-    const header = Object.fromEntries(columns.map((column) => [column, column]));
+
+    const header = Object.fromEntries(
+      columns.map((column) => [column, column]),
+    );
+
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${req.params.resource}.csv"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${req.params.resource}.csv"`,
+    );
+
     res.write(`${buildCsvRow(columns, header)}\r\n`);
+
     for (const row of rows) {
       res.write(`${buildCsvRow(columns, row)}\r\n`);
     }
@@ -487,8 +485,7 @@ export default function registerResourceRoutes(app) {
       }
 
       // ── Legacy JSON path ──────────────────────────────────────────────────
-      let previous = null;
-      let revisionId = null;
+
 
     const item = await mutateDb((db) => {
       const index = db[resource].findIndex(

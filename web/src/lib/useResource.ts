@@ -8,6 +8,7 @@ type ResourceOptions = {
   sortBy?: string;
   sortDir?: "asc" | "desc";
   q?: string;
+  filters?: Record<string, string | number | boolean | undefined>;
 };
 
 type ResourceResponse<T> = {
@@ -30,17 +31,24 @@ export function useResource<T extends { id: string }>(
   const sortBy = options.sortBy || "createdAt";
   const sortDir = options.sortDir || "desc";
   const q = options.q || "";
-
+  const filters = options.filters;
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        page: String(page),
-        limit: String(limit),
-        sortBy,
-        sortDir,
-      });
-      if (q) params.set("q", q);
+  page: String(page),
+  limit: String(limit),
+  sortBy,
+  sortDir,
+});
+
+if (q) params.set("q", q);
+
+Object.entries(filters ?? {}).forEach(([key, value]) => {
+  if (value !== undefined && value !== "") {
+    params.set(key, String(value));
+  }
+});
       const result = await api<ResourceResponse<T>>(`/${resource}?${params}`);
       setItems(result.data);
       setTotal(result.total);
@@ -49,7 +57,7 @@ export function useResource<T extends { id: string }>(
     } finally {
       setLoading(false);
     }
-  }, [limit, page, q, resource, sortBy, sortDir]);
+}, [filters, limit, page, q, resource, sortBy, sortDir]);
 
   useEffect(() => {
     load();

@@ -1839,14 +1839,18 @@ function CrudTablePage({
     onSave: (data: Record<string, any>) => Promise<void>;
   }) => ReactNode;
 }) {
-  const { items, loading, load, create, update, remove } =
-    useResource<Row>(resource);
-  const { toast } = useApp();
+    const { toast } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-const [pageSize, setPageSize] = useState(getPageSize());
-const [page, setPage] = useState(1);
-const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const [pageSize, setPageSize] = useState(getPageSize());
+  const [page, setPage] = useState(1);
+  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const { items, loading, load, create, update, remove, total } =
+    useResource<Row>(resource, {
+      page,
+      limit: pageSize,
+      q: query,
+    });
   const inputRef = useRef<HTMLInputElement>(null);
   const cols = columns || fields;
   const mCols = new Set(moneyColumn || cols.map((c) => c.key));
@@ -1872,17 +1876,8 @@ const [edit, setEdit] = useState<Row | null | undefined>(undefined);
             value === "Terminated"
           ? "red"
           : "blue");
-const filteredRows = items.filter(
-  (row) =>
-    !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
-);
-
-const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-
-const rows = filteredRows.slice(
-  (page - 1) * pageSize,
-  page * pageSize,
-);
+const totalPages = Math.max(1, Math.ceil(total / pageSize));
+const rows = items;
 useEffect(() => {
   setPage(1);
 }, [query, pageSize, resource]);
