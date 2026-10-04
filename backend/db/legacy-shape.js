@@ -21,6 +21,12 @@ export const PG_RESOURCES = new Set([
   "deals",
   "tasks",
   "activities",
+  "products",
+  "quotes",
+  "contracts",
+  "orders",
+  "invoices",
+  "expenses",
 ]);
 
 /**
@@ -176,6 +182,255 @@ const RESOURCE_MAPPINGS = {
     // alongside the `description` column it is stored in.
     extraLegacy: { description: "notes" },
   },
+  products: {
+    columns: [
+      "workspace_id",
+      "name",
+      "sku",
+      "description",
+      "price",
+      "cost",
+      "category",
+      "active",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    // `stock` and `minStock` have no column (the low-stock report in
+    // routes/modules.js reads them off the record), so they ride in the
+    // custom_fields bag and come back out under their original names.
+  },
+  quotes: {
+    columns: [
+      "workspace_id",
+      "title",
+      "quote_number",
+      "deal_id",
+      "company_id",
+      "contact_id",
+      "status",
+      "subtotal",
+      "discount",
+      "tax",
+      "total",
+      "expiration_date",
+      "items",
+      "notes",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      name: "title",
+      subject: "title",
+      quoteNumber: "quote_number",
+      // The portal seeds quotes with a bare `number`; treating it as the quote
+      // number keeps those records addressable.
+      number: "quote_number",
+      dealId: "deal_id",
+      companyId: "company_id",
+      contactId: "contact_id",
+      expiresAt: "expiration_date",
+      expirationDate: "expiration_date",
+      lineItems: "items",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      quote_number: "quoteNumber",
+      deal_id: "dealId",
+      company_id: "companyId",
+      contact_id: "contactId",
+      expiration_date: "expirationDate",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    extraLegacy: { title: "name" },
+    titleFallbacks: ["name", "subject", "quoteNumber", "number", "customerEmail", "email"],
+  },
+  contracts: {
+    columns: [
+      "workspace_id",
+      "title",
+      "contract_number",
+      "deal_id",
+      "company_id",
+      "contact_id",
+      "quote_id",
+      "status",
+      "value",
+      "start_date",
+      "end_date",
+      "terms",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      name: "title",
+      subject: "title",
+      contractNumber: "contract_number",
+      number: "contract_number",
+      dealId: "deal_id",
+      companyId: "company_id",
+      contactId: "contact_id",
+      quoteId: "quote_id",
+      startDate: "start_date",
+      endDate: "end_date",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      contract_number: "contractNumber",
+      deal_id: "dealId",
+      company_id: "companyId",
+      contact_id: "contactId",
+      quote_id: "quoteId",
+      start_date: "startDate",
+      end_date: "endDate",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    extraLegacy: { title: "name" },
+    titleFallbacks: ["name", "subject", "contractNumber", "number", "customerEmail", "email"],
+  },
+  orders: {
+    columns: [
+      "workspace_id",
+      "order_number",
+      "deal_id",
+      "company_id",
+      "contact_id",
+      "quote_id",
+      "contract_id",
+      "status",
+      "total",
+      "items",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      orderNumber: "order_number",
+      number: "order_number",
+      dealId: "deal_id",
+      companyId: "company_id",
+      contactId: "contact_id",
+      quoteId: "quote_id",
+      contractId: "contract_id",
+      // modules.js aggregates `order.total`, but imported/legacy rows have been
+      // seen using `amount`; both land in the same column.
+      amount: "total",
+      lineItems: "items",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      order_number: "orderNumber",
+      deal_id: "dealId",
+      company_id: "companyId",
+      contact_id: "contactId",
+      quote_id: "quoteId",
+      contract_id: "contractId",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+  },
+  invoices: {
+    columns: [
+      "workspace_id",
+      "invoice_number",
+      "order_id",
+      "deal_id",
+      "company_id",
+      "contact_id",
+      "status",
+      "total",
+      "due_date",
+      "paid_at",
+      "items",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      invoiceNumber: "invoice_number",
+      number: "invoice_number",
+      orderId: "order_id",
+      dealId: "deal_id",
+      companyId: "company_id",
+      contactId: "contact_id",
+      dueDate: "due_date",
+      paidAt: "paid_at",
+      // The finance summary sums `invoice.amount`, so that is the canonical
+      // legacy key; the column is `total` to match the other revenue money
+      // columns.
+      amount: "total",
+      lineItems: "items",
+      createdAt: "created_at",
+      updated_at: "updated_at",
+    },
+    toLegacy: {
+      invoice_number: "invoiceNumber",
+      order_id: "orderId",
+      deal_id: "dealId",
+      company_id: "companyId",
+      contact_id: "contactId",
+      total: "amount",
+      due_date: "dueDate",
+      paid_at: "paidAt",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+  },
+  expenses: {
+    columns: [
+      "workspace_id",
+      "title",
+      "category",
+      "amount",
+      "date",
+      "vendor",
+      "deal_id",
+      "company_id",
+      "user_id",
+      "notes",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      name: "title",
+      dealId: "deal_id",
+      companyId: "company_id",
+      userId: "user_id",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      deal_id: "dealId",
+      company_id: "companyId",
+      user_id: "userId",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    extraLegacy: { title: "name" },
+    titleFallbacks: ["name", "vendor", "category"],
+  },
 };
 
 /**
@@ -204,6 +459,10 @@ const TEMPORAL_COLUMNS = new Set([
   "due_date",
   "expected_close_date",
   "date",
+  "expiration_date",
+  "start_date",
+  "end_date",
+  "paid_at",
 ]);
 
 /** Coerce a legacy date value to something the timestamptz column accepts. */
@@ -308,15 +567,48 @@ export function legacyToPg(body, resource) {
     }
     const column = mapping.toPg[key] || key;
     if (mapping.columnSet.has(column) && column !== "custom_fields") {
-      out[column] = TEMPORAL_COLUMNS.has(column) ? normalizeTemporalValue(value) : value;
+      if (column === "items") {
+        // `lineItems` and `items` both land here; anything that is not already
+        // an array is wrapped, because jsonb[] rejects a bare object.
+        out[column] = Array.isArray(value) ? value : value == null || value === "" ? [] : [value];
+      } else {
+        out[column] = TEMPORAL_COLUMNS.has(column) ? normalizeTemporalValue(value) : value;
+      }
     } else {
       extra[key] = value;
     }
   }
 
+  // `title` (quotes/contracts/expenses) and `name` (products) are NOT NULL, but
+  // a legacy body keyed only on a number or a vendor would otherwise fail the
+  // insert with 23502. Fall back through the candidate fields, in order, taking
+  // the first one that carries a value.
+  applyTitleFallback(mapping, out, body);
+
   // Left unset when empty so a partial PUT does not wipe the stored bag.
   if (Object.keys(extra).length) out.custom_fields = extra;
   return out;
+}
+
+/**
+ * Fill a NOT NULL `title` column from a related field when the request did not
+ * carry one. Every mapping that declares `titleFallbacks` has a `title` column;
+ * products is the exception with `name NOT NULL` and deliberately has no
+ * fallbacks, since a product with no name has nothing sensible to derive.
+ */
+function applyTitleFallback(mapping, out, body) {
+  const fallbacks = mapping.titleFallbacks;
+  if (!fallbacks) return;
+  if (out.title !== undefined && out.title !== null && out.title !== "") return;
+
+  for (const key of fallbacks) {
+    const value = body?.[key];
+    const text = value == null ? "" : String(value).trim();
+    if (text) {
+      out.title = text;
+      return;
+    }
+  }
 }
 
 function genericLegacyToPg(body) {

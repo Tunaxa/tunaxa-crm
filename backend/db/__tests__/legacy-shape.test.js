@@ -3,13 +3,19 @@ import { describe, expect, it } from "vitest";
 import { PG_RESOURCES, legacyToPg, pgToLegacy } from "../legacy-shape.js";
 
 describe("PG_RESOURCES", () => {
-  it("covers all six Postgres-backed resources", () => {
+  it("covers the four core resources and the six revenue resources", () => {
     expect([...PG_RESOURCES].sort()).toEqual([
       "activities",
       "companies",
       "contacts",
+      "contracts",
       "deals",
+      "expenses",
+      "invoices",
       "leads",
+      "orders",
+      "products",
+      "quotes",
       "tasks",
     ]);
   });
@@ -408,5 +414,305 @@ describe("legacyToPg", () => {
     it("keeps sending a single-word name through as an empty last_name", () => {
       expect(legacyToPg({ name: "Ada" })).toEqual({ first_name: "Ada", last_name: undefined });
     });
+  });
+
+  // ── Revenue resources ─────────────────────────────────────────────────────
+  // 006_revenue_tables.sql keys on TEXT and stores money as DOUBLE PRECISION.
+  // The legacy store spells several of those columns differently, so these
+  // tests pin the aliases the app depends on rather than the column names.
+
+  describe("products", () => {
+    it("maps the documented fields and keeps unlisted keys in the bag", () => {
+      const out = legacyToPg(
+        { name: "Starter Plan", sku: "ST-1", price: "49.99", cost: "10" },
+        "products",
+      );
+      expect(out).toEqual({
+        name: "Starter Plan",
+        sku: "ST-1",
+        price: "49.99",
+        cost: "10",
+      });
+    });
+
+    it("stores stock and minStock in the overflow bag and reads them back", () => {
+      // routes/modules.js low-stock report reads these two off the record, so
+      // they have to survive the round trip even though they are not columns.
+      const body = { name: "Starter Plan", stock: "100", minStock: 5 };
+      const out = legacyToPg(body, "products");
+      expect(out.custom_fields).toEqual({ stock: "100", minStock: 5 });
+      expect(pgToLegacy({ id: "p1", name: "Starter Plan", ...out }, "products")).toMatchObject({
+        stock: "100",
+        minStock: 5,
+      });
+    });
+
+    it("serializes timestamps to ISO strings", () => {
+      const out = pgToLegacy(
+        {
+          id: "p1",
+          name: "Starter Plan",
+          created_at: new Date("2026-01-02T03:04:05.000Z"),
+          updated_at: new Date("2026-02-03T04:05:06.000Z"),
+        },
+        "products",
+      );
+      expect(out.createdAt).toBe("2026-01-02T03:04:05.000Z");
+      expect(out.updatedAt).toBe("2026-02-03T04:05:06.000Z");
+    });
+  });
+
+  describe("quotes", () => {
+    it("renames the number, id and date columns", () => {
+      const out = legacyToPg(
+        {
+          title: "Acme rollout",
+          quoteNumber: "Q-1001",
+          dealId: "deal-1",
+          companyId: "company-1",
+          contactId: "contact-1",
+          expirationDate: "2026-12-31",
+        },
+        "quotes",
+      );
+      expect(out).toEqual({
+        title: "Acme rollout",
+        quote_number: "Q-1001",
+        deal_id: "deal-1",
+        company_id: "company-1",
+        contact_id: "contact-1",
+        expiration_date: "2026-12-31",
+      });
+    });
+
+    it("accepts the bare `number` the portal seeds write", () => {
+      expect(legacyToPg({ title: "X", number: "Q-9" }, "quotes").quote_number).toBe("Q-9");
+    });
+
+    it("accepts name and subject as the title", () => {
+      expect(legacyToPg({ name: "From name" }, "quotes").title).toBe("From name");
+      expect(legacyToPg({ subject: "From subject" }, "quotes").title).toBe("From subject");
+    });
+
+    it("falls back to the quote number when no title is provided", () => {
+      // title is NOT NULL, so a legacy body keyed only on a number would fail
+      // the insert with 23502 without this.
+      expect(legacyToPg({ number: "Q-1001" }, "quotes").title).toBe("Q-1001");
+    });
+
+    it("falls back to customerEmail when neither title nor number exists", () => {
+      expect(legacyToPg({ customerEmail: "cust@acme.com" }, "quotes").title).toBe(
+        "cust@acme.com",
+      );
+    });
+
+    it("prefers a supplied title over any fallback", () => {
+      expect(legacyToPg({ title: "Real", number: "Q-1" }, "quotes").title).toBe("Real");
+    });
+
+    it("normalizes lineItems into the items array", () => {
+      const out = legacyToPg({ title: "X", lineItems: [{ sku: "ST-1" }] }, "quotes");
+      expect(out.items).toEqual([{ sku: "ST-1" }]);
+    });
+
+    it("wraps a bare object so the jsonb[] column never sees a scalar", () => {
+      expect(legacyToPg({ title: "X", items: { sku: "ST-1" } }, "quotes").items).toEqual([
+        { sku: "ST-1" },
+      ]);
+    });
+
+    it("blanks an empty date instead of sending '' to timestamptz", () => {
+      // PostgreSQL rejects '' for timestamptz with 22007.
+      expect(legacyToPg({ title: "X", expirationDate: "" }, "quotes").expiration_date).toBeNull();
+    });
+
+    it("round-trips a quote", () => {
+      const body = {
+        title: "Acme rollout",
+        quoteNumber: "Q-1001",
+        total: 1500,
+        status: "Sent",
+        expirationDate: "2026-12-31",
+        items: [{ sku: "ST-1", qty: 2 }],
+      };
+      const out = pgToLegacy(legacyToPg(body, "quotes"), "quotes");
+      expect(out).toMatchObject({
+        title: "Acme rollout",
+        name: "Acme rollout",
+        quoteNumber: "Q-1001",
+        total: 1500,
+        status: "Sent",
+        expirationDate: "2026-12-31",
+        items: [{ sku: "ST-1", qty: 2 }],
+      });
+    });
+  });
+
+  describe("contracts", () => {
+    it("renames the number, id and date columns", () => {
+      const out = legacyToPg(
+        {
+          title: "Acme MSA",
+          contractNumber: "C-1",
+          quoteId: "quote-1",
+          startDate: "2026-01-01",
+          endDate: "2027-01-01",
+        },
+        "contracts",
+      );
+      expect(out).toEqual({
+        title: "Acme MSA",
+        contract_number: "C-1",
+        quote_id: "quote-1",
+        start_date: "2026-01-01",
+        end_date: "2027-01-01",
+      });
+    });
+
+    it("falls back to the contract number when no title is provided", () => {
+      expect(legacyToPg({ number: "C-1001" }, "contracts").title).toBe("C-1001");
+    });
+
+    it("accepts name as the title", () => {
+      expect(legacyToPg({ name: "Acme deal" }, "contracts").title).toBe("Acme deal");
+    });
+
+    it("round-trips a contract", () => {
+      const body = {
+        name: "Acme deal",
+        customerEmail: "cust@acme.com",
+        status: "Active",
+        value: 1500,
+      };
+      const out = pgToLegacy(legacyToPg(body, "contracts"), "contracts");
+      expect(out).toMatchObject({
+        title: "Acme deal",
+        name: "Acme deal",
+        status: "Active",
+        value: 1500,
+        customerEmail: "cust@acme.com",
+      });
+    });
+  });
+
+  describe("orders", () => {
+    it("renames the number and id columns", () => {
+      expect(
+        legacyToPg(
+          { orderNumber: "SO-1", quoteId: "quote-1", contractId: "contract-1" },
+          "orders",
+        ),
+      ).toEqual({ order_number: "SO-1", quote_id: "quote-1", contract_id: "contract-1" });
+    });
+
+    it("maps the legacy `amount` alias onto the total column", () => {
+      expect(legacyToPg({ amount: 1500 }, "orders").total).toBe(1500);
+    });
+
+    it("leaves total alone when both spellings are absent", () => {
+      expect(legacyToPg({ orderNumber: "SO-1" }, "orders").total).toBeUndefined();
+    });
+
+    it("normalizes lineItems into the items array", () => {
+      expect(legacyToPg({ lineItems: [{ sku: "ST-1" }] }, "orders").items).toEqual([
+        { sku: "ST-1" },
+      ]);
+    });
+  });
+
+  describe("invoices", () => {
+    it("maps the legacy `amount` onto the total column and reads it back as amount", () => {
+      // routes/modules.js:70 sums `invoice.amount`, so that is the canonical
+      // legacy key even though the column is `total`.
+      const out = legacyToPg({ amount: 700 }, "invoices");
+      expect(out.total).toBe(700);
+      expect(pgToLegacy({ id: "inv-1", total: 700 }, "invoices").amount).toBe(700);
+    });
+
+    it("renames the number, id and date columns", () => {
+      const out = legacyToPg(
+        {
+          invoiceNumber: "INV-P",
+          orderId: "order-1",
+          dueDate: "2026-04-01",
+          paidAt: "2026-03-20T08:00:00.000Z",
+        },
+        "invoices",
+      );
+      expect(out).toEqual({
+        invoice_number: "INV-P",
+        order_id: "order-1",
+        due_date: "2026-04-01",
+        paid_at: "2026-03-20T08:00:00.000Z",
+      });
+    });
+
+    it("serializes both timestamptz date columns to ISO strings", () => {
+      const out = pgToLegacy(
+        {
+          id: "inv-1",
+          total: 700,
+          due_date: new Date("2026-04-01T00:00:00.000Z"),
+          paid_at: new Date("2026-03-20T08:00:00.000Z"),
+        },
+        "invoices",
+      );
+      expect(out.dueDate).toBe("2026-04-01T00:00:00.000Z");
+      expect(out.paidAt).toBe("2026-03-20T08:00:00.000Z");
+    });
+
+    it("round-trips the portal invoice shape", () => {
+      const body = {
+        number: "INV-P",
+        customerEmail: "cust@acme.com",
+        amount: 700,
+        status: "Paid",
+      };
+      const out = pgToLegacy(legacyToPg(body, "invoices"), "invoices");
+      expect(out).toMatchObject({
+        invoiceNumber: "INV-P",
+        amount: 700,
+        status: "Paid",
+        customerEmail: "cust@acme.com",
+      });
+    });
+  });
+
+  describe("expenses", () => {
+    it("renames the id columns", () => {
+      expect(legacyToPg({ title: "Cloud", userId: "user-1" }, "expenses")).toEqual({
+        title: "Cloud",
+        user_id: "user-1",
+      });
+    });
+
+    it("falls back to the vendor when no title is provided", () => {
+      expect(legacyToPg({ vendor: "Acme Cloud" }, "expenses").title).toBe("Acme Cloud");
+    });
+
+    it("accepts name as the title", () => {
+      expect(legacyToPg({ name: "Cloud hosting" }, "expenses").title).toBe("Cloud hosting");
+    });
+
+    it("normalizes the date column for timestamptz", () => {
+      expect(legacyToPg({ title: "Cloud", date: "2026-03-15" }, "expenses").date).toBe(
+        "2026-03-15",
+      );
+    });
+
+    it("round-trips an expense", () => {
+      const body = { name: "Cloud hosting", category: "Infra", amount: 250.4 };
+      const out = pgToLegacy(legacyToPg(body, "expenses"), "expenses");
+      expect(out).toMatchObject({ title: "Cloud hosting", name: "Cloud hosting", amount: 250.4 });
+    });
+  });
+
+  it("never lets a client pin the id or the timestamps", () => {
+    for (const resource of ["products", "quotes", "contracts", "orders", "invoices", "expenses"]) {
+      const out = legacyToPg({ id: "forced", createdAt: "x", updatedAt: "y" }, resource);
+      expect(out.id).toBeUndefined();
+      expect(out.created_at).toBeUndefined();
+      expect(out.updated_at).toBeUndefined();
+    }
   });
 });

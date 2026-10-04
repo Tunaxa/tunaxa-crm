@@ -8,6 +8,15 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **PostgreSQL Revenue Schema (Migration 006):** Created `backend/db/migrations/006_revenue_tables.sql` defining tables for `products`, `quotes`, `contracts`, `orders`, `invoices`, and `expenses`:
+  - `TEXT` primary keys with `gen_random_uuid()::text` defaults for backwards compatibility and 404 handling.
+  - `DOUBLE PRECISION` types for all monetary amounts, totals, costs, and prices to eliminate floating point / string coercion issues.
+  - `items JSONB NOT NULL DEFAULT '[]'` for line items and `custom_fields JSONB NOT NULL DEFAULT '{}'` for overflow attributes.
+  - `update_updated_at_column()` triggers on all 6 tables and 34 secondary indexes (40 total including the 6 primary keys) covering foreign keys, status, dates, and search columns.
+- **Revenue Repositories:** Implemented repository modules under `backend/db/repositories/` (`products.js`, `quotes.js`, `contracts.js`, `orders.js`, `invoices.js`, `expenses.js`) with input validation, whitelisted sorting, and paginated query results.
+- **Repository Registry Integration:** Registered all six revenue repositories in `backend/db/repositories/index.js` and `repoFor()`.
+- **Data Migration Script:** Added `scripts/migrate-revenue-to-pg.js` for idempotent batch backfilling from `readDb()` into PostgreSQL. All six source arrays in `backend/data/db.json` are currently empty, so it currently migrates 0 rows; it is safe to re-run once data exists.
+- **Unit & Integration Tests:** Added repository unit test suites under `backend/db/repositories/__tests__/` and updated test database truncation in `backend/__tests__/setup.js`.
 - Unified contact associations endpoint `GET /api/contacts/:id/associations` (`backend/routes/contacts.js`) that powers the 360° profile view: one authenticated, rate-limited call returns every related company, deal, task, and meeting for a contact, grouped as `{ companies, deals, tasks, meetings }`, and it responds `404` when the contact does not exist. Records that belong to a company are linked through the contact's `company` name; records that point at a person are linked through `contactId`, `contactIds`, `recordId`, `contact`, `contacts`, or `contactName` (holding an id, name, email, or phone), all matched case-insensitively. Meetings are activities with `type: "meeting"`. Every group is always present as an array, and the same per-field permission masking the generic resource routes apply is applied per group.
 - Docker Compose development environment with PostgreSQL 16, Redis 7, and Ollama, plus a tracked `.env.example` configuration template.
 - PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
@@ -38,6 +47,11 @@ and this project adheres to Semantic Versioning.
 
 ### Changed
 
+- **Shape Adapters (`backend/db/legacy-shape.js`):** Extended `PG_RESOURCES` (6 → 12 resources) and `RESOURCE_MAPPINGS` with bidirectional mappings, title fallback logic (`name`, `quote_number`/`contract_number`, `subject`, `customerEmail`), and numeric aliases (`amount` ↔ `total`).
+- **Module Summaries (`backend/routes/modules.js`):** Updated `commerce/summary` and `finance/summary` to aggregate live revenue data from PostgreSQL repositories instead of reading stale JSON stores — they previously reported zero revenue once writes moved to Postgres.
+- **JSONB Serialization Fix:** Ensured array fields (`items` / `lineItems`) are JSON-serialized before parameter binding to prevent PostgreSQL `22P02` array literal syntax errors. node-postgres sends a JS array as a Postgres array literal, which `jsonb` rejects; the same payload now round-trips correctly.
+- **Custom Fields Coercion:** Extended `coerceBuiltIns()` in `backend/helpers.js` to recurse into `custom_fields`, so numeric overflow fields (`products.stock`, `products.minStock`, `contracts.mrr`) coerce to numbers instead of persisting as strings.
+- AXA-154: Optimized the login background as WebP, self-hosted/preloaded Geist WOFF2 fonts, and deferred optional Sentry loading to reduce production preview render blocking and initial JavaScript.
 - Optimized the login background as WebP, self-hosted/preloaded Geist WOFF2 fonts, and deferred optional Sentry loading to reduce production preview render blocking and initial JavaScript.
 - Per-route `ErrorBoundary` instances now get `key={location.pathname}`, so client-side navigation remounts a fresh boundary instead of carrying over a previously caught error's fallback UI.
 

@@ -54,13 +54,15 @@ export const NUMERIC_BUILT_INS = {
   emailLists: ['subscribers'],
   landingPages: ['views', 'conversions'],
   products: ['price', 'cost', 'stock', 'minStock'],
-  orders: ['subtotal', 'tax', 'shipping', 'total'],
-  invoices: ['amount', 'tax'],
+  // `amount` is the legacy key for the `total` column on orders/invoices, so
+  // both spellings are coerced - whichever one the client sent.
+  orders: ['subtotal', 'tax', 'shipping', 'total', 'amount'],
+  invoices: ['amount', 'total', 'tax', 'discount', 'subtotal'],
   expenses: ['amount'],
   employees: ['salary'],
   leaveRequests: ['days'],
-  quotes: ['total', 'discount'],
-  contracts: ['value', 'mrr'],
+  quotes: ['subtotal', 'total', 'amount', 'discount', 'tax'],
+  contracts: ['value', 'amount', 'mrr'],
   marketingEmails: ['recipients', 'opens', 'clicks', 'conversions'],
   marketingEvents: ['capacity', 'registrations'],
   goals: ['target', 'current'],
@@ -76,6 +78,19 @@ export function coerceBuiltIns(resource, data) {
     if (data[key] === undefined || data[key] === null || data[key] === '') continue;
     const number = Number(data[key]);
     if (!Number.isNaN(number)) data[key] = number;
+  }
+  // Postgres-backed resources route unknown fields into custom_fields, so the
+  // same numeric built-ins that are not real columns (products.stock,
+  // products.minStock, contracts.mrr, ...) have to be coerced inside the bag
+  // too - otherwise the API answers the string "100" where the legacy contract
+  // answers the number 100.
+  const bag = data.custom_fields;
+  if (bag && typeof bag === 'object' && !Array.isArray(bag)) {
+    for (const key of keys) {
+      if (bag[key] === undefined || bag[key] === null || bag[key] === '') continue;
+      const number = Number(bag[key]);
+      if (!Number.isNaN(number)) bag[key] = number;
+    }
   }
   return data;
 }
