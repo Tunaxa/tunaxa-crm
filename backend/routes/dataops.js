@@ -165,7 +165,9 @@ export default function registerDataOpsRoutes(app) {
         });
         // Group score is kept as a sort key only: the best direct match vs primary.
         const score = Math.max(0, ...matches.map(m => m.score ?? 0));
-        return { ids: group.ids, names: group.names, score, matches };
+        const records = group.idxs.map(i => rows[i]);
+        const confidence = Math.round(score * 100);
+        return { ids: group.ids, names: group.names, records, confidence, score, matches };
       })
       .sort((a, b) => b.score - a.score);
     res.json({ resource, duplicates, total: duplicates.reduce((n, g) => n + g.ids.length, 0) });
