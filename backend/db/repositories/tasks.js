@@ -157,6 +157,7 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
