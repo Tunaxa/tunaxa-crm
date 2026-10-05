@@ -17,7 +17,7 @@ const monthKeyOf = iso => String(iso || '').slice(0, 7);
  * 006_revenue_tables.sql, so the commerce and finance summaries have to read
  * them from the repositories. Reading the JSON store instead would aggregate an
  * empty array and report zero revenue for records that plainly exist - the
- * same split-store bug loadDuplicateRows() guards against in dataops.js.
+ * same split-store bug loadRows() guards against in dataops.js.
  */
 async function loadRows(resource, db) {
   if (!PG_RESOURCES.has(resource)) return (db && db[resource]) || [];

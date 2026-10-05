@@ -46,7 +46,11 @@ function buildCsvRow(columns, row) {
 // path applied these in JS after loading the whole file; forwarding them to the
 // repository keeps the same results while pushing the work into SQL. Repos
 // ignore the keys they do not implement.
-const PG_FILTER_KEYS = ["q", "type", "contact", "recordId", "stage", "status"];
+//
+// `category` has to be listed here or it never reaches SQL: products and
+// expenses both implement a category filter, and because findAll() destructures
+// its argument, an unlisted key is dropped silently rather than rejected.
+const PG_FILTER_KEYS = ["q", "type", "contact", "recordId", "stage", "status", "category"];
 
 // Hard stop on page-through loops. A repository that reports a total it cannot
 // deliver would otherwise spin until the request times out.

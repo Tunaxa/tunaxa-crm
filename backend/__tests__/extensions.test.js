@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { resetTestDb, cleanupTestDb, seedTestUser, loginAs } from './setup.js';
-import { mutateDb } from '../store.js';
 
 let app;
 let token;
@@ -168,18 +167,24 @@ describe('Duplicate management', () => {
 
 describe('Customer portal', () => {
   it('returns customer-facing records for a matching email', async () => {
-    await mutateDb(db => {
-      db.quotes.push({ id: 'quote_portal', number: 'Q-P', customerEmail: 'cust@acme.com', total: 1500, status: 'Sent', createdAt: new Date().toISOString() });
-      db.contracts.push({ id: 'contract_portal', name: 'Acme deal', customerEmail: 'cust@acme.com', status: 'Active', createdAt: new Date().toISOString() });
-      db.invoices.push({ id: 'inv_portal', number: 'INV-P', customerEmail: 'cust@acme.com', amount: 700, status: 'Paid', createdAt: new Date().toISOString() });
-    });
+    // Seeded through the API rather than pushed into db.json: quotes,
+    // contracts and invoices are served from Postgres, and the portal reads the
+    // same repositories the write path uses. Rows written straight into the
+    // JSON store are invisible to it, which is exactly the split-store bug
+    // this endpoint used to have.
+    const quote = await request(app).post('/api/quotes').set('Authorization', `Bearer ${token}`).send({ title: 'Q-P deal', customerEmail: 'cust@acme.com', total: 1500, status: 'Sent' });
+    const contract = await request(app).post('/api/contracts').set('Authorization', `Bearer ${token}`).send({ title: 'Acme deal', customerEmail: 'cust@acme.com', status: 'Active' });
+    const invoice = await request(app).post('/api/invoices').set('Authorization', `Bearer ${token}`).send({ customerEmail: 'cust@acme.com', amount: 700, status: 'Paid' });
+    expect(quote.status).toBe(201);
+    expect(contract.status).toBe(201);
+    expect(invoice.status).toBe(201);
 
     const res = await request(app).post('/api/portal/access').send({ email: 'cust@ACME.com' });
     expect(res.status).toBe(200);
     expect(res.body.customer.email).toBe('cust@acme.com');
-    expect(res.body.quotes.some(q => q.id === 'quote_portal')).toBe(true);
-    expect(res.body.contracts.some(c => c.id === 'contract_portal')).toBe(true);
-    expect(res.body.invoices.some(i => i.id === 'inv_portal')).toBe(true);
+    expect(res.body.quotes.some(q => q.id === quote.body.id)).toBe(true);
+    expect(res.body.contracts.some(c => c.id === contract.body.id)).toBe(true);
+    expect(res.body.invoices.some(i => i.id === invoice.body.id)).toBe(true);
   });
 
   it('requires an email', async () => {
