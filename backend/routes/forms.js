@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
+import { loadRecords, findRecord, saveRecord } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { id, now, coerceCustomFields } from '../helpers.js';
@@ -387,6 +388,7 @@ export default function registerFormRoutes(app) {
         redirectUrl: body.redirectUrl || '',
         fields: normalizeFields(body.fields),
         enabled: true,
+        workspaceId: req.user.workspaceId || 'default',
         submissionCount: 0,
         createdBy: req.user.name,
         createdAt,
