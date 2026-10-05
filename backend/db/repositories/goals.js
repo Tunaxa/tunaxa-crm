@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 import { toJsonb } from "./json.js";
 
 const SORT_COLUMNS = new Set([
@@ -205,32 +206,22 @@ export async function create(data = {}) {
 }
 
 export async function update(id, data = {}, workspaceId) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return await findById(id, workspaceId);
+  const statement = buildUpdateStatement({
+    id,
+    table: "goals",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields"],
+    jsonbFallback: {"custom_fields":"{}"},
+  });
+  // An update with nothing in it is a no-op, not a missing row: answer with
+  // the record as it stands so the caller still gets its full state back.
+  if (!statement) return findById(id, workspaceId);
 
-  const values = fields.map((field) =>
-    field === "custom_fields" ? toJsonb(data[field], null) : data[field],
-  );
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  values.push(id);
-
-  let sql = `UPDATE goals SET ${assignments.join(", ")} WHERE id = $${fields.length + 1}`;
-  if (workspaceId) {
-    values.push(workspaceId);
-    sql += ` AND (workspace_id = $${fields.length + 2} OR ($${fields.length + 2} = 'default' AND workspace_id IS NULL))`;
-  }
-  sql += " RETURNING *";
-
-  const result = await query(sql, values);
+  const result = await query(statement.sql, statement.values);
   return result.rows[0] || null;
 }
-
 async function remove(id, workspaceId) {
   let sql = "DELETE FROM goals WHERE id = $1";
   const params = [id];

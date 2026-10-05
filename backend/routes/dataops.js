@@ -3,7 +3,10 @@ import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { now } from '../helpers.js';
 import { cacheFlush } from '../services/cache.js';
+import { broadcast } from './sse.js';
 import { createRateLimiter } from '../services/rateLimit.js';
+import { mergeRecords, MergeError, MERGE_RESOURCES } from '../services/merge.js';
+import { findDuplicateScan, DEDUP_RESOURCES } from '../services/dedup.js';
 import Fuse from 'fuse.js';
 import { repoFor } from '../db/repositories/index.js';
 import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
@@ -18,6 +21,13 @@ const emailEquals = (record, email) =>
   norm(record.email) === email ||
   norm(record.contactEmail) === email ||
   norm(record.contact) === email;
+
+// Same idiom as tenantOf() in routes/resources.js, duplicated rather than
+// imported: a route module reaching into another route module is how the two
+// tenant checks drift apart. Server-derived, never taken from the body - a
+// client-supplied workspace would let any authenticated user read or merge
+// another tenant's records.
+const tenantOf = req => req.user?.workspaceId || req.user?.workspace_id || 'default';
 
 // Contacts, leads, companies, deals, tasks, activities, the six revenue
 // resources and the six 007 marketing/service resources are served from
@@ -45,6 +55,81 @@ async function loadRows(resource) {
 }
 
 export default function registerDataOpsRoutes(app) {
+  // ── Fuzzy duplicate detection (confidence-scored candidates) ───────────────
+  // Registered ahead of routes/resources.js so it wins over the generic
+  // `/api/:resource/:id` read for the literal `duplicates` segment. Anything
+  // this engine does not handle calls next() and falls through unchanged.
+  app.get('/api/:resource/duplicates', auth, async (req, res, next) => {
+    const resource = req.params.resource;
+    if (!DEDUP_RESOURCES.has(resource)) return next();
+
+    // A threshold of 0 would report every pair in the tenant, and a negative
+    // limit is meaningless: both are clamped rather than rejected so a UI that
+    // sends an empty slider value degrades instead of erroring.
+    const threshold = Math.min(Math.max(Number(req.query.threshold ?? 0.65) || 0, 0), 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+
+    try {
+      const scan = await findDuplicateScan({
+        resource,
+        workspaceId: tenantOf(req),
+        threshold,
+        limit,
+      });
+      res.json({
+        resource,
+        threshold,
+        limit,
+        total: scan.duplicates.length,
+        scanned: scan.scanned,
+        scoredPairs: scan.scoredPairs,
+        exhaustive: scan.exhaustive,
+        duplicates: scan.duplicates,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  // ── Atomic merge ──────────────────────────────────────────────────────────
+  // One transaction: lock both rows, re-point every child pointer, update the
+  // survivor, delete the duplicate, log the merge. See services/merge.js for
+  // why none of those steps may be split up.
+  app.post('/api/:resource/merge', auth, requireRole('admin', 'member'), async (req, res, next) => {
+    const resource = req.params.resource;
+    if (!MERGE_RESOURCES.has(resource)) return next();
+
+    const { primaryId, secondaryId, fieldOverrides, dryRun } = req.body || {};
+    try {
+      const result = await mergeRecords({
+        resource,
+        primaryId,
+        secondaryId,
+        fieldOverrides,
+        workspaceId: tenantOf(req),
+        dryRun: dryRun === true,
+        actor: req.user?.name || req.user?.email || null,
+      });
+      // A dry run rolled back, so nothing changed and nothing should be
+      // broadcast or evicted from the cache.
+      if (!result.dryRun) {
+        cacheFlush(resource);
+        broadcast('record.updated', { resource, item: result.mergedRecord });
+      }
+      res.json(result);
+    } catch (err) {
+      // MergeError carries the status its failure means: 400 for a malformed
+      // request, 404 for a row that is missing *or* owned by another tenant
+      // (the two are deliberately indistinguishable), 409 for a mid-transaction
+      // conflict. Anything else is a genuine fault and goes to the error
+      // handler.
+      if (err instanceof MergeError) {
+        return res.status(err.status).json({ error: err.message, code: err.code });
+      }
+      return next(err);
+    }
+  });
+
   app.get('/api/duplicates', auth, requireRole('admin', 'member'), async (req, res) => {
     const resource = req.query.resource === 'companies' ? 'companies' : 'contacts';
     const rows = await loadRows(resource);

@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 import { toJsonb } from "./json.js";
 
 const SORT_COLUMNS = new Set([
@@ -164,39 +165,27 @@ export async function create(data = {}) {
 }
 
 export async function update(id, data = {}, workspaceId) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return await findById(id, workspaceId);
-
-  const values = fields.map((field) => {
-    if (field === "query" || field === "schedule" || field === "custom_fields") {
-      return toJsonb(data[field], field === "schedule" ? null : {});
-    }
-    if (field === "schedule_enabled") return data[field] === true;
-    if (field === "last_sent_at") {
-      return data[field] === "" ? null : data[field];
-    }
-    return data[field];
+  const statement = buildUpdateStatement({
+    id,
+    table: "saved_reports",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields", "query", "schedule"],
+    jsonbFallback: {"custom_fields":"{}", "query":"{}", "schedule":null},
+    serialize: (field, value) => {
+      if (field === "schedule_enabled") return value === true;
+      if (field === "last_sent_at") return value === "" ? null : value;
+      return value;
+    },
   });
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  values.push(id);
+  // An update with nothing in it is a no-op, not a missing row: answer with
+  // the record as it stands so the caller still gets its full state back.
+  if (!statement) return findById(id, workspaceId);
 
-  let sql = `UPDATE saved_reports SET ${assignments.join(", ")} WHERE id = $${fields.length + 1}`;
-  if (workspaceId) {
-    values.push(workspaceId);
-    sql += ` AND (workspace_id = $${fields.length + 2} OR ($${fields.length + 2} = 'default' AND workspace_id IS NULL))`;
-  }
-  sql += " RETURNING *";
-
-  const result = await query(sql, values);
+  const result = await query(statement.sql, statement.values);
   return result.rows[0] || null;
 }
-
 async function remove(id, workspaceId) {
   let sql = "DELETE FROM saved_reports WHERE id = $1";
   const params = [id];
