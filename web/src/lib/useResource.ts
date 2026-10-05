@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FilterGroup } from "../components/FilterBuilder";
 import { api, json } from "./api";
 import { useApp } from "../context/AppContext";
 
@@ -8,6 +9,8 @@ type ResourceOptions = {
   sortBy?: string;
   sortDir?: "asc" | "desc";
   q?: string;
+  filters?: FilterGroup | null;
+  all?: boolean;
 };
 
 type ResourceResponse<T> = {
@@ -25,6 +28,10 @@ export function useResource<T extends { id: string }>(
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState("");
+  const requestVersion = useRef(0);
+  const filters = options.filters ? JSON.stringify(options.filters) : "";
+  const all = options.all === true;
   const page = options.page || 1;
   const limit = options.limit || 25;
   const sortBy = options.sortBy || "createdAt";
@@ -32,7 +39,10 @@ export function useResource<T extends { id: string }>(
   const q = options.q || "";
 
   const load = useCallback(async () => {
+    const version = ++requestVersion.current;
     setLoading(true);
+    setError("");
+    if (all) setItems([]);
     try {
       const params = new URLSearchParams({
         page: String(page),
@@ -40,19 +50,27 @@ export function useResource<T extends { id: string }>(
         sortBy,
         sortDir,
       });
+      if (all) { params.delete("page"); params.delete("limit"); }
       if (q) params.set("q", q);
-      const result = await api<ResourceResponse<T>>(`/${resource}?${params}`);
-      setItems(result.data);
-      setTotal(result.total);
+      if (filters) params.set("filters", filters);
+      const result = await api<ResourceResponse<T> | T[]>(`/${resource}?${params}`);
+      if (version !== requestVersion.current) return;
+      const rows = Array.isArray(result) ? result : result.data;
+      if (!Array.isArray(rows)) throw new Error("Invalid list response");
+      setItems(rows);
+      setTotal(Array.isArray(result) ? result.length : result.total);
     } catch (error) {
+      if (version !== requestVersion.current) return;
+      setError((error as Error).message);
       toast((error as Error).message, "error");
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
-  }, [limit, page, q, resource, sortBy, sortDir]);
+  }, [limit, page, q, resource, sortBy, sortDir, filters, all]);
 
   useEffect(() => {
     load();
+    return () => { requestVersion.current++; };
   }, [load]);
 
   useEffect(() => {
@@ -111,5 +129,5 @@ export function useResource<T extends { id: string }>(
     }
   }
 
-  return { items, setItems, loading, total, page, limit, load, create, update, remove };
+  return { items, setItems, loading, error, total, page, limit, load, create, update, remove };
 }

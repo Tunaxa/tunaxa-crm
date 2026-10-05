@@ -1,5 +1,8 @@
 -- Migration 004: Core relational tables for Tunaxa CRM
--- Workspace-scoped entities with foreign keys, cascading rules, and auto-update triggers.
+-- Legacy CRM entities use TEXT ids and pointers, matching 004_contacts_leads
+-- and 005_core_entities. Workspaces/users/sessions retain their UUID relations.
+-- CREATE TABLE IF NOT EXISTS must use the complete shared definitions: a later
+-- migration cannot add missing columns by repeating CREATE TABLE IF NOT EXISTS.
 -- Idempotent: safe to re-run (IF NOT EXISTS, OR REPLACE, DROP IF EXISTS).
 
 BEGIN;
@@ -48,91 +51,123 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE TABLE IF NOT EXISTS companies (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    domain TEXT,
-    industry TEXT,
-    size TEXT,
-    custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  workspace_id VARCHAR(100) DEFAULT 'default',
+  name TEXT NOT NULL,
+  domain TEXT,
+  industry TEXT,
+  website TEXT,
+  country TEXT,
+  size TEXT,
+  employees DOUBLE PRECISION,
+  owner TEXT,
+  custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS contacts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
-    first_name TEXT,
-    last_name TEXT,
-    email TEXT,
-    phone TEXT,
-    title TEXT,
-    owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  workspace_id VARCHAR(100) DEFAULT 'default',
+  company_id TEXT,
+  first_name TEXT,
+  last_name TEXT,
+  email TEXT,
+  phone TEXT,
+  title TEXT,
+  owner_id TEXT,
+  custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS leads (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    first_name TEXT,
-    last_name TEXT,
-    email TEXT,
-    phone TEXT,
-    company_name TEXT,
-    status VARCHAR(255),
-    source TEXT,
-    value NUMERIC(12, 2),
-    owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  workspace_id VARCHAR(100) DEFAULT 'default',
+  first_name TEXT,
+  last_name TEXT,
+  email TEXT,
+  phone TEXT,
+  company_name TEXT,
+  status VARCHAR(50),
+  source VARCHAR(100),
+  value DOUBLE PRECISION,
+  owner_id TEXT,
+  custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS deals (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
-    company_id UUID REFERENCES companies(id) ON DELETE SET NULL,
-    owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    title TEXT NOT NULL,
-    value NUMERIC(12, 2),
-    stage VARCHAR(255) NOT NULL,
-    expected_close_date DATE,
-    custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  workspace_id VARCHAR(100) DEFAULT 'default',
+  -- `title` is the deal name. The shape adapter also accepts a legacy `name`
+  -- on write and re-exposes it on read; see legacy-shape.js DEAL_ALIASES.
+  title TEXT NOT NULL,
+  -- company/contact/owner are the denormalized display names the app already
+  -- stores on a deal (routes/ai.js, routes/dashboard.js and routes/reports.js
+  -- all read them). The *_id columns are the relational pointers.
+  company TEXT,
+  company_id TEXT,
+  contact TEXT,
+  contact_id TEXT,
+  pipeline_id TEXT,
+  owner TEXT,
+  owner_id TEXT,
+  value DOUBLE PRECISION,
+  stage TEXT,
+  expected_close_date TIMESTAMP WITH TIME ZONE,
+  custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    assigned_to UUID REFERENCES users(id) ON DELETE SET NULL,
-    contact_id UUID REFERENCES contacts(id) ON DELETE SET NULL,
-    deal_id UUID REFERENCES deals(id) ON DELETE SET NULL,
-    title TEXT NOT NULL,
-    description TEXT,
-    status VARCHAR(50) NOT NULL DEFAULT 'pending',
-    due_date TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  workspace_id VARCHAR(100) DEFAULT 'default',
+  title TEXT NOT NULL,
+  description TEXT,
+  -- status is the legacy workflow vocabulary ('Open', 'Completed', ...);
+  -- completed is the normalized boolean the task contract names.
+  status VARCHAR(50) DEFAULT 'Open',
+  completed BOOLEAN NOT NULL DEFAULT FALSE,
+  priority VARCHAR(50),
+  owner TEXT,
+  assigned_to TEXT,
+  due_date TIMESTAMP WITH TIME ZONE,
+  source TEXT,
+  contact_id TEXT,
+  deal_id TEXT,
+  custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS activities (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
-    deal_id UUID REFERENCES deals(id) ON DELETE SET NULL,
-    type VARCHAR(50) NOT NULL,
-    subject TEXT,
-    body TEXT,
-    direction VARCHAR(20),
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  workspace_id VARCHAR(100) DEFAULT 'default',
+  type VARCHAR(50),
+  -- title and contact are the two fields the timeline UI and the
+  -- ?contact=/?type= filters in backend/routes/resources.js depend on, so they
+  -- are queryable columns rather than bag entries.
+  title TEXT,
+  subject TEXT,
+  description TEXT,
+  contact TEXT,
+  company TEXT,
+  direction VARCHAR(20),
+  record_id TEXT,
+  -- entity_type/entity_id are the generic pointer the task contract names;
+  -- record_id is the legacy name for the same thing.
+  entity_type TEXT,
+  entity_id TEXT,
+  user_id TEXT,
+  contact_id TEXT,
+  deal_id TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- ============================================

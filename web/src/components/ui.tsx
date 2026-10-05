@@ -1,3 +1,4 @@
+import { photoInitials, photoPreviewUrl } from "../lib/photoPreview";
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
@@ -188,30 +189,38 @@ type PhotoFieldProps = {
   value?: string;
   radius?: number;
   onChange: (url: string) => void;
+  onBusyChange?: (busy: boolean) => void;
+  onError?: (error: unknown) => void;
 };
 
-export function PhotoField({ label, name, value, radius = 56, onChange }: PhotoFieldProps) {
+export function PhotoField({ label, name, value, radius = 56, onChange, onBusyChange, onError }: PhotoFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
   async function pick(file?: File) {
     if (!file) return;
     setBusy(true);
+    onBusyChange?.(true);
     try {
       const form = new FormData();
       form.append('files', file);
       const [saved] = await api<{ url: string }[]>('/uploads', { method: 'POST', body: form });
       onChange(saved?.url || '');
+    } catch (error) {
+      if (onError) onError(error);
+      else throw error;
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
       if (inputRef.current) inputRef.current.value = '';
     }
   }
 
+  const preview = photoPreviewUrl(value);
   return <div className="photo-field">
     <input ref={inputRef} hidden type="file" accept="image/*" onChange={e => pick(e.target.files?.[0])} />
     <span className="photo-preview" style={{ width: radius, height: radius }}>
-      {value ? <img src={value} alt="" /> : <span>{name.split(/\s+/).filter(Boolean).map(x => x[0]).join('').slice(0, 2).toUpperCase() || 'NX'}</span>}
+      {preview ? <img src={preview} alt="" /> : <span>{photoInitials(name)}</span>}
       <button type="button" className="photo-edit" onClick={() => inputRef.current?.click()} title="Change photo" disabled={busy}><Icon name="upload" /></button>
     </span>
     <div className="photo-field-actions">

@@ -1,3 +1,5 @@
+import { DuplicateResolution } from "./components/DuplicateResolution";
+import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
 
 import { useForm } from "react-hook-form";
@@ -33,6 +35,10 @@ import {
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Icon } from "./components/Icon";
+import { AssociatedRecords } from "./components/AssociatedRecords";
+import { FilterBuilder, type FilterGroup } from "./components/FilterBuilder";
+import { LifecycleStage } from "./components/LifecycleStage";
+import { InlineEditField } from "./components/InlineEditField";
 import {
   Avatar,
   Badge,
@@ -2255,9 +2261,10 @@ function PeoplePage({
   icon: string;
   fields: FieldSpec[];
 }) {
-  const { items, loading, load, create, update, remove } =
-    useResource<Row>(resource);
-  const { toast } = useApp();
+  const [filters, setFilters] = useState<FilterGroup | null>(null);
+  const { items, loading, error, load, create, update, remove } =
+    useResource<Row>(resource, { filters, all: true });
+  const { toast, user } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [pageSize, setPageSize] = useState(getPageSize());
@@ -2298,13 +2305,15 @@ const rows = filteredRows.slice(
 
 useEffect(() => {
   setPage(1);
-}, [query, pageSize, resource]);
+}, [query, pageSize, resource, filters]);
 
 function changePageSize(value: number) {
   setPageSize(value);
   setPage(1);
   savePageSize(value);
 }
+  const bulk = useBulkSelection(JSON.stringify([resource, query, filters]), rows.map((row) => row.id));
+  const canBulk = user?.role === "admin" || user?.role === "member";
   async function importCsv(file: File) {
     try {
       const text = await file.text();
@@ -2372,6 +2381,8 @@ function changePageSize(value: number) {
           <Icon name="plus" /> Add {singular}
         </button>
       </PageHeader>
+      <FilterBuilder fields={allFields} value={filters} onChange={(next) => { if (!bulk.busy) setFilters(next); }} />
+      {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
       <section className="surface table-surface">
         <div className="table-toolbar">
           <div className="header-search">
@@ -2379,7 +2390,7 @@ function changePageSize(value: number) {
             <input
               aria-label={`Search ${title.toLowerCase()}`}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              disabled={bulk.busy} onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
             />
           </div>
@@ -2404,6 +2415,7 @@ function changePageSize(value: number) {
           <table>
             <thead>
               <tr>
+                {canBulk && <th><SelectPage ids={rows.map((row) => row.id)} selected={bulk.selected} onChange={bulk.setSelected} disabled={bulk.busy} /></th>}
                 <th>{cols[0]?.label || "Name"}</th>
                 {cols.slice(1).map((c) => (
                   <th key={c.key}>{c.label}</th>
@@ -2414,6 +2426,7 @@ function changePageSize(value: number) {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
+                  {canBulk && <td><input className="bulk-select" type="checkbox" aria-label={`Select ${row.name || row.title || row.id}`} checked={bulk.selected.includes(row.id)} disabled={bulk.busy || (!bulk.selected.includes(row.id) && bulk.selected.length >= 100)} onChange={() => bulk.toggle(row.id)} /></td>}
                   {cols.map((c, i) =>
                     i === 0 ? (
                       <td key={c.key}>
@@ -2491,6 +2504,7 @@ function changePageSize(value: number) {
           />
         )}
       </section>
+      {canBulk && <BulkActions resource={resource} ids={bulk.selected} statuses={allFields.find((field) => field.key === "status")?.options} busy={bulk.busy} setBusy={bulk.setBusy} onSelection={bulk.setSelected} onReload={load} />}
       {edit !== undefined ? (
         <RecordForm
           title={`${edit ? "Edit" : "Add"} ${singular}`}
@@ -2507,7 +2521,7 @@ function changePageSize(value: number) {
   );
 }
 
-const detailTabList = ["Overview", "Activity", "Notes", "Emails", "History"] as const;
+const detailTabList = ["Overview", "Activity", "Notes", "Emails", "Calls", "History"] as const;
 type DetailTab = (typeof detailTabList)[number];
 const activityFilters = [
   "All",
@@ -2539,15 +2553,19 @@ function RecordDetailPage({
   const navigate = useNavigate();
   const { toast, user } = useApp();
   const [record, setRecord] = useState<Row | null>(null);
+  const recordRoute = useRef("");
+  recordRoute.current = `${resource}/${id}`;
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<DetailTab>("Overview");
-  const [edit, setEdit] = useState(false);
+  const [tab, setTab] = useState<DetailTab>(resource === "contacts" ? "Activity" : "Overview");
   const [activities, setActivities] = useState<Row[]>([]);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("All");
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState(false);
   const [activityRetry, setActivityRetry] = useState(0);
   const [messages, setMessages] = useState<Row[]>([]);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState(false);
+  const [emailRetry, setEmailRetry] = useState(0);
   const [revisions, setRevisions] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
@@ -2562,30 +2580,41 @@ function RecordDetailPage({
     label: resource === "companies" ? "Logo" : "Photo",
     type: "photo",
   };
-  const detailFields: FieldSpec[] = resource === "contracts" ? fields : [photoField, ...fields];
+  const detailFields: FieldSpec[] = resource === "contracts"
+    ? fields
+    : [photoField, ...fields.filter((field) => field.key !== photoKey)];
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    api<Row>(`/${resource}/${id}`)
+    setRecord(null);
+    setTab(resource === "contacts" ? "Activity" : "Overview");
+    setNoteText("");
+    setActivityFilter("All");
+    const controller = new AbortController();
+    api<Row>(`/${resource}/${id}`, { signal: controller.signal })
       .then((r) => {
+        if (controller.signal.aborted) return;
         setRecord(r);
         setLoading(false);
       })
       .catch(() => {
+        if (controller.signal.aborted) return;
         toast("Record not found", "error");
         navigate(`/${resource}`, { replace: true });
       });
+    return () => controller.abort();
   }, [id, resource]);
 
   useEffect(() => {
-    if (!record || (tab !== "Activity" && tab !== "Notes")) return;
+    if (!record || (tab !== "Activity" && tab !== "Notes" && tab !== "Calls")) return;
     const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
     if (name && resource !== "contracts") params.set("contact", name);
     const type =
       tab === "Notes"
         ? "Note"
+        : tab === "Calls" ? "Call"
         : showActivityFilters
           ? activityFilterTypes[activityFilter]
           : undefined;
@@ -2594,13 +2623,15 @@ function RecordDetailPage({
     setActivities([]);
     setActivityError(false);
     setActivityLoading(true);
-    api<Row[]>(`/activities?${params}`, { signal: controller.signal })
-      .then((items) => {
+    api<Row[] | { data: Row[] }>(`/activities?${params}`, { signal: controller.signal })
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        const items = Array.isArray(response) ? response : response.data;
         if (!Array.isArray(items)) throw new Error("Invalid activity response");
         setActivities(items.filter((item) => item && typeof item === "object" && typeof item.id === "string"));
       })
       .catch((error) => {
-        if (error.name !== "AbortError") setActivityError(true);
+        if (!controller.signal.aborted && error.name !== "AbortError") setActivityError(true);
       })
       .finally(() => {
         if (!controller.signal.aborted) setActivityLoading(false);
@@ -2609,32 +2640,31 @@ function RecordDetailPage({
   }, [record, tab, activityFilter, showActivityFilters, activityRetry, resource]);
 
   useEffect(() => {
-    if (!record?.email) return;
-    api<Row[]>("/messages")
-      .then((items) => setMessages(items.filter((m) => m.to === record.email)))
-      .catch(() => {});
-    api<{ data: Row[] }>("/activities")
-      .then(({ data: items }) =>
-        setActivities(
-          items.filter(
-            (a) =>
-              a.contact === recordName ||
-              a.title?.toLowerCase().includes(recordName.toLowerCase()),
-          ),
-        ),
-      )
-      .catch(() => {});
-    if (record.email)
-      api<{ data: Row[] }>("/messages")
-        .then(({ data: items }) =>
-          setMessages(items.filter((m) => m.to === record.email)),
-        )
-        .catch(() => {});
-    if (resource === "contacts")
-      api<{ data: Row[] }>(`/revisions/${resource}/${record.id}`)
-        .then((result) => setRevisions(result.data))
-        .catch(() => setRevisions([]));
-  }, [record]);
+    setMessages([]);
+    setEmailLoading(false); setEmailError(false);
+    if (!record?.email || tab !== "Emails") return;
+    const controller = new AbortController();
+    setEmailLoading(true); setEmailError(false);
+    api<Row[] | { data: Row[] }>("/messages", { signal: controller.signal })
+      .then((response) => {
+        const items = Array.isArray(response) ? response : response.data;
+        if (!Array.isArray(items)) throw new Error("Invalid message response");
+        if (!controller.signal.aborted) setMessages(items.filter((message) => message.to === record.email && (!message.channel || message.channel.toLowerCase() === "email")));
+      })
+      .catch(() => { if (!controller.signal.aborted) setEmailError(true); })
+      .finally(() => { if (!controller.signal.aborted) setEmailLoading(false); });
+    return () => controller.abort();
+  }, [record?.id, record?.email, tab, emailRetry]);
+
+  useEffect(() => {
+    setRevisions([]);
+    if (!record || resource !== "contacts" || tab !== "History") return;
+    const controller = new AbortController();
+    api<{ data: Row[] }>(`/revisions/${resource}/${record.id}`, { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setRevisions(result.data); })
+      .catch(() => { if (!controller.signal.aborted) setRevisions([]); });
+    return () => controller.abort();
+  }, [record?.id, record?.updatedAt, resource, tab]);
 
   async function addNote() {
     if (!noteText.trim() || !record) return;
@@ -2645,6 +2675,7 @@ function RecordDetailPage({
         json("POST", {
           title: `Note on ${title.slice(0, -1)}`,
           type: "Note",
+          recordId: record.id,
           contact: record.name || record.title || "",
           date: new Date().toISOString().slice(0, 10),
           notes: noteText,
@@ -2700,6 +2731,54 @@ function RecordDetailPage({
       </span>
     );
   };
+
+  const propertiesPanel = (
+            <div className="detail-section">
+              {(resource === "contacts" || resource === "leads") && <LifecycleStage
+                key={`${resource}/${record.id}`}
+                recordId={record.id}
+                stage={record.lifecycleStage}
+                disabled={user?.role !== "admin" && user?.role !== "member"}
+                onSaved={(updated) => {
+                  if (recordRoute.current !== `${resource}/${record.id}`) return;
+                  setRecord((previous) => previous?.id === record.id ? { ...previous, ...updated } : previous);
+                  setActivityRetry((value) => value + 1);
+                  toast("Lifecycle stage updated");
+                }}
+              />}
+              <h3>{resource === "contracts" ? "Contract summary" : "Contact information"}</h3>
+              <dl className="detail-props">
+                {detailFields.map((f) => (
+                    <div key={f.key}>
+                      <dt>{f.label}</dt>
+                      <dd>
+                        <InlineEditField
+                          key={`${resource}/${record.id}/${f.key}`}
+                          field={f}
+                          value={record[f.key]}
+                          disabled={user?.role !== "admin" && user?.role !== "member"}
+                          displayValue={f.type === "photo" ? (record[f.key] ? "Change image" : "Add image")
+                            : record[f.key] == null || record[f.key] === "" ? undefined
+                            : resource === "contracts" ? contractSummaryValue(record[f.key], f.type, f.key)
+                            : f.type === "number" && f.key === "value" ? money(record[f.key]) : undefined}
+                          onSave={async (value) => {
+                            const route = `${resource}/${record.id}`;
+                            const updated = await api<Row>(`/${resource}/${record.id}`, json("PATCH", { [f.key]: value }));
+                            if (recordRoute.current !== route) return;
+                            setRecord((previous) => previous?.id === record.id ? {
+                              ...previous,
+                              [f.key]: Object.prototype.hasOwnProperty.call(updated, f.key) ? updated[f.key] : value,
+                              updatedAt: updated.updatedAt ?? previous.updatedAt,
+                            } : previous);
+                            toast(`${f.label} updated`);
+                          }}
+                        />
+                      </dd>
+                    </div>
+                  ))}
+              </dl>
+            </div>
+  );
 
   return (
     <div className="page">
@@ -2761,13 +2840,6 @@ function RecordDetailPage({
               </Badge>
             ) : null}
             <button
-              className="btn secondary compact"
-              disabled={resource === "contracts" && user?.role !== "admin" && user?.role !== "member"}
-              onClick={() => setEdit(true)}
-            >
-              <Icon name="edit" /> Edit
-            </button>
-            <button
               className="btn ghost compact danger-link"
               disabled={resource === "contracts" && user?.role !== "admin" && user?.role !== "member"}
               aria-label={`Delete ${record.name || record.title || "record"}`}
@@ -2779,13 +2851,21 @@ function RecordDetailPage({
         </div>
       </div>
 
-      <div className="detail-tabs">
+      <div className={resource === "contacts" ? "record-360-layout" : undefined}>
+        {resource === "contacts" && <aside className="record-360-sidebar" aria-label="Contact properties and related records">
+          {propertiesPanel}
+          <AssociatedRecords key={record.id} contactId={record.id} company={record.company} name={record.name} email={record.email} />
+        </aside>}
+        <section className="record-360-main" aria-label="Record activity">
+      <div className="detail-tabs" role="group" aria-label="Record sections">
         {(resource === "contracts" ? (["Overview", "Activity"] as const) : resource === "contacts"
-          ? detailTabList
-          : detailTabList.filter((item) => item !== "History")
+          ? detailTabList.filter((item) => item !== "Overview")
+          : detailTabList.filter((item) => item !== "History" && item !== "Calls")
         ).map((t) => (
           <button
             key={t}
+            type="button"
+            aria-pressed={tab === t}
             className={tab === t ? "active" : ""}
             onClick={() => setTab(t)}
           >
@@ -2804,32 +2884,14 @@ function RecordDetailPage({
       <div className="detail-body">
         {tab === "Overview" && (
           <div className="detail-overview">
-            <div className="detail-section">
-              <h3>{resource === "contracts" ? "Contract summary" : "Contact information"}</h3>
-              <dl className="detail-props">
-                {fields.map((f) =>
-                  resource === "contracts" || record[f.key] ? (
-                    <div key={f.key}>
-                      <dt>{f.label}</dt>
-                      <dd>
-                        {resource === "contracts"
-                          ? contractSummaryValue(record[f.key], f.type, f.key)
-                          : f.type === "number" && f.key === "value"
-                          ? money(record[f.key])
-                          : String(record[f.key])}
-                      </dd>
-                    </div>
-                  ) : null,
-                )}
-              </dl>
-            </div>
+            {propertiesPanel}
             {resource === "contracts" ? <ContractDetails record={record} /> : null}
           </div>
         )}
 
-        {tab === "Activity" && (
+        {(tab === "Activity" || tab === "Calls") && (
           <div className="detail-activity">
-            {showActivityFilters && (
+            {showActivityFilters && tab === "Activity" && (
               <div
                 className="detail-tabs activity-filter-tabs"
                 role="group"
@@ -2854,12 +2916,12 @@ function RecordDetailPage({
               <Empty
                 icon="activity"
                 title="Could not load activities"
-                text={resource === "contracts" ? "Try loading the activity timeline again." : "Try another filter."}
-                action={resource === "contracts" ? (
+                text="Try loading this section again."
+                action={(
                   <button type="button" className="btn secondary compact" onClick={() => setActivityRetry((value) => value + 1)}>
                     Retry
                   </button>
-                ) : undefined}
+                )}
               />
             ) : activities.length ? (
               activities.map((a) => (
@@ -2885,7 +2947,7 @@ function RecordDetailPage({
             ) : (
               <Empty
                 icon="activity"
-                title="No activity yet"
+                title={tab === "Calls" ? "No calls yet" : "No activity yet"}
                 text="Activities related to this record will appear here."
               />
             )}
@@ -2943,7 +3005,7 @@ function RecordDetailPage({
 
         {tab === "Emails" && (
           <div className="detail-emails">
-            {messages.length ? (
+            {emailLoading ? <div className="table-loading">Loading emails…</div> : emailError ? <div role="alert">Could not load emails. <button type="button" className="btn secondary compact" onClick={() => setEmailRetry((value) => value + 1)}>Retry</button></div> : messages.length ? (
               messages.map((m) => (
                 <div className="email-item" key={m.id}>
                   <div className="email-item-head">
@@ -3007,26 +3069,8 @@ function RecordDetailPage({
         )}
       </div>
 
-      {edit ? (
-        <RecordForm
-          title={`Edit ${title.slice(0, -1)}`}
-          fields={detailFields}
-          initial={record}
-          onClose={() => setEdit(false)}
-          onSave={async (data) => {
-            try {
-              const payload = resource === "contracts" ? data : { ...record, ...data };
-              await api(`/${resource}/${record.id}`, json("PUT", payload));
-              setRecord((prev) => (prev ? { ...prev, ...payload } : prev));
-              setEdit(false);
-              toast("Updated");
-            } catch (error) {
-              if (resource === "contracts") throw error;
-              toast((error as Error).message, "error");
-            }
-          }}
-        />
-      ) : null}
+        </section>
+      </div>
     </div>
   );
 }
@@ -6092,177 +6136,51 @@ function SurveyResponsesPage() {
 }
 
 function DuplicatesPage() {
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const [scope, setScope] = useState<"contacts" | "companies">("contacts");
-  const [data, setData] = useState<any>(null);
+  const [groups, setGroups] = useState<{ ids: string[]; confidence?: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [skipped, setSkipped] = useState<string[]>([]);
-  const load = () =>
-    api<any>(`/duplicates?resource=${scope}`)
-      .then(setData)
-      .catch((err) => toast(err.message, "error"));
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    const refresh = () => setReload((value) => value + 1);
+    window.addEventListener("tunaxa:resource-changed", refresh);
+    return () => window.removeEventListener("tunaxa:resource-changed", refresh);
+  }, []);
   useEffect(() => {
     setSkipped([]);
-    load();
-    window.addEventListener("tunaxa:resource-changed", load);
-    return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, [scope]);
-  async function mergePair(group: any, keep: Row, merge: Row) {
-    setBusy(true);
-    try {
-      await api(
-        `/duplicates/merge`,
-        json("POST", { resource: scope, keepId: keep.id, mergeId: merge.id }),
-      );
-      toast("Duplicate merged");
-      load();
-      window.dispatchEvent(new Event("tunaxa:resource-changed"));
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-  function skipPair(key: string) {
-    setSkipped((current) => [...current, key]);
-  }
-  const groups = (data?.duplicates || [])
-    .map((group: any) => ({
-      ...group,
-      records:
-        group.records ||
-        group.ids.map((id: string, index: number) => ({
-          id,
-          name: group.names[index],
-        })),
-    }))
-    .flatMap((group: any) =>
-      group.records.slice(1).map((merge: Row) => ({
-        group,
-        keep: group.records[0] as Row,
-        merge,
-        key: `${group.records[0].id}:${merge.id}`,
-      })),
-    )
-    .filter((pair: any) => !skipped.includes(pair.key));
-  const pair = groups[0];
-  const comparisonKeys = pair
-    ? [
-        ...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)]),
-      ].filter((key) => key !== "id")
-    : [];
-  const displayName = (record: Row) =>
-    String(record.name || record.email || record.id || "Untitled");
-  const displayValue = (value: unknown) => {
-    if (value === undefined || value === null || value === "") return "—";
-    if (Array.isArray(value)) return value.join(", ");
-    if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
-  };
-  const labelFor = (key: string) =>
-    key
-      .replace(/([A-Z])/g, " $1")
-      .replace(/^./, (value) => value.toUpperCase());
-  return (
-    <div className="page">
-      <PageHeader
-        title="Duplicate Management"
-        description="Find and merge duplicate contacts and companies sharing the same email or name."
-      >
-        <button
-          className={
-            scope === "contacts"
-              ? "btn primary compact"
-              : "btn secondary compact"
-          }
-          onClick={() => setScope("contacts")}
-        >
-          Contacts
-        </button>
-        <button
-          className={
-            scope === "companies"
-              ? "btn primary compact"
-              : "btn secondary compact"
-          }
-          onClick={() => setScope("companies")}
-        >
-          Companies
-        </button>
-      </PageHeader>
-      <section className="surface duplicate-comparison">
-        {pair ? (
-          <>
-            <div className="duplicate-comparison-head">
-              <div>
-                <span className="eyebrow">Potential duplicate</span>
-                <h2>Review these records</h2>
-              </div>
-              <Badge tone="blue">{pair.group.confidence ?? 0}% match</Badge>
-            </div>
-            <div className="duplicate-columns">
-              <article className="duplicate-record keep">
-                <div className="duplicate-record-head">
-                  <Avatar name={displayName(pair.keep)} />
-                  <div>
-                    <small>Record to keep</small>
-                    <h3>{displayName(pair.keep)}</h3>
-                  </div>
-                </div>
-                <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => (
-                    <div className="duplicate-field" key={key}>
-                      <span>{labelFor(key)}</span>
-                      <b>{displayValue(pair.keep[key])}</b>
-                    </div>
-                  ))}
-                </div>
-              </article>
-              <article className="duplicate-record merge">
-                <div className="duplicate-record-head">
-                  <Avatar name={displayName(pair.merge)} />
-                  <div>
-                    <small>Record to merge and delete</small>
-                    <h3>{displayName(pair.merge)}</h3>
-                  </div>
-                </div>
-                <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => (
-                    <div className="duplicate-field" key={key}>
-                      <span>{labelFor(key)}</span>
-                      <b>{displayValue(pair.merge[key])}</b>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            </div>
-            <div className="duplicate-actions">
-              <button
-                className="btn secondary"
-                disabled={busy}
-                onClick={() => skipPair(pair.key)}
-              >
-                <Icon name="close" /> Skip
-              </button>
-              <button
-                className="btn primary"
-                disabled={busy}
-                onClick={() => mergePair(pair.group, pair.keep, pair.merge)}
-              >
-                <Icon name="check" /> Merge
-              </button>
-            </div>
-          </>
-        ) : (
-          <Empty
-            icon="duplicate"
-            title={`No duplicate ${scope} found`}
-            text={`No ${scope} currently share the same email/name. Data is clean.`}
-          />
-        )}
-      </section>
-    </div>
-  );
+  useEffect(() => {
+    const controller = new AbortController();
+    setGroups([]); setError(""); setLoading(true);
+    api<{ duplicates: { ids: string[]; confidence?: number }[] }>(`/duplicates?resource=${scope}`, { signal: controller.signal })
+      .then((result) => {
+        if (!Array.isArray(result.duplicates) || result.duplicates.some((group) => !Array.isArray(group.ids) || group.ids.some((id) => typeof id !== "string"))) throw new Error("Unexpected duplicate response");
+        if (!controller.signal.aborted) setGroups(result.duplicates);
+      })
+      .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [scope, reload]);
+  const pairs = groups.flatMap((group) => group.ids.slice(1).filter((id) => id !== group.ids[0]).map((id) => ({ primaryId: group.ids[0], secondaryId: id, key: `${group.ids[0]}:${id}` }))).filter((pair) => !skipped.includes(pair.key));
+  const pair = pairs[0];
+  return <div className="page">
+    <PageHeader title="Duplicate Management" description="Compare duplicate contacts and companies and choose the values to keep.">
+      {(["contacts", "companies"] as const).map((resource) => <button key={resource} type="button" className={scope === resource ? "btn primary compact" : "btn secondary compact"} aria-pressed={scope === resource} disabled={busy} onClick={() => setScope(resource)}>{resource === "contacts" ? "Contacts" : "Companies"}</button>)}
+    </PageHeader>
+    <section className="surface duplicate-comparison">
+      {loading ? <p role="status">Finding duplicates…</p> : error ? <p role="alert">{error} <button type="button" onClick={() => setReload((value) => value + 1)}>Retry</button></p> : pair ? <>
+        <p>{pairs.length} potential duplicate pairs to review</p>
+        <DuplicateResolution key={`${scope}/${pair.key}/${reload}`} resource={scope} primaryId={pair.primaryId} secondaryId={pair.secondaryId}
+          disabled={user?.role !== "admin" && user?.role !== "member"} onBusyChange={setBusy}
+          onSkip={() => setSkipped((current) => [...current, pair.key])}
+          onMerged={() => { toast("Duplicate merged"); window.dispatchEvent(new Event("tunaxa:resource-changed")); }} />
+      </> : <Empty icon="duplicate" title={`No remaining duplicate ${scope} pairs`} text={skipped.length ? "Skipped pairs were left unchanged. Refresh to review them again." : "No potential duplicates found."} />}
+      {!!skipped.length && !busy && <button type="button" className="btn secondary compact" onClick={() => setSkipped([])}>Review skipped pairs</button>}
+    </section>
+  </div>;
 }
 
 function PortalView({
@@ -8745,5 +8663,3 @@ export default function App() {
     </AppProvider>
   );
 }
-
-

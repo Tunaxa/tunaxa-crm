@@ -1,4 +1,5 @@
 import { readDb, mutateDb } from '../store.js';
+import { findRecord } from '../db/legacy-records.js';
 import { id, now } from '../helpers.js';
 import { runAction, deliverMessages } from './actions.js';
 import { DEFAULT_SETTINGS } from './config.js';
@@ -62,9 +63,7 @@ export async function processExecutionQueue() {
           live.attempts = (live.attempts || 0) + 1;
         });
         await mutateDb(async db => {
-          const record = item.resource && db[item.resource]
-            ? (db[item.resource].find(x => x.id === item.recordId) || null)
-            : null;
+          const record = item.resource ? (await findRecord(item.recordId, [item.resource], db))?.record : null;
           if (item.recordId && !record) {
             const live = db.executionQueue.find(x => x.id === item.id);
             if (live) {
