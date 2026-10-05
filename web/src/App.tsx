@@ -1,3 +1,4 @@
+import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
 
 import { useForm } from "react-hook-form";
@@ -2262,7 +2263,7 @@ function PeoplePage({
   const [filters, setFilters] = useState<FilterGroup | null>(null);
   const { items, loading, error, load, create, update, remove } =
     useResource<Row>(resource, { filters, all: true });
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [pageSize, setPageSize] = useState(getPageSize());
@@ -2310,6 +2311,8 @@ function changePageSize(value: number) {
   setPage(1);
   savePageSize(value);
 }
+  const bulk = useBulkSelection(JSON.stringify([resource, query, filters]), rows.map((row) => row.id));
+  const canBulk = user?.role === "admin" || user?.role === "member";
   async function importCsv(file: File) {
     try {
       const text = await file.text();
@@ -2377,7 +2380,7 @@ function changePageSize(value: number) {
           <Icon name="plus" /> Add {singular}
         </button>
       </PageHeader>
-      <FilterBuilder fields={allFields} value={filters} onChange={setFilters} />
+      <FilterBuilder fields={allFields} value={filters} onChange={(next) => { if (!bulk.busy) setFilters(next); }} />
       {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
       <section className="surface table-surface">
         <div className="table-toolbar">
@@ -2386,7 +2389,7 @@ function changePageSize(value: number) {
             <input
               aria-label={`Search ${title.toLowerCase()}`}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              disabled={bulk.busy} onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
             />
           </div>
@@ -2411,6 +2414,7 @@ function changePageSize(value: number) {
           <table>
             <thead>
               <tr>
+                {canBulk && <th><SelectPage ids={rows.map((row) => row.id)} selected={bulk.selected} onChange={bulk.setSelected} disabled={bulk.busy} /></th>}
                 <th>{cols[0]?.label || "Name"}</th>
                 {cols.slice(1).map((c) => (
                   <th key={c.key}>{c.label}</th>
@@ -2421,6 +2425,7 @@ function changePageSize(value: number) {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
+                  {canBulk && <td><input className="bulk-select" type="checkbox" aria-label={`Select ${row.name || row.title || row.id}`} checked={bulk.selected.includes(row.id)} disabled={bulk.busy || (!bulk.selected.includes(row.id) && bulk.selected.length >= 100)} onChange={() => bulk.toggle(row.id)} /></td>}
                   {cols.map((c, i) =>
                     i === 0 ? (
                       <td key={c.key}>
@@ -2498,6 +2503,7 @@ function changePageSize(value: number) {
           />
         )}
       </section>
+      {canBulk && <BulkActions resource={resource} ids={bulk.selected} statuses={allFields.find((field) => field.key === "status")?.options} busy={bulk.busy} setBusy={bulk.setBusy} onSelection={bulk.setSelected} onReload={load} />}
       {edit !== undefined ? (
         <RecordForm
           title={`${edit ? "Edit" : "Add"} ${singular}`}
