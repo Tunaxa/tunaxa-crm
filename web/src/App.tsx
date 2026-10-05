@@ -34,6 +34,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { Icon } from "./components/Icon";
 import { AssociatedRecords } from "./components/AssociatedRecords";
+import { FilterBuilder, type FilterGroup } from "./components/FilterBuilder";
 import { LifecycleStage } from "./components/LifecycleStage";
 import { InlineEditField } from "./components/InlineEditField";
 import {
@@ -2258,8 +2259,9 @@ function PeoplePage({
   icon: string;
   fields: FieldSpec[];
 }) {
-  const { items, loading, load, create, update, remove } =
-    useResource<Row>(resource);
+  const [filters, setFilters] = useState<FilterGroup | null>(null);
+  const { items, loading, error, load, create, update, remove } =
+    useResource<Row>(resource, { filters, all: true });
   const { toast } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -2301,7 +2303,7 @@ const rows = filteredRows.slice(
 
 useEffect(() => {
   setPage(1);
-}, [query, pageSize, resource]);
+}, [query, pageSize, resource, filters]);
 
 function changePageSize(value: number) {
   setPageSize(value);
@@ -2375,6 +2377,8 @@ function changePageSize(value: number) {
           <Icon name="plus" /> Add {singular}
         </button>
       </PageHeader>
+      <FilterBuilder fields={allFields} value={filters} onChange={setFilters} />
+      {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
       <section className="surface table-surface">
         <div className="table-toolbar">
           <div className="header-search">

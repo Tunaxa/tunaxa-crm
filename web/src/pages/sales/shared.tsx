@@ -4,6 +4,7 @@ import { Icon } from "../../components/Icon";
 import { Avatar, Badge, Drawer, Empty, PageHeader, PhotoField, money } from "../../components/ui";
 import { useApp } from "../../context/AppContext";
 import { api, getToken, json } from "../../lib/api";
+import { FilterBuilder, type FilterGroup } from "../../components/FilterBuilder";
 import { useResource } from "../../lib/useResource";
 
 type Row = { id: string; [key: string]: any };
@@ -212,8 +213,9 @@ export function PeoplePage({
   icon: string;
   fields: FieldSpec[];
 }) {
-  const { items, loading, load, create, update, remove } =
-    useResource<Row>(resource);
+  const [filters, setFilters] = useState<FilterGroup | null>(null);
+  const { items, loading, error, load, create, update, remove } =
+    useResource<Row>(resource, { filters, all: true });
   const { toast } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -295,6 +297,8 @@ export function PeoplePage({
           <Icon name="plus" /> Add {title.slice(0, -1).toLowerCase()}
         </button>
       </PageHeader>
+      <FilterBuilder fields={allFields} value={filters} onChange={setFilters} />
+      {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
       <section className="surface table-surface">
         <div className="table-toolbar">
           <div className="header-search">
@@ -433,7 +437,8 @@ export function CompaniesPage() {
     { key: "employees", label: "Employees", type: "number" },
     { key: "owner", label: "Owner" },
   ];
-  const { items, create, update, remove } = useResource<Row>("companies");
+  const [filters, setFilters] = useState<FilterGroup | null>(null);
+  const { items, loading, error, load, create, update, remove } = useResource<Row>("companies", { filters, all: true });
   const { toast } = useApp();
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
@@ -470,7 +475,9 @@ export function CompaniesPage() {
           <Icon name="plus" /> Add company
         </button>
       </PageHeader>
-      {items.length ? (
+      <FilterBuilder fields={allFields} value={filters} onChange={setFilters} />
+      {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
+      {loading ? <div role="status">Loading…</div> : items.length ? (
         <div className="company-grid">
           {items.map((company) => (
             <article
