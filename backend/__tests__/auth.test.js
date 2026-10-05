@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { resetTestDb, cleanupTestDb } from './setup.js';
 import { mutateDb } from '../store.js';
@@ -149,10 +149,14 @@ describe('Auth login + me + logout', () => {
   });
 
   it('POST /api/auth/refresh rejects an expired token', async () => {
+    // Start a new limiter window so this tests token expiry, not throttling.
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 60_001);
+    try {
     const login = await request(app).post('/api/auth/login').send({
       email: 'admin@test.com',
       password: 'secret123'
     });
+    expect(login.status).toBe(200);
     await mutateDb(db => {
       const session = db.sessions.find(item => item.token === login.body.token);
       session.expiresAt = new Date(0).toISOString();
@@ -160,5 +164,8 @@ describe('Auth login + me + logout', () => {
 
     const res = await request(app).post('/api/auth/refresh').set('Authorization', `Bearer ${login.body.token}`);
     expect(res.status).toBe(401);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });

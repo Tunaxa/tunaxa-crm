@@ -3,6 +3,8 @@ import request from 'supertest';
 import crypto from 'node:crypto';
 import { resetTestDb, cleanupTestDb, seedTestUser, loginAs } from './setup.js';
 import { mutateDb, readDb } from '../store.js';
+import { query } from '../db/pg.js';
+import { pgToLegacy } from '../db/legacy-shape.js';
 
 let app;
 let token;
@@ -109,9 +111,9 @@ describe('PATCH /api/:resource/:id - true partial update', () => {
     expect(stored.body.email).toBe(before.email);
     expect(stored.body.createdAt).toBe(before.createdAt);
 
-    // Also confirm it reached disk, not just the response.
-    const db = await readDb();
-    const row = db.contacts.find((c) => c.id === before.id);
+    // Confirm it reached the actual PostgreSQL store, not just the response.
+    const result = await query('SELECT * FROM contacts WHERE id = $1', [before.id]);
+    const row = pgToLegacy(result.rows[0], 'contacts');
     expect(row.phone).toBe('555-0199');
     expect(row.name).toBe(before.name);
   });
@@ -135,10 +137,8 @@ describe('PATCH /api/:resource/:id - true partial update', () => {
 
   it('refreshes updatedAt', async () => {
     const created = await createContact();
-    const stale = '2000-01-01T00:00:00.000Z';
-    await mutateDb((db) => {
-      db.contacts.find((c) => c.id === created.id).updatedAt = stale;
-    });
+    const stale = created.updatedAt;
+    await new Promise(resolve => setTimeout(resolve, 5));
 
     const res = await patch('contacts', created.id, { phone: '555-0199' });
 
