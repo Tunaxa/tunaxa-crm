@@ -1,6 +1,9 @@
 import { query } from "../pg.js";
 import {
   cacheFlush,
+  cacheGet,
+  cacheSet,
+  hashParams,
 } from "../../services/cache.js";
 
 const RESOURCE = "activities";
@@ -80,7 +83,11 @@ function searchCondition(param) {
     .join(" OR ");
 }
 
-export async function findAll({
+export async function findAll(options = {}) {
+  const cacheKey = `${RESOURCE}:list:${hashParams(options)}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
+  const {
   page = 1,
   limit = 20,
   sortBy = "created_at:desc",
@@ -88,7 +95,7 @@ export async function findAll({
   type = "",
   contact = "",
   recordId = "",
-} = {}) {
+  } = options;
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -162,14 +169,15 @@ export async function findAll({
     dataParams,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  return {
+  const result = {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-
+  await cacheSet(cacheKey, result, 60);
+  return result;
 }
 
 export async function findById(id) {
@@ -204,6 +212,7 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
