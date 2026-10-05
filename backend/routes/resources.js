@@ -300,11 +300,14 @@ export default function registerResourceRoutes(app) {
       if (PG_RESOURCES.has(resource)) {
         const repo = repoFor(resource);
         try {
-          const pgData = legacyToPg({ ...req.body }, resource);
+          const pgData = legacyToPg(coerceCustomFields(req.db || await readDb(), resource, { ...req.body }), resource);
           // Coerce numeric built-ins (e.g. deals.value, companies.employees)
           coerceBuiltIns(resource, pgData);
           const row = await repo.create(pgData);
           const item = pgToLegacy(row, resource);
+          await mutateDb(db => {
+            db.audit.unshift(auditEntry({ action: `Created ${resource.slice(0, -1)}`, actor: req.user.name, req, resourceId: item.id }));
+          });
           const event = createdEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
           broadcast("record.created", { resource, item });
@@ -450,16 +453,28 @@ export default function registerResourceRoutes(app) {
       if (PG_RESOURCES.has(resource)) {
         const repo = repoFor(resource);
         try {
-          const pgData = legacyToPg({ ...req.body }, resource);
+          const stored = await repo.findById(req.params.id);
+          if (!stored) return res.status(404).json({ error: "Record not found" });
+          previous = pgToLegacy(stored, resource);
+          const data = { ...req.body };
+          for (const field of [...IMMUTABLE_FIELDS, "updatedAt", "created_at", "updated_at"]) delete data[field];
+          const pgData = legacyToPg(coerceCustomFields(req.db || await readDb(), resource, data), resource);
+          // Preserve the overflow fields without rewriting unrelated columns.
+          // Including the bag also makes an empty PATCH a successful no-op.
+          pgData.custom_fields = { ...stored.custom_fields, ...pgData.custom_fields };
           coerceBuiltIns(resource, pgData);
           const row = await repo.update(req.params.id, pgData);
           if (!row) return res.status(404).json({ error: "Record not found" });
           const item = pgToLegacy(row, resource);
+          await mutateDb(db => {
+            revisionId = recordRevision(db, resource, previous, item, req.user);
+            db.audit.unshift(auditEntry({ action: `Updated ${resource.slice(0, -1)}`, actor: req.user.name, req, resourceId: item.id }));
+          });
           const event = updatedEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
           broadcast("record.updated", { resource, item });
           cacheFlush(resource);
-          return res.json(item);
+          return res.json(revisionId ? { ...item, revisionId } : item);
         } catch (err) {
           return next(err);
         }
