@@ -1,9 +1,6 @@
 import { query } from "../pg.js";
 import {
   cacheFlush,
-  cacheGet,
-  cacheSet,
-  hashParams,
 } from "../../services/cache.js";
 
 const RESOURCE = "activities";
@@ -156,10 +153,6 @@ export async function findAll({
     [...params],
   );
   const dataParams = [...params, normalizedLimit, offset];
-    searchTerm ? [searchTerm] : [],
-  );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
   const dataResult = await query(
     `SELECT *
      FROM activities
@@ -176,8 +169,7 @@ export async function findAll({
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-  await cacheSet(cacheKey, result, 60);
-  return result;
+
 }
 
 export async function findById(id) {

@@ -225,27 +225,6 @@ export default function registerResourceRoutes(app) {
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
-    const db = req.db || (await readDb());
-
-    const rows = (db[req.params.resource] || []).map((item) =>
-      req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
-    );
-
-    const columns = [
-      ...new Set(rows.flatMap((row) => Object.keys(row))),
-    ];
-
-    const cell = (value) => {
-      const text =
-        value == null
-          ? ""
-          : typeof value === "object"
-            ? JSON.stringify(value)
-            : String(value);
-
-      return `"${text.replace(/"/g, '""')}"`;
-    };
-
     let rows;
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
@@ -457,15 +436,6 @@ export default function registerResourceRoutes(app) {
     },
   );
 
-  app.put(
-    "/api/:resource/:id",
-    auth,
-    requireRole("admin", "member"),
-    validate(ResourceSchema),
-    async (req, res, next) => {
-      const resource = req.params.resource;
-      if (!resources.has(resource)) return next();
-
   // PUT and PATCH are the same operation in this store. The payload is merged
   // over the stored record rather than replacing it, so a client that sends only
   // the fields it changed (inline editing) leaves every other field untouched.
@@ -496,8 +466,6 @@ export default function registerResourceRoutes(app) {
       }
 
       // ── Legacy JSON path ──────────────────────────────────────────────────
-      let previous = null;
-      let revisionId = null;
 
     const item = await mutateDb((db) => {
       const index = db[resource].findIndex(
