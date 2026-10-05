@@ -60,8 +60,8 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll(params = {}) {
-  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
+export async function findAll(options = {}) {
+  const cacheKey = `${RESOURCE}:list:${hashParams(options)}`;
   const cached = await cacheGet(cacheKey);
   if (cached) return cached;
 
@@ -70,7 +70,9 @@ export async function findAll(params = {}) {
     limit = 20,
     sortBy = "created_at:desc",
     q = "",
-  } = params;
+    status = "",
+    completed,
+  } = options;
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -116,7 +118,7 @@ export async function findAll(params = {}) {
     params2,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  return {
+  const result = {
     data: dataResult.rows,
     total,
     page: normalizedPage,
@@ -155,6 +157,7 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 

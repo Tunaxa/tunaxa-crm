@@ -1,9 +1,11 @@
+import { BulkActions, SelectPage, useBulkSelection } from "../../components/BulkActions";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
 import { Avatar, Badge, Drawer, Empty, PageHeader, PhotoField, money } from "../../components/ui";
 import { useApp } from "../../context/AppContext";
 import { api, getToken, json } from "../../lib/api";
+import { FilterBuilder, type FilterGroup } from "../../components/FilterBuilder";
 import { useResource } from "../../lib/useResource";
 
 type Row = { id: string; [key: string]: any };
@@ -212,9 +214,10 @@ export function PeoplePage({
   icon: string;
   fields: FieldSpec[];
 }) {
-  const { items, loading, load, create, update, remove } =
-    useResource<Row>(resource);
-  const { toast } = useApp();
+  const [filters, setFilters] = useState<FilterGroup | null>(null);
+  const { items, loading, error, load, create, update, remove } =
+    useResource<Row>(resource, { filters, all: true });
+  const { toast, user } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
@@ -233,6 +236,8 @@ export function PeoplePage({
       !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
   );
 
+  const bulk = useBulkSelection(JSON.stringify([resource, query, filters]), rows.map((row) => row.id));
+  const canBulk = user?.role === "admin" || user?.role === "member";
   async function importCsv(file: File) {
     try {
       const text = await file.text();
@@ -295,13 +300,15 @@ export function PeoplePage({
           <Icon name="plus" /> Add {title.slice(0, -1).toLowerCase()}
         </button>
       </PageHeader>
+      <FilterBuilder fields={allFields} value={filters} onChange={(next) => { if (!bulk.busy) setFilters(next); }} />
+      {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
       <section className="surface table-surface">
         <div className="table-toolbar">
           <div className="header-search">
             <Icon name="search" />
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              disabled={bulk.busy} onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
             />
           </div>
@@ -313,6 +320,7 @@ export function PeoplePage({
           <table>
             <thead>
               <tr>
+                {canBulk && <th><SelectPage ids={rows.map((row) => row.id)} selected={bulk.selected} onChange={bulk.setSelected} disabled={bulk.busy} /></th>}
                 <th>Name</th>
                 <th>Company</th>
                 <th>Email</th>
@@ -324,6 +332,7 @@ export function PeoplePage({
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
+                  {canBulk && <td><input className="bulk-select" type="checkbox" aria-label={`Select ${row.name || row.title || row.id}`} checked={bulk.selected.includes(row.id)} disabled={bulk.busy || (!bulk.selected.includes(row.id) && bulk.selected.length >= 100)} onChange={() => bulk.toggle(row.id)} /></td>}
                   <td>
                     <button
                       className="person-cell person-link"
@@ -407,6 +416,7 @@ export function PeoplePage({
           />
         )}
       </section>
+      {canBulk && <BulkActions resource={resource} ids={bulk.selected} statuses={allFields.find((field) => field.key === "status")?.options} busy={bulk.busy} setBusy={bulk.setBusy} onSelection={bulk.setSelected} onReload={load} />}
       {edit !== undefined ? (
         <RecordForm
           title={`${edit ? "Edit" : "Add"} ${title.slice(0, -1)}`}
@@ -433,8 +443,9 @@ export function CompaniesPage() {
     { key: "employees", label: "Employees", type: "number" },
     { key: "owner", label: "Owner" },
   ];
-  const { items, create, update, remove } = useResource<Row>("companies");
-  const { toast } = useApp();
+  const [filters, setFilters] = useState<FilterGroup | null>(null);
+  const { items, loading, error, load, create, update, remove } = useResource<Row>("companies", { filters, all: true });
+  const { toast, user } = useApp();
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const custom = useSchema("companies");
@@ -445,6 +456,8 @@ export function CompaniesPage() {
     ...nonPhoto,
     ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
   ];
+  const bulk = useBulkSelection(JSON.stringify(["companies", filters]), items.map((row) => row.id));
+  const canBulk = user?.role === "admin" || user?.role === "member";
   async function exportCsv() {
     if (!items.length) return;
     try {
@@ -470,7 +483,10 @@ export function CompaniesPage() {
           <Icon name="plus" /> Add company
         </button>
       </PageHeader>
-      {items.length ? (
+      <FilterBuilder fields={allFields} value={filters} onChange={(next) => { if (!bulk.busy) setFilters(next); }} />
+      {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
+      {canBulk && <label><SelectPage ids={items.map((row) => row.id)} selected={bulk.selected} onChange={bulk.setSelected} disabled={bulk.busy || loading} /> Select visible companies (maximum 100)</label>}
+      {loading ? <div role="status">Loading…</div> : items.length ? (
         <div className="company-grid">
           {items.map((company) => (
             <article
@@ -479,6 +495,7 @@ export function CompaniesPage() {
               onClick={() => navigate(`/companies/${company.id}`)}
               style={{ cursor: "pointer" }}
             >
+              {canBulk && <label onClick={(event) => event.stopPropagation()}><input className="bulk-select" type="checkbox" aria-label={`Select ${company.name || company.id}`} checked={bulk.selected.includes(company.id)} disabled={bulk.busy || (!bulk.selected.includes(company.id) && bulk.selected.length >= 100)} onChange={() => bulk.toggle(company.id)} /> Select</label>}
               <header>
                 <span className="company-logo">
                   {company.logo ? (
@@ -549,6 +566,7 @@ export function CompaniesPage() {
           }
         />
       )}
+      {canBulk && <BulkActions resource="companies" ids={bulk.selected} busy={bulk.busy} setBusy={bulk.setBusy} onSelection={bulk.setSelected} onReload={load} />}
       {edit !== undefined ? (
         <RecordForm
           title={`${edit ? "Edit" : "Add"} company`}

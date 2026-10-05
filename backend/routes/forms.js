@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
+import { loadRecords, findRecord, saveRecord } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { id, now, coerceCustomFields } from '../helpers.js';
@@ -30,9 +31,9 @@ function fieldValue(payload, field) {
   return payload[field.label] ?? '';
 }
 
-function findKnown(db, recordId) {
+async function findKnown(db, recordId) {
   if (!recordId) return null;
-  return db.leads.find(x => x.id === recordId) || db.contacts.find(x => x.id === recordId) || null;
+  return (await findRecord(recordId, ['leads', 'contacts'], db))?.record || null;
 }
 
 function flattenForPublic(form) {
@@ -57,7 +58,7 @@ export default function registerFormRoutes(app) {
     const form = (db.forms || []).find(f => f.permalink === permalink && f.enabled !== false);
     if (!form) return res.status(404).json({ error: 'Form not found' });
 
-    const known = findKnown(db, req.query.recordId || '');
+    const known = await findKnown(db, req.query.recordId || '');
     const fields = (form.fields || [])
       .filter(f => {
         if (form.progressive !== false && f.progressive !== false && known && filled(known[f.key])) {
@@ -91,7 +92,7 @@ export default function registerFormRoutes(app) {
     delete payload.recordId;
     delete payload.vid;
 
-    const known = findKnown(db, recordId);
+    const known = await findKnown(db, recordId);
     const fields = (form.fields || []).filter(f => {
       if (form.progressive !== false && f.progressive !== false && known && filled(known[f.key])) return false;
       const c = f.visibleIf;
@@ -126,21 +127,18 @@ export default function registerFormRoutes(app) {
     const target = form.submitTo === 'contact' ? 'contacts' : 'leads';
     const email = String(payload.email || '').toLowerCase();
 
-    const result = await mutateDb(db => {
+    const result = await mutateDb(async db => {
       const createdAt = now();
       let record = null;
       let existing = false;
 
       if (email) {
-        record = db[target].find(x => String(x.email || '').toLowerCase() === email)
-          || (target === 'leads' ? db.contacts.find(x => String(x.email || '').toLowerCase() === email) : db.leads.find(x => String(x.email || '').toLowerCase() === email));
+        record = (await loadRecords(target, db)).find(x => String(x.email || '').toLowerCase() === email);
       }
 
       if (record) {
         existing = true;
-        const index = db[target].findIndex(x => x.id === record.id);
-        db[target][index] = { ...db[target][index], ...coerceCustomFields(db, target, { ...mapped }), updatedAt: createdAt };
-        record = db[target][index];
+        record = { ...record, ...coerceCustomFields(db, target, { ...mapped }), updatedAt: createdAt };
       } else {
         record = {
           id: id(target === 'leads' ? 'lead' : 'contact'),
@@ -151,8 +149,9 @@ export default function registerFormRoutes(app) {
           createdAt,
           updatedAt: createdAt
         };
-        db[target].unshift(record);
       }
+
+      record = await saveRecord(target, record, db);
 
       // Attribute web visits (pixel) to this record
       if (vid) {
@@ -168,7 +167,8 @@ export default function registerFormRoutes(app) {
         db.pendingAttribution = (db.pendingAttribution || []).filter(p => p.vid !== vid);
       }
 
-      db.activities.unshift({
+      record = await saveRecord(target, record, db);
+      await saveRecord('activities', {
         id: id('activity'),
         title: `${existing ? 'Updated via' : 'Submitted'} form: ${form.name}`,
         type: 'Form',
@@ -178,7 +178,7 @@ export default function registerFormRoutes(app) {
         recordId: record.id,
         createdAt,
         updatedAt: createdAt
-      });
+      }, db);
       db.audit.unshift({ id: id('audit'), action: `${existing ? 'Updated' : 'Created'} ${target.slice(0, -1)} via form "${form.name}"`, actor: 'Public', createdAt });
 
       return { record, existing, id: record.id };
