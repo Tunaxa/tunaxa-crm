@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+
 import {
   cacheFlush,
   cacheGet,
@@ -97,7 +98,7 @@ export async function findAll(params = {}) {
       : [normalizedLimit, offset],
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const result = {
+  return {
     data: dataResult.rows,
     total,
     page: normalizedPage,

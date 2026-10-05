@@ -48,19 +48,22 @@ export default function registerAuthRoutes(app) {
     res.json({ token, user: publicUser(user) });
   });
 
-  app.post('/api/auth/refresh', async (req, res) => {
+  app.post('/api/auth/refresh', authLimiter, async (req, res) => {
     const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
     if (!token) return res.status(401).json({ error: 'Unauthorized' });
-    const db = await readDb();
-    const session = db.sessions.find(x => x.token === token);
-    const user = session ? db.users.find(x => x.id === session.userId) : null;
-    if (!session || sessionIsExpired(session) || !user) return res.status(401).json({ error: 'Session expired' });
-    const nextToken = crypto.randomBytes(32).toString('hex');
-    await mutateDb(next => {
-      next.sessions = next.sessions.filter(x => x.token !== token);
-      next.sessions.push({ token: nextToken, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
+    const result = await mutateDb(db => {
+      const session = db.sessions.find(x => x.token === token);
+      if (!session || sessionIsExpired(session)) return { error: 'Session expired' };
+      const user = db.users.find(x => x.id === session.userId);
+      if (!user) return { error: 'User not found' };
+
+      const nextToken = crypto.randomBytes(32).toString('hex');
+      db.sessions = db.sessions.filter(x => x.token !== token);
+      db.sessions.push({ token: nextToken, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
+      return { token: nextToken };
     });
-    res.json({ token: nextToken });
+    if (result.error) return res.status(401).json({ error: result.error });
+    res.json(result);
   });
 
   app.get('/api/auth/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { resetTestDb, cleanupTestDb } from './setup.js';
+import { mutateDb } from '../store.js';
 
 let app;
 
@@ -108,6 +109,21 @@ describe('Auth login + me + logout', () => {
     token = res.body.token;
   });
 
+  it('POST /api/auth/refresh rotates the token and invalidates the old token', async () => {
+    const oldToken = token;
+    const res = await request(app).post('/api/auth/refresh').set('Authorization', `Bearer ${oldToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.token).toBeTruthy();
+    expect(res.body.token).not.toBe(oldToken);
+
+    const oldMe = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${oldToken}`);
+    expect(oldMe.status).toBe(401);
+
+    token = res.body.token;
+    const newMe = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+    expect(newMe.status).toBe(200);
+  });
+
   it('GET /api/auth/me returns user', async () => {
     const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
@@ -119,11 +135,30 @@ describe('Auth login + me + logout', () => {
     expect(res.status).toBe(401);
   });
 
+  it('POST /api/auth/refresh rejects no token', async () => {
+    const res = await request(app).post('/api/auth/refresh');
+    expect(res.status).toBe(401);
+  });
+
   it('POST /api/auth/logout invalidates token', async () => {
     const res = await request(app).post('/api/auth/logout').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
 
     const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
     expect(me.status).toBe(401);
+  });
+
+  it('POST /api/auth/refresh rejects an expired token', async () => {
+    const login = await request(app).post('/api/auth/login').send({
+      email: 'admin@test.com',
+      password: 'secret123'
+    });
+    await mutateDb(db => {
+      const session = db.sessions.find(item => item.token === login.body.token);
+      session.expiresAt = new Date(0).toISOString();
+    });
+
+    const res = await request(app).post('/api/auth/refresh').set('Authorization', `Bearer ${login.body.token}`);
+    expect(res.status).toBe(401);
   });
 });

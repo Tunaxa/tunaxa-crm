@@ -139,9 +139,9 @@ async function executeFlow(flow, record, settings) {
   const resource = RESOURCE_BY_EVENT_PREFIX[String(flow.event || '').split('.')[0]];
   const outbound = [];
 
-  await mutateDb(db => {
+  await mutateDb(async db => {
     for (const action of actions) {
-      const messages = runAction(db, action, record, { resource, flowId: flow.id, flowName: flow.name });
+      const messages = await runAction(db, action, record, { resource, flowId: flow.id, flowName: flow.name });
       outbound.push(...messages);
     }
     db.audit.unshift({ id: id('audit'), action: `Workflow "${flow.name}" executed (${flow.event})`, actor: 'Workflow', createdAt: now() });
@@ -160,7 +160,7 @@ async function executeFlowNodes(flow, record, settings) {
   const outbound = [];
   const visited = new Set();
 
-  await mutateDb(db => {
+  await mutateDb(async db => {
     let node = start;
     let guard = 0;
     while (node && guard++ < 50) {
@@ -194,7 +194,7 @@ async function executeFlowNodes(flow, record, settings) {
 
       if (node.type === 'action') {
         const action = { ...(node.config || {}), type: node.config?.type || node.action };
-        const messages = runAction(db, action, record, { resource, flowId: flow.id, flowName: flow.name });
+        const messages = await runAction(db, action, record, { resource, flowId: flow.id, flowName: flow.name });
         outbound.push(...messages);
         node = nodes.find(n => n.id === node.next);
         continue;
