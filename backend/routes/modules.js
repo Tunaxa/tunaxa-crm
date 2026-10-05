@@ -10,51 +10,36 @@ const num = value => {
 
 const monthKeyOf = iso => String(iso || '').slice(0, 7);
 
-/**
- * Read one resource from wherever it is actually stored.
- *
- * products/orders/invoices/expenses moved to Postgres in
- * 006_revenue_tables.sql, so the commerce and finance summaries have to read
- * them from the repositories. Reading the JSON store instead would aggregate an
- * empty array and report zero revenue for records that plainly exist - the
- * same split-store bug loadRows() guards against in dataops.js.
- */
-async function loadRows(resource, db) {
-  if (!PG_RESOURCES.has(resource)) return (db && db[resource]) || [];
-  const repo = repoFor(resource);
-  const rows = [];
-  // findAll() caps a page at 100, so page the whole set; a summary that stops
-  // after one page under-reports totals as soon as the table grows.
-  for (let page = 1; ; page++) {
-    const result = await repo.findAll({ page, limit: 100 });
-    rows.push(...result.data.map(row => pgToLegacy(row, resource)));
-    if (result.data.length === 0 || rows.length >= result.total) break;
-  }
-  return rows;
-}
-
 export default function registerModuleRoutes(app) {
   // --- Marketing ---
   app.get('/api/marketing/summary', auth, async (req, res) => {
-    const db = await readDb();
-    const campaigns = db.campaigns || [];
-    const active = campaigns.filter(c => c.status === 'Active');
-    const totalTarget = campaigns.reduce((sum, c) => sum + num(c.target), 0);
-    const totalReached = campaigns.reduce((sum, c) => sum + num(c.reached), 0);
-    const totalLeads = campaigns.reduce((sum, c) => sum + num(c.leads), 0);
-    const byStatus = {};
-    for (const c of campaigns) byStatus[c.status || 'Draft'] = (byStatus[c.status || 'Draft'] || 0) + 1;
-    res.json({
-      campaigns: campaigns.length,
-      active,
-      lists: (db.emailLists || []).length,
-      pages: (db.landingPages || []).length,
-      totalTarget,
-      totalReached,
-      totalLeads,
-      conversionRate: totalReached > 0 ? Number(((totalLeads / totalReached) * 100).toFixed(1)) : 0,
-      byStatus
-    });
+    try {
+      const db = await readDb();
+      // campaigns and email_lists moved to Postgres in
+      // 007_marketing_service_tables.sql, so the summary has to read them from
+      // the repositories. db.campaigns would be the now-empty JSON store and the
+      // summary would report zero campaigns while they plainly exist.
+      const campaigns = await loadRows('campaigns', db);
+      const active = campaigns.filter(c => c.status === 'Active');
+      const totalTarget = campaigns.reduce((sum, c) => sum + num(c.target), 0);
+      const totalReached = campaigns.reduce((sum, c) => sum + num(c.reached), 0);
+      const totalLeads = campaigns.reduce((sum, c) => sum + num(c.leads), 0);
+      const byStatus = {};
+      for (const c of campaigns) byStatus[c.status || 'Draft'] = (byStatus[c.status || 'Draft'] || 0) + 1;
+      res.json({
+        campaigns: campaigns.length,
+        active,
+        lists: (await loadRows('emailLists', db)).length,
+        pages: (db.landingPages || []).length,
+        totalTarget,
+        totalReached,
+        totalLeads,
+        conversionRate: totalReached > 0 ? Number(((totalLeads / totalReached) * 100).toFixed(1)) : 0,
+        byStatus
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // --- Commerce ---
