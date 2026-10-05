@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeAll } from "vitest";
 import { setDbPath } from "../store.js";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
