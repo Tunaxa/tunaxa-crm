@@ -99,7 +99,7 @@ export async function findAll(params = {}) {
       : [normalizedLimit, offset],
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  return {
+  const result = {
     data: dataResult.rows,
     total,
     page: normalizedPage,
@@ -135,6 +135,7 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
