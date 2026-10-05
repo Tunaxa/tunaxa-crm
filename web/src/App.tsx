@@ -82,12 +82,12 @@ import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
 
-const LeadsPage = lazy(() =>
-  import("./pages/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
-);
-const ContactsPage = lazy(() =>
-  import("./pages/sales/ContactsPage").then((module) => ({ default: module.ContactsPage })),
-);
+// const LeadsPage = lazy(() =>
+//   import("./pages/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
+// );
+// const ContactsPage = lazy(() =>
+//   import("./pages/sales/ContactsPage").then((module) => ({ default: module.ContactsPage })),
+// );
 const CompaniesPage = lazy(() =>
   import("./pages/sales/CompaniesPage").then((module) => ({ default: module.CompaniesPage })),
 );
@@ -255,16 +255,6 @@ function AuthScreen({
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [theme, setTheme] = useState(
-    document.documentElement.classList.contains("dark"),
-  );
-
-  function toggleTheme() {
-    const next = !theme;
-    setTheme(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
-  }
 
   useEffect(() => {
     api<{ needsSetup: boolean }>("/auth/status")
@@ -518,7 +508,6 @@ function AppRoutes() {
   const [collapsed, setCollapsed] = useState(
     localStorage.getItem("tunaxa.sidebar") === "1",
   );
-  const [pageSize, setPageSize] = useState(getPageSize());
   const [mobile, setMobile] = useState(false);
   const [profile, setProfile] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -554,10 +543,7 @@ function AppRoutes() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
-  function changePageSize(value: number) {
-    setPageSize(value);
-    savePageSize(value);
-  }
+
   function toggleTheme() {
     const next = !theme;
     setTheme(next);
@@ -2276,10 +2262,7 @@ function PeoplePage({
     ...fields,
     ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
   ];
-  const peopleFields: FieldSpec[] = [
-    { key: "avatar", label: "Photo", type: "photo" },
-    ...allFields,
-  ];
+
   const cols = allFields;
   const mCols = new Set(cols.map((field) => field.key));
   const singular = title.slice(0, -1).toLowerCase();
@@ -2291,11 +2274,6 @@ const filteredRows = items.filter(
   (row) =>
     !query ||
     JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
-);
-
-const totalPages = Math.max(
-  1,
-  Math.ceil(filteredRows.length / pageSize),
 );
 
 const rows = filteredRows.slice(
@@ -3212,337 +3190,6 @@ function RecordForm({
         )}
       </div>
     </Drawer>
-  );
-}
-function LegacyCompaniesPage() {
-  const fields: FieldSpec[] = [
-    { key: "logo", label: "Logo", type: "photo" },
-    { key: "name", label: "Company name" },
-    { key: "industry", label: "Industry" },
-    { key: "website", label: "Website" },
-    { key: "country", label: "Country" },
-    { key: "employees", label: "Employees", type: "number" },
-    { key: "owner", label: "Owner" },
-  ];
-  const { items, create, update, remove } = useResource<Row>("companies");
-  const { toast } = useApp();
-  const navigate = useNavigate();
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const custom = useSchema("companies");
-  const nonPhoto = fields.filter((f) => f.key !== "logo");
-  const photoField = fields.find((f) => f.key === "logo")!;
-  const allFields = [
-    photoField,
-    ...nonPhoto,
-    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
-  ];
-  async function exportCsv() {
-    try {
-      await downloadResourceCsv("companies");
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
-  }
-  return (
-    <div className="page">
-      <PageHeader
-        title="Companies"
-        description="Accounts, organizations and relationship ownership."
-      >
-        <button className="btn secondary" onClick={exportCsv}>
-          <Icon name="download" /> Export CSV
-        </button>
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add company
-        </button>
-      </PageHeader>
-      {items.length ? (
-        <div className="company-grid">
-          {items.map((company) => (
-            <article
-              className="company-card"
-              key={company.id}
-              onClick={() => navigate(`/companies/${company.id}`)}
-              style={{ cursor: "pointer" }}
-            >
-              <header>
-                <span className="company-logo">
-                  {company.logo ? (
-                    <img src={company.logo} alt="" />
-                  ) : (
-                    String(company.name || "NX")
-                      .split(/\s+/)
-                      .map((x: string) => x[0])
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase()
-                  )}
-                </span>
-                <div
-                  className="row-actions"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    className="icon-btn tiny"
-                    aria-label={`Edit ${company.name || "company"}`}
-                    onClick={() => setEdit(company)}
-                  >
-                    <Icon name="edit" />
-                  </button>
-                  <button
-                    className="icon-btn tiny danger-link"
-                    aria-label={`Delete ${company.name || "company"}`}
-                    onClick={() =>
-                      confirm("Delete this company?") && remove(company.id)
-                    }
-                  >
-                    <Icon name="trash" />
-                  </button>
-                </div>
-              </header>
-              <h3>{company.name || "Untitled company"}</h3>
-              <p>
-                {company.industry || "No industry"}
-                {company.country ? ` · ${company.country}` : ""}
-              </p>
-              <div className="company-meta">
-                <span>
-                  <small>Employees</small>
-                  <b>{company.employees || 0}</b>
-                </span>
-                <span>
-                  <small>Owner</small>
-                  <b>{company.owner || "—"}</b>
-                </span>
-              </div>
-              <footer>
-                <Badge>{company.website || "No website"}</Badge>
-                <span className="link-btn">Open account</span>
-              </footer>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <Empty
-          icon="companies"
-          title="No companies"
-          text="Add companies to connect contacts and deals to accounts."
-          action={
-            <button
-              className="btn primary compact"
-              onClick={() => setEdit(null)}
-            >
-              Add company
-            </button>
-          }
-        />
-      )}
-      {edit !== undefined ? (
-        <RecordForm
-          title={`${edit ? "Edit" : "Add"} company`}
-          fields={allFields}
-          initial={edit || {}}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function LegacyPipelinePage() {
-  const { items, create, update, remove } = useResource<Row>("deals");
-  const [pipelineStages, setPipelineStages] = useState<
-    { name: string; probability: number }[]
-  >([]);
-
-  useEffect(() => {
-    api<{
-      stages: { name: string; probability: number }[];
-    }>("/pipeline")
-      .then((data) => setPipelineStages(data.stages))
-      .catch(() => setPipelineStages([]));
-  }, []);
-  const navigate = useNavigate();
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const custom = useSchema("deals");
-  const fields: FieldSpec[] = [
-    { key: "title", label: "Deal name" },
-    { key: "company", label: "Company" },
-    { key: "value", label: "Value", type: "number" },
-    {
-      key: "stage",
-      label: "Stage",
-      type: "select",
-      options: stages.map((x) => x.id),
-    },
-    { key: "owner", label: "Owner" },
-    { key: "closeDate", label: "Close date", type: "date" },
-  ];
-  const allFields = [
-    ...fields,
-    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
-  ];
-  async function drop(stage: string) {
-    if (!dragging) return;
-    await update(dragging, { stage });
-    setDragging(null);
-  }
-  const probabilityByStage = Object.fromEntries(
-    pipelineStages.map((stage) => [
-      stage.name.toLowerCase(),
-      stage.probability,
-    ]),
-  );
-
-  const totalPipelineValue = items.reduce(
-    (sum, row) => sum + Number(row.value || 0),
-    0,
-  );
-
-  const weightedPipelineValue = items.reduce((sum, row) => {
-    const probability =
-      probabilityByStage[String(row.stage || "new").toLowerCase()] ?? 0;
-
-    return sum + Number(row.value || 0) * (probability / 100);
-  }, 0);
-  return (
-    <div className="page pipeline-page">
-      <PageHeader
-        title="Pipeline"
-        description="Drag deals between stages and keep your pipeline moving."
-      >
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add deal
-        </button>
-      </PageHeader>
-      <div className="pipeline-summary">
-        <div className="summary-card">
-          <span>Total pipeline value</span>
-          <strong>{money(totalPipelineValue)}</strong>
-        </div>
-
-        <div className="summary-card">
-          <span>Weighted value</span>
-          <strong>{money(weightedPipelineValue)}</strong>
-        </div>
-      </div>
-      {items.length ? (
-        <div className="pipeline-board">
-          {stages.map((stage) => {
-            const rows = items.filter(
-              (item) => (item.stage || "new") === stage.id,
-            );
-            return (
-              <section
-                className="pipeline-column"
-                key={stage.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => drop(stage.id)}
-              >
-                <header>
-                  <div>
-                    <span className="dot" />
-                    <b>{stage.label}</b>
-                    <em>{rows.length}</em>
-                  </div>
-                  <strong>
-                    {money(
-                      rows.reduce(
-                        (sum, row) => sum + Number(row.value || 0),
-                        0,
-                      ),
-                    )}
-                  </strong>
-                </header>
-                <div className="deal-list">
-                  {rows.map((row) => (
-                    <article
-                      className="deal-card"
-                      key={row.id}
-                      draggable
-                      onDragStart={() => setDragging(row.id)}
-                    >
-                      <div className="deal-top">
-                        <Badge tone={stage.id === "won" ? "green" : "blue"}>
-                          {stage.label}
-                        </Badge>
-                        <div className="row-actions">
-                          <button
-                            className="icon-btn tiny"
-                            aria-label={`Edit ${row.title || "deal"}`}
-                            onClick={() => setEdit(row)}
-                          >
-                            <Icon name="edit" />
-                          </button>
-                          <button
-                            className="icon-btn tiny danger-link"
-                            aria-label={`Delete ${row.title || "deal"}`}
-                            onClick={() =>
-                              confirm("Delete this deal?") && remove(row.id)
-                            }
-                          >
-                            <Icon name="trash" />
-                          </button>
-                        </div>
-                      </div>
-                      <button
-                        className="deal-title"
-                        onClick={() => navigate(`/deals/${row.id}`)}
-                      >
-                        {row.title || "Untitled deal"}
-                      </button>
-                      <p>{row.company || "No company"}</p>
-                      <strong>{money(row.value || 0)}</strong>
-                      <footer>
-                        <span>{row.owner || "Unassigned"}</span>
-                        <small>{row.closeDate || "No close date"}</small>
-                      </footer>
-                    </article>
-                  ))}
-                  <button
-                    className="add-deal"
-                    onClick={() => setEdit({ id: "", stage: stage.id })}
-                  >
-                    <Icon name="plus" /> Add deal
-                  </button>
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      ) : (
-        <Empty
-          icon="pipeline"
-          title="No deals"
-          text="Add your first deal to start building the sales pipeline."
-          action={
-            <button
-              className="btn primary compact"
-              onClick={() => setEdit(null)}
-            >
-              Add deal
-            </button>
-          }
-        />
-      )}
-      {edit !== undefined ? (
-        <RecordForm
-          title={`${edit?.id ? "Edit" : "Add"} deal`}
-          fields={allFields}
-          initial={edit || { stage: "new" }}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit?.id ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
-      ) : null}
-    </div>
   );
 }
 
@@ -4751,11 +4398,7 @@ function InboxPage() {
   const [templates, setTemplates] = useState<Row[]>([]);
   const [templateId, setTemplateId] = useState("");
   const {
-  register,
-  handleSubmit,
-  reset,
-  watch,
-  setValue,
+  reset
 } = useForm<{
   channel: string;
   to: string;
@@ -7658,11 +7301,7 @@ function SettingsPage() {
         <section className="surface settings-card">Loading…</section>
       </div>
     );
-  function set(key: string, value: any) {
-    setSettings((current) =>
-      current ? { ...current, [key]: value } : current,
-    );
-  }
+    
  async function save(data: Record<string, any>) {
   try {
     const saved = await api<Record<string, any>>(

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
 import { DEFAULT_SETTINGS } from './config.js';
 import { runAction, deliverMessages } from './actions.js';
-import { matchCondition, matchConditions } from './conditions.js';
+import { matchCondition } from './conditions.js';
 import { scheduleExecution } from './queue.js';
 
 const id = prefix => `${prefix}_${crypto.randomUUID()}`;

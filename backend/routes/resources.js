@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
+import { updateRecord } from "../services/resources.js";
 import { requireRole } from "../middleware/rbac.js";
 import {
   id,
@@ -126,7 +127,6 @@ const uploadDir = path.join(root, "..", "uploads");
 // Fields the client may never set when updating a record: the stored values
 // always win. Stripped from the payload rather than re-pinned after the merge,
 // so there is a single mechanism to reason about.
-const IMMUTABLE_FIELDS = ["id", "createdAt"];
 
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
@@ -538,7 +538,7 @@ export default function registerResourceRoutes(app) {
         ? { ...item, revisionId }
         : item,
     );
-  };
+  });
 
   app.put(
     "/api/:resource/:id",

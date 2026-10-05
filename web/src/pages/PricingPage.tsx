@@ -1,24 +1,9 @@
 import React, { useState, useMemo } from "react";
 import {
   Check,
-  Zap,
-  Building2,
-  Users,
-  ShieldCheck,
-  TrendingUp,
-  ArrowRight,
-  Sun,
-  Moon,
   ChevronDown,
   ChevronUp,
   Sparkles,
-  Layers,
-  Award,
-  DollarSign,
-  Briefcase,
-  Headphones,
-  FileText,
-  Key,
 } from "lucide-react";
 import {
   CornerBrackets,
@@ -26,7 +11,6 @@ import {
   CutButton,
   Badge,
   CountUpNumber,
-  RevenueTicker,
 } from "../components/ui";
 import { Navbar } from "../components/layout/Navbar";
 import { Footer } from "../components/layout/Footer";
@@ -75,21 +59,6 @@ export const PricingPage: React.FC<PricingPageProps> = ({
   const [ecosystemDiscount, setEcosystemDiscount] = useState<boolean>(false);
   const [teamSeats, setTeamSeats] = useState<number>(10);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    return document.documentElement.classList.contains("dark");
-  });
-
-  const toggleTheme = () => {
-    if (document.documentElement.classList.contains("dark")) {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem("tunaxa.theme", "light");
-      setIsDarkMode(false);
-    } else {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem("tunaxa.theme", "dark");
-      setIsDarkMode(true);
-    }
-  };
 
   // Base tier pricing calculations
   const starterPrice = useMemo(() => {

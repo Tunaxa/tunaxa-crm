@@ -6,7 +6,8 @@ import { cacheFlush } from '../services/cache.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import Fuse from 'fuse.js';
 import { repoFor } from '../db/repositories/index.js';
-import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
+import { PG_RESOURCES, pgToLegacy, legacyToPg } from '../db/legacy-shape.js';
+import { transaction } from '../db/pg.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
 // `contactEmail` is how a ticket records the requester's address, so the portal
