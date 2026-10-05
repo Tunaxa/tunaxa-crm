@@ -47,6 +47,18 @@ export const PG_RESOURCES = new Set([
  * column name. `hidden` columns are stored but never exposed in a response.
  */
 const RESOURCE_MAPPINGS = {
+  contacts: {
+    columns: ["workspace_id", "company_id", "first_name", "last_name", "email", "phone", "title", "owner_id", "custom_fields", "created_at", "updated_at"],
+    toPg: { companyId: "company_id", ownerId: "owner_id" },
+    toLegacy: { company_id: "companyId", owner_id: "ownerId", created_at: "createdAt", updated_at: "updatedAt" },
+    hidden: ["custom_fields"],
+  },
+  leads: {
+    columns: ["workspace_id", "first_name", "last_name", "email", "phone", "company_name", "status", "source", "value", "owner_id", "custom_fields", "created_at", "updated_at"],
+    toPg: { company: "company_name", ownerId: "owner_id" },
+    toLegacy: { company_name: "company", owner_id: "ownerId", created_at: "createdAt", updated_at: "updatedAt" },
+    hidden: ["custom_fields"],
+  },
   companies: {
     columns: [
       "workspace_id",
@@ -514,6 +526,10 @@ export function pgToLegacy(row, resource) {
     }
   }
 
+  if (resource === "contacts" || resource === "leads") {
+    out.name = [row.first_name, row.last_name].filter(Boolean).join(" ");
+  }
+
   return out;
 }
 
@@ -550,6 +566,11 @@ function genericPgToLegacy(row) {
  * custom_fields bag for the four core entities.
  */
 export function legacyToPg(body, resource) {
+  if ((resource === "contacts" || resource === "leads") && "name" in (body || {})) {
+    const parts = String(body.name || "").trim().split(/\s+/);
+    body = { ...body, first_name: parts[0] || "", last_name: parts.slice(1).join(" ") };
+    delete body.name;
+  }
   const mapping = mappingFor(resource);
   if (!mapping) return genericLegacyToPg(body);
 
