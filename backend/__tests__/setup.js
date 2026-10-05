@@ -1,20 +1,15 @@
 import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { beforeAll } from "vitest";
 import { setDbPath } from "../store.js";
 import { query } from "../db/pg.js";
 
-const execFileAsync = promisify(execFile);
+import { runMigrations } from "../db/migrate.js";
 
 beforeAll(async () => {
-  await execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "migrate"], {
-    cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
-    env: process.env,
-  });
+  await runMigrations();
 });
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));

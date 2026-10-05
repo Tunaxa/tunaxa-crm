@@ -83,7 +83,11 @@ function searchCondition(param) {
     .join(" OR ");
 }
 
-export async function findAll({
+export async function findAll(options = {}) {
+  const cacheKey = `${RESOURCE}:list:${hashParams(options)}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
+  const {
   page = 1,
   limit = 20,
   sortBy = "created_at:desc",
@@ -91,7 +95,7 @@ export async function findAll({
   type = "",
   contact = "",
   recordId = "",
-} = {}) {
+  } = options;
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -156,10 +160,6 @@ export async function findAll({
     [...params],
   );
   const dataParams = [...params, normalizedLimit, offset];
-    searchTerm ? [searchTerm] : [],
-  );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
   const dataResult = await query(
     `SELECT *
      FROM activities
@@ -169,7 +169,7 @@ export async function findAll({
     dataParams,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  return {
+  const result = {
     data: dataResult.rows,
     total,
     page: normalizedPage,
@@ -212,6 +212,7 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 

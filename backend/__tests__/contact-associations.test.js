@@ -263,11 +263,33 @@ describe('GET /api/contacts/:id/associations', () => {
   });
 
   it('does not shadow the generic contact resource route', async () => {
+    const created = await request(app).post('/api/contacts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Alice Miller', email: 'alice@acme.test' });
+    expect(created.status).toBe(201);
     const res = await request(app)
-      .get('/api/contacts/contact_acme')
+      .get(`/api/contacts/${created.body.id}`)
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('Alice Miller');
+  });
+
+  it('finds associated records created through PostgreSQL-backed CRUD', async () => {
+    const create = async (resource, body) => {
+      const res = await request(app).post(`/api/${resource}`)
+        .set('Authorization', `Bearer ${token}`).send(body);
+      expect(res.status).toBe(201);
+      return res.body;
+    };
+    const company = await create('companies', { name: 'PG Association Company' });
+    const contact = await create('contacts', { name: 'PG Contact', email: 'pg@association.test', company: company.name });
+    const deal = await create('deals', { title: 'PG Deal', company: company.name, contactId: contact.id, stage: 'New' });
+    const task = await create('tasks', { title: 'PG Task', contactId: contact.id, status: 'Open' });
+    const res = await getAssociations(contact.id);
+    expect(res.status).toBe(200);
+    expect(idsOf(res.body.companies)).toContain(company.id);
+    expect(idsOf(res.body.deals)).toContain(deal.id);
+    expect(idsOf(res.body.tasks)).toContain(task.id);
   });
 });

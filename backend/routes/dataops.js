@@ -6,7 +6,8 @@ import { cacheFlush } from '../services/cache.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import Fuse from 'fuse.js';
 import { repoFor } from '../db/repositories/index.js';
-import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
+import { PG_RESOURCES, pgToLegacy, legacyToPg } from '../db/legacy-shape.js';
+import { transaction } from '../db/pg.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
 const emailEquals = (record, email) => norm(record.customerEmail) === email || norm(record.email) === email || norm(record.contact) === email;
@@ -180,6 +181,37 @@ export default function registerDataOpsRoutes(app) {
     if (!keepId || !mergeIds.length) return res.status(400).json({ error: 'keepId and at least one mergeId are required' });
     if (mergeIds.includes(keepId)) return res.status(400).json({ error: 'keepId and mergeIds must be distinct' });
     if (new Set(mergeIds).size !== mergeIds.length) return res.status(400).json({ error: 'mergeIds must be unique' });
+    if (PG_RESOURCES.has(resource)) {
+      const table = resource === 'contacts' ? 'contacts' : 'companies';
+      const writable = table === 'contacts'
+        ? ['workspace_id', 'company_id', 'first_name', 'last_name', 'email', 'phone', 'title', 'owner_id', 'custom_fields']
+        : ['workspace_id', 'name', 'domain', 'industry', 'website', 'country', 'size', 'employees', 'owner', 'custom_fields'];
+      // All participants are locked and checked before either update or delete.
+      const result = await transaction(async client => {
+        const { rows } = await client.query(`SELECT * FROM ${table} WHERE id = ANY($1::text[]) FOR UPDATE`, [[keepId, ...mergeIds]]);
+        if (rows.length !== mergeIds.length + 1) return null;
+        const original = rows.find(row => row.id === keepId);
+        const keep = pgToLegacy(original, resource);
+        for (const mergeId of mergeIds) {
+          const merge = pgToLegacy(rows.find(row => row.id === mergeId), resource);
+          for (const [key, value] of Object.entries(merge)) {
+            if (['id', 'createdAt', 'updatedAt'].includes(key)) continue;
+            if ((keep[key] === undefined || keep[key] === null || keep[key] === '') && value !== undefined && value !== '') keep[key] = value;
+          }
+        }
+        const data = legacyToPg(keep, resource);
+        const fields = writable.filter(key => Object.hasOwn(data, key));
+        const values = fields.map(key => data[key]);
+        const assignments = fields.map((key, index) => `"${key}" = $${index + 1}`);
+        values.push(keepId);
+        const updated = await client.query(`UPDATE ${table} SET ${assignments.join(', ')}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`, values);
+        await client.query(`DELETE FROM ${table} WHERE id = ANY($1::text[])`, [mergeIds]);
+        return pgToLegacy(updated.rows[0], resource);
+      });
+      if (!result) return res.status(404).json({ error: 'One or both records not found' });
+      await cacheFlush(`${resource}:list:*`);
+      return res.json(result);
+    }
     const result = await mutateDb(db => {
       const rows = db[resource] || [];
       const keep = rows.find(r => r.id === keepId);
