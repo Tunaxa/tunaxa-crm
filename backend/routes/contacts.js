@@ -1,4 +1,5 @@
 import { readDb } from '../store.js';
+import { loadRecords } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import { getFieldPermissions, applyFieldMasking } from './permissions.js';
@@ -100,6 +101,9 @@ export default function registerContactRoutes(app) {
    */
   app.get('/api/contacts/:id/associations', auth, associationsLimiter, async (req, res) => {
     const db = await readDb();
+    for (const resource of ['contacts', 'companies', 'deals', 'tasks', 'activities']) {
+      db[resource] = await loadRecords(resource, db);
+    }
     const contact = (db.contacts || []).find((row) => row.id === req.params.id);
 
     if (!contact) {
