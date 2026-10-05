@@ -83,59 +83,31 @@ export default function registerTicketRoutes(app) {
     if (!subject) return res.status(400).json({ error: 'Ticket subject is required' });
     try {
       const createdAt = now();
-      const workspaceId = req.user.workspaceId || DEFAULT_WORKSPACE;
-      const legacy = {
-        workspace_id: workspaceId,
-        subject,
-        contact: contact || '',
-        contactEmail: contactEmail || '',
-        description,
-        priority,
-        // `stage` is the column name: slaStatus() and the stage board both
-        // branch on it, so the API cannot expose it as `status`.
-        stage: 'New',
-        source,
-        comments: [],
-        createdAt,
-        updatedAt: createdAt
-      };
-      const row = await repoFor('tickets').create(legacyToPg(legacy, 'tickets'));
-      const ticket = pgToLegacy(row, 'tickets');
-
-      await logTicketActivity({
-        title: `Ticket opened: ${subject}`,
-        type: 'Ticket',
-        workspace_id: workspaceId,
-        contact: contact || contactEmail || '',
-        notes: `Priority ${priority} · ${source}`,
-        date: createdAt.slice(0, 10),
-        ticketId: ticket.id,
-        createdAt,
-        updatedAt: createdAt
-      });
-      await mutateDb(db => {
-        db.audit.unshift({ id: id('audit'), action: `Opened ticket "${subject}"`, actor: req.user.name, createdAt });
-      });
-
-      broadcast('ticket.opened', ticket);
-      res.status(201).json(ticket);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
+      const item = { id: id('ticket'), subject, contact: contact || '', contactEmail: contactEmail || '', description, priority, stage: 'New', source, createdAt, updatedAt: createdAt, firstResponseAt: '', resolvedAt: '' };
+      db.tickets.unshift(item);
+      db.activities.unshift({ id: id('activity'), title: `Ticket opened: ${subject}`, type: 'Ticket', contact: contact || contactEmail || '', notes: `Priority ${priority} · ${source}`, date: createdAt.slice(0, 10), ticketId: item.id, createdAt, updatedAt: createdAt });
+      db.audit.unshift({ id: id('audit'), action: `Opened ticket "${subject}"`, actor: req.user.name, createdAt });
+      return item;
+    });
+    broadcast('ticket.opened', ticket);
+    res.status(201).json(ticket);
   });
 
-  // The SLA target itself stays in the JSON store: it is a single settings
-  // object, not a record set, and 007 has no table for it.
-  //
-  // Registered before PUT /api/tickets/:id on purpose. Express matches in
-  // registration order, so the parameterised route would otherwise swallow
-  // "sla" as a ticket id and the settings write would 404.
-  app.put('/api/tickets/sla', auth, requireRole('admin'), async (req, res) => {
-    const { firstResponseHours, resolutionHours } = req.body || {};
+  app.put('/api/tickets/:id', auth, requireRole('admin', 'member'), async (req, res) => {
     const saved = await mutateDb(db => {
-      db.ticketSla = { firstResponseHours: Number(firstResponseHours) || 4, resolutionHours: Number(resolutionHours) || 48 };
-      return db.ticketSla;
+      const index = (db.tickets || []).findIndex(t => t.id === req.params.id);
+      if (index < 0) return null;
+      const ticket = db.tickets[index];
+      const nowIso = now();
+      const updated = { ...ticket, ...req.body, updatedAt: nowIso };
+      if (!updated.firstResponseAt && req.body.stage && req.body.stage !== 'New') updated.firstResponseAt = nowIso;
+      if (req.body.stage === 'Resolved' && !updated.resolvedAt) { updated.resolvedAt = nowIso; updated.resolvedBy = req.user.name; }
+      db.tickets[index] = updated;
+      db.audit.unshift({ id: id('audit'), action: `Updated ticket "${ticket.subject}"`, actor: req.user.name, createdAt: nowIso });
+      return updated;
     });
+    if (!saved) return res.status(404).json({ error: 'Ticket not found' });
+    broadcast('ticket.updated', saved);
     res.json(saved);
   });
 

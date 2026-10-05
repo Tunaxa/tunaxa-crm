@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
+import { loadRecords, findRecord, saveRecord } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { id, now, coerceCustomFields } from '../helpers.js';
@@ -38,48 +39,9 @@ function fieldValue(payload, field) {
   return payload[field.label] ?? '';
 }
 
-// Leads and contacts moved to Postgres in migration 004, so progressive
-// profiling has to read the record from the repository. Reading db.leads here
-// would consult the (now empty) JSON store and treat every visitor as unknown,
-// which would show fields the visitor has already filled in.
-//
-// `workspaceId` is mandatory: the recordId arrives in an anonymous request body,
-// so without the filter a visitor holding a UUID from another workspace would
-// have that lead read (to learn which fields are filled) and then overwritten by
-// submitting the form.
-async function findKnown(recordId, workspaceId) {
+function findKnown(db, recordId) {
   if (!recordId) return null;
-  const lead = await repoFor('leads').findById(recordId, workspaceId);
-  if (lead) return pgToLegacy(lead, 'leads');
-  const contact = await repoFor('contacts').findById(recordId, workspaceId);
-  return contact ? pgToLegacy(contact, 'contacts') : null;
-}
-
-// The public render/submit endpoints key off `permalink`, and a disabled form
-// has to be invisible to both, so the enabled check lives in the query.
-//
-// The raw row is returned alongside the legacy view because workspace_id is a
-// `hidden` mapping column: pgToLegacy strips it, but a public submission has no
-// req.user to read the workspace from and must write the lead/contact it creates
-// into the *form's* workspace.
-async function findForm(permalink) {
-  const row = await repoFor('forms').findByPermalink(permalink);
-  if (!row) return null;
-  return { form: pgToLegacy(row, 'forms'), workspaceId: row.workspace_id || DEFAULT_WORKSPACE };
-}
-
-function normalizeFields(fields) {
-  return fields.map(f => ({
-    id: f.id || id('fld'),
-    key: f.key,
-    name: f.name || f.label || f.key,
-    type: f.type || 'text',
-    required: Boolean(f.required),
-    placeholder: f.placeholder || '',
-    options: Array.isArray(f.options) ? f.options : [],
-    visibleIf: f.visibleIf || null,
-    progressive: f.progressive !== false
-  }));
+  return db.leads.find(x => x.id === recordId) || db.contacts.find(x => x.id === recordId) || null;
 }
 
 function flattenForPublic(form) {
@@ -143,33 +105,30 @@ export default function registerFormRoutes(app) {
 
   // Render a form for embedding; progressive profiling hides fields the visitor already filled.
   app.get('/api/forms/:permalink', publicLimiter, async (req, res) => {
-    try {
-      const found = await findForm(String(req.params.permalink || '').toLowerCase());
-      if (!found) return res.status(404).json({ error: 'Form not found' });
-      const { form, workspaceId } = found;
+    const db = await readDb();
+    const permalink = String(req.params.permalink || '').toLowerCase();
+    const form = (db.forms || []).find(f => f.permalink === permalink && f.enabled !== false);
+    if (!form) return res.status(404).json({ error: 'Form not found' });
 
-      const known = await findKnown(req.query.recordId || '', workspaceId);
-      const fields = (form.fields || [])
-        .filter(f => {
-          if (form.progressive !== false && f.progressive !== false && known && filled(known[f.key])) {
-            return false;
-          }
-          return true;
-        })
-        .map(f => ({
-          id: f.id || f.key,
-          key: f.key,
-          label: f.name || f.label || f.key,
-          type: f.type || 'text',
-          required: Boolean(f.required),
-          placeholder: f.placeholder || '',
-          options: Array.isArray(f.options) ? f.options : (f.options ? String(f.options).split(',').map(x => x.trim()).filter(Boolean) : []),
-          visibleIf: f.visibleIf || null
-        }));
-      res.json({ form: { ...flattenForPublic(form), fields } });
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
+    const known = findKnown(db, req.query.recordId || '');
+    const fields = (form.fields || [])
+      .filter(f => {
+        if (form.progressive !== false && f.progressive !== false && known && filled(known[f.key])) {
+          return false;
+        }
+        return true;
+      })
+      .map(f => ({
+        id: f.id || f.key,
+        key: f.key,
+        label: f.name || f.label || f.key,
+        type: f.type || 'text',
+        required: Boolean(f.required),
+        placeholder: f.placeholder || '',
+        options: Array.isArray(f.options) ? f.options : (f.options ? String(f.options).split(',').map(x => x.trim()).filter(Boolean) : []),
+        visibleIf: f.visibleIf || null
+      }));
+    res.json({ form: { ...flattenForPublic(form), fields } });
   });
 
   // Submit a form submission.
@@ -186,15 +145,13 @@ export default function registerFormRoutes(app) {
       delete payload.recordId;
       delete payload.vid;
 
-      // Scoped to the form's workspace: an anonymous caller supplies recordId, so
-      // an unscoped lookup would let one tenant's visitor overwrite another's lead.
-      const known = await findKnown(recordId, workspaceId);
-      const fields = (form.fields || []).filter(f => {
-        if (form.progressive !== false && f.progressive !== false && known && filled(known[f.key])) return false;
-        const c = f.visibleIf;
-        if (!c || !c.field) return true;
-        return matchCondition(payload, c);
-      });
+    const known = findKnown(db, recordId);
+    const fields = (form.fields || []).filter(f => {
+      if (form.progressive !== false && f.progressive !== false && known && filled(known[f.key])) return false;
+      const c = f.visibleIf;
+      if (!c || !c.field) return true;
+      return matchCondition(payload, c);
+    });
 
       const missing = fields.filter(f => f.required && !filled(fieldValue(payload, f)));
       if (missing.length) {
@@ -223,116 +180,70 @@ export default function registerFormRoutes(app) {
       const target = form.submitTo === 'contact' ? 'contacts' : 'leads';
       const email = String(payload.email || '').toLowerCase();
 
-      // The record and the activity are PG rows, but webVisits, pendingAttribution
-      // and audit are still JSON, so the custom-field definitions those helpers
-      // need come from the JSON store while the record itself is written to PG.
-      const db = await readDb();
-      const values = coerceCustomFields(db, target, { ...mapped });
-      const repo = repoFor(target);
-
+    const result = await mutateDb(db => {
+      const createdAt = now();
       let record = null;
       let recordResource = target;
       let existing = false;
 
       if (email) {
-        // Cross-collection fallback kept from the JSON handler: a form pointing at
-        // leads still updates the matching contact when no lead matches, and vice
-        // versa. The winning collection is remembered because the update has to
-        // go back to the same table the match came from.
-        //
-        // Both lookups are scoped to the form's workspace. An address is not
-        // unique across tenants, so an unscoped match would let a form in one
-        // workspace overwrite the same-email person in another.
-        const other = target === 'leads' ? 'contacts' : 'leads';
-        const inTarget = await repo.findByEmail(email, workspaceId);
-        if (inTarget) {
-          record = inTarget;
-        } else {
-          const inOther = await repoFor(other).findByEmail(email, workspaceId);
-          if (inOther) {
-            record = inOther;
-            recordResource = other;
-          }
-        }
-        if (record) {
-          existing = true;
-          // Merge the stored bag so a partial submission keeps the custom fields
-          // it did not carry, the way the JSON `{ ...record, ...mapped }` did.
-          record = await repoFor(recordResource).update(
-            record.id,
-            legacyToPg(
-              splitRecordValues(values, recordResource, record.custom_fields),
-              recordResource
-            )
-          );
-        }
+        record = db[target].find(x => String(x.email || '').toLowerCase() === email)
+          || (target === 'leads' ? db.contacts.find(x => String(x.email || '').toLowerCase() === email) : db.leads.find(x => String(x.email || '').toLowerCase() === email));
       }
 
-      if (!record) {
-        const createdAt = now();
-        // The submitter is anonymous, so the form's own workspace is the only
-        // tenant the new record can belong to.
-        record = await repo.create(legacyToPg(splitRecordValues({
-          ...values,
-          workspace_id: workspaceId,
-          source: form.name || 'Form',
+      if (record) {
+        existing = true;
+        const index = db[target].findIndex(x => x.id === record.id);
+        db[target][index] = { ...db[target][index], ...coerceCustomFields(db, target, { ...mapped }), updatedAt: createdAt };
+        record = db[target][index];
+      } else {
+        record = {
+          id: id(target === 'leads' ? 'lead' : 'contact'),
+          ...coerceCustomFields(db, target, { ...mapped }),
+          source: record?.source || form.name || 'Form',
           formId: form.id,
           lifecycleStage: 'Lead',
           createdAt,
           updatedAt: createdAt
-        }, target), target));
+        };
+        db[target].unshift(record);
       }
-
-      const legacyRecord = pgToLegacy(record, recordResource);
 
       // Attribute web visits (pixel) to this record
       if (vid) {
-        await mutateDb(store => {
-          if (!store.webVisits) store.webVisits = [];
-          const prior = store.webVisits.filter(v => v.vid === vid);
-          prior.forEach(v => { v.recordId = legacyRecord.id; v.attributed = true; });
-          store.pendingAttribution = (store.pendingAttribution || []).filter(p => p.vid !== vid);
-        });
+        if (!db.webVisits) db.webVisits = [];
+        const prior = db.webVisits.filter(v => v.vid === vid);
+        prior.forEach(v => { v.recordId = record.id; v.attributed = true; });
+        if (prior.length) {
+          record.firstVisitAt = record.firstVisitAt || prior[0].createdAt || createdAt;
+          record.lastVisitAt = createdAt;
+          record.visitCount = (record.visitCount || 0) + prior.length;
+          record.attributionSource = record.attributionSource || prior[0].page || '';
+        }
+        db.pendingAttribution = (db.pendingAttribution || []).filter(p => p.vid !== vid);
       }
 
-      // Log the submission as an activity. Activities are a PG resource, so this
-      // cannot go through mutateDb any more.
-      const createdAt = now();
-      try {
-        await repoFor('activities').create(legacyToPg({
-          title: `${existing ? 'Updated via' : 'Submitted'} form: ${form.name}`,
-          type: 'Form',
-          workspace_id: workspaceId,
-          contact: legacyRecord.email || legacyRecord.name || '',
-          notes: Object.entries(mapped).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(', ').slice(0, 400),
-          date: createdAt.slice(0, 10),
-          recordId: legacyRecord.id,
-          createdAt,
-          updatedAt: createdAt
-        }, 'activities'));
-      } catch (error) {
-        // The lead/contact is already committed; losing the timeline entry must
-        // not fail a visitor's submission.
-        console.error('[forms] Failed to persist submission activity', error.message);
-      }
-
-      // A submission is not an edit of the form definition, so the counter is
-      // bumped without touching updated_at (see migration 008).
-      try {
-        await repoFor('forms').incrementSubmissions(form.id);
-      } catch (error) {
-        console.error('[forms] Failed to increment submission count', error.message);
-      }
-
-      await mutateDb(store => {
-        store.audit.unshift({ id: id('audit'), action: `${existing ? 'Updated' : 'Created'} ${target.slice(0, -1)} via form "${form.name}"`, actor: 'Public', createdAt });
+      db.activities.unshift({
+        id: id('activity'),
+        title: `${existing ? 'Updated via' : 'Submitted'} form: ${form.name}`,
+        type: 'Form',
+        contact: record.email || record.name || '',
+        notes: Object.entries(mapped).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(', ').slice(0, 400),
+        date: createdAt.slice(0, 10),
+        recordId: record.id,
+        createdAt,
+        updatedAt: createdAt
       });
+      db.audit.unshift({ id: id('audit'), action: `${existing ? 'Updated' : 'Created'} ${target.slice(0, -1)} via form "${form.name}"`, actor: 'Public', createdAt });
 
-      const event = existing ? updatedEvent(target) : createdEvent(target);
-      if (event) triggerWorkflows(target, event, legacyRecord);
-      triggerWorkflows(target, 'form.submitted', legacyRecord).catch(() => {});
-      broadcast('record.created', { resource: target, item: legacyRecord });
-      broadcast('form.submitted', { formId: form.id, permalink, recordId: legacyRecord.id });
+      return { record, existing, id: record.id };
+    });
+
+    const event = result.existing ? updatedEvent(target) : createdEvent(target);
+    if (event) triggerWorkflows(target, event, result.record);
+    triggerWorkflows(target, 'form.submitted', result.record).catch(() => {});
+    broadcast('record.created', { resource: target, item: result.record });
+    broadcast('form.submitted', { formId: form.id, permalink, recordId: result.id });
 
       res.status(201).json({ ok: true, recordId: legacyRecord.id, existing, form: permalink });
     } catch (error) {
@@ -387,65 +298,59 @@ export default function registerFormRoutes(app) {
         redirectUrl: body.redirectUrl || '',
         fields: normalizeFields(body.fields),
         enabled: true,
+        workspaceId: req.user.workspaceId || 'default',
         submissionCount: 0,
         createdBy: req.user.name,
-        createdAt,
-        updatedAt: createdAt
-      }, 'forms'));
-      const form = pgToLegacy(row, 'forms');
-      await mutateDb(db => {
-        db.audit.unshift({ id: id('audit'), action: `Created form "${form.name}"`, actor: req.user.name, createdAt });
-      });
-      broadcast('form.created', { id: form.id });
-      res.status(201).json(form);
-    } catch (error) {
-      // 23505 is the permalink unique index. Two concurrent creates can both
-      // pass the check above, so the constraint is what actually guarantees
-      // uniqueness and its violation has to be reported as the same 400.
-      if (error.code === '23505') {
-        return res.status(400).json({ error: 'A form with this permalink already exists' });
-      }
-      res.status(500).json({ error: error.message });
-    }
+        updatedAt: now()
+      };
+      if (!db.forms) db.forms = [];
+      db.forms.unshift(form);
+      db.audit.unshift({ id: id('audit'), action: `Created form "${form.name}"`, actor: req.user.name, createdAt: now() });
+      return form;
+    });
+    if (saved.error) return res.status(400).json({ error: saved.error });
+    broadcast('form.created', { id: saved.id });
+    res.status(201).json(saved);
   });
 
   app.put('/api/forms/:id', auth, requireRole('admin', 'member'), async (req, res) => {
     const body = req.body || {};
-    try {
-      const patch = { ...body };
-      if (Array.isArray(body.fields)) patch.fields = normalizeFields(body.fields);
-      if (body.enabled !== undefined) patch.enabled = body.enabled === true || body.enabled === 'true';
-      // Never let a client restamp these; the database owns them.
-      delete patch.id;
-      delete patch.createdAt;
-      delete patch.updatedAt;
-      const row = await repoFor('forms').update(req.params.id, legacyToPg(patch, 'forms'));
-      if (!row) return res.status(404).json({ error: 'Form not found' });
-      const form = pgToLegacy(row, 'forms');
-      await mutateDb(db => {
-        db.audit.unshift({ id: id('audit'), action: `Updated form "${form.name}"`, actor: req.user.name, createdAt: now() });
-      });
-      broadcast('form.updated', { id: form.id });
-      res.json(form);
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
+    const saved = await mutateDb(db => {
+      const form = (db.forms || []).find(f => f.id === req.params.id);
+      if (!form) return null;
+      Object.assign(form, body, { id: form.id });
+      if (Array.isArray(body.fields)) {
+        form.fields = body.fields.map(f => ({
+          id: f.id || id('fld'),
+          key: f.key,
+          name: f.name || f.label || f.key,
+          type: f.type || 'text',
+          required: Boolean(f.required),
+          placeholder: f.placeholder || '',
+          options: Array.isArray(f.options) ? f.options : [],
+          visibleIf: f.visibleIf || null,
+          progressive: f.progressive !== false
+        }));
+      }
+      if (body.enabled !== undefined) form.enabled = body.enabled === true || body.enabled === 'true';
+      form.updatedAt = now();
+      return form;
+    });
+    if (!saved) return res.status(404).json({ error: 'Form not found' });
+    broadcast('form.updated', { id: saved.id });
+    res.json(saved);
   });
 
   app.delete('/api/forms/:id', auth, requireRole('admin', 'member'), async (req, res) => {
-    try {
-      const repo = repoFor('forms');
-      const existing = await repo.findById(req.params.id);
-      if (!existing) return res.status(404).json({ error: 'Form not found' });
-      const ok = await repo.delete(req.params.id);
-      if (!ok) return res.status(404).json({ error: 'Form not found' });
-      await mutateDb(db => {
-        db.audit.unshift({ id: id('audit'), action: `Deleted form "${pgToLegacy(existing, 'forms').name}"`, actor: req.user.name, createdAt: now() });
-      });
-      broadcast('form.deleted', { id: req.params.id });
-      res.json({ ok: true });
-    } catch (error) {
-      res.status(500).json({ error: error.message });
-    }
+    const result = await mutateDb(db => {
+      const index = (db.forms || []).findIndex(f => f.id === req.params.id);
+      if (index < 0) return false;
+      const [form] = db.forms.splice(index, 1);
+      db.audit.unshift({ id: id('audit'), action: `Deleted form "${form.name}"`, actor: req.user.name, createdAt: now() });
+      return true;
+    });
+    if (!result) return res.status(404).json({ error: 'Form not found' });
+    broadcast('form.deleted', { id: req.params.id });
+    res.json({ ok: true });
   });
 }

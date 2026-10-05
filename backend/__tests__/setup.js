@@ -2,12 +2,16 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { beforeAll } from "vitest";
 import { setDbPath } from "../store.js";
-import { query } from "../db/pg.js";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const testDbDir = path.join(root, "__tests__");
-const testDbFile = path.join(testDbDir, "test-db.json");
+const workerId = (process.env.VITEST_POOL_ID || "1").replace(
+  /[^a-zA-Z0-9_-]/g,
+  "_",
+);
+const testDbFile = path.join(testDbDir, `test-db-${workerId}.json`);
 
 const emptyDb = {
   users: [],
@@ -86,27 +90,6 @@ export async function resetTestDb() {
   await fs.mkdir(testDbDir, { recursive: true });
   await fs.writeFile(testDbFile, JSON.stringify(emptyDb, null, 2));
   setDbPath(testDbFile);
-  // Resources served from Postgres (see migrations/004_contacts_leads.sql,
-  // 005_core_entities.sql, 006_revenue_tables.sql and
-  // 007_marketing_service_tables.sql) instead of test-db.json need their own
-  // reset.
-  // Best-effort on purpose: the JSON-backed resources must keep working when no
-  // database is running, and a missing table is just as expected as a missing
-  // server.
-  if (pgReachable === false) return;
-  if (pgReachable === null) {
-    pgReachable = await canReachPostgres();
-    if (pgReachable === false) return;
-  }
-  try {
-    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses CASCADE;");
-    pgReachable = true;
-  } catch (error) {
-    // ECONNREFUSED when no server is listening, 42P01 before 004/005 are applied.
-    if (error.code === "ECONNREFUSED" || error.code === "42P01") {
-      pgReachable = false;
-    }
-  }
 }
 
 export async function cleanupTestDb() {

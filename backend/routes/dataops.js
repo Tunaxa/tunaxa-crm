@@ -5,43 +5,39 @@ import { now } from '../helpers.js';
 import { cacheFlush } from '../services/cache.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import Fuse from 'fuse.js';
-import { repoFor } from '../db/repositories/index.js';
-import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
-// `contactEmail` is how a ticket records the requester's address, so the portal
-// needs it to match at all: without it the tickets section of a customer's
-// portal is always empty. None of the other portal resources carry that field,
-// so widening the check only affects tickets.
-const emailEquals = (record, email) =>
-  norm(record.customerEmail) === email ||
-  norm(record.email) === email ||
-  norm(record.contactEmail) === email ||
-  norm(record.contact) === email;
+const emailEquals = (record, email) => norm(record.customerEmail) === email || norm(record.email) === email || norm(record.contact) === email;
+const compact = value => norm(value).replace(/[^a-z0-9]/g, '');
 
-// Contacts, leads, companies, deals, tasks, activities, the six revenue
-// resources and the six 007 marketing/service resources are served from
-// Postgres rather than the JSON store (see
-// migrations/004_contacts_leads.sql, 005_core_entities.sql,
-// 006_revenue_tables.sql and 007_marketing_service_tables.sql), so anything
-// that reads a whole resource has to go through the same repositories the write
-// path uses. Reading them from readDb() would consult an empty JSON store and
-// silently report zero rows while the records plainly exist in the database.
-async function loadRows(resource) {
-  if (!PG_RESOURCES.has(resource)) {
-    const db = await readDb();
-    return db[resource] || [];
+function similarity(left, right) {
+  const a = compact(left);
+  const b = compact(right);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.length < 4 || b.length < 4) return 0;
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= a.length; row++) {
+    let diagonal = previous[0];
+    previous[0] = row;
+    for (let column = 1; column <= b.length; column++) {
+      const above = previous[column];
+      previous[column] = Math.min(
+        previous[column] + 1,
+        previous[column - 1] + 1,
+        diagonal + (a[row - 1] === b[column - 1] ? 0 : 1),
+      );
+      diagonal = above;
+    }
   }
-  const repo = repoFor(resource);
-  const rows = [];
-  // findAll() caps a single page at 100 rows, so page through the whole result
-  // set. Stopping after one page would quietly drop duplicates beyond it.
-  for (let page = 1; ; page++) {
-    const result = await repo.findAll({ page, limit: 100 });
-    rows.push(...result.data.map(row => pgToLegacy(row, resource)));
-    if (result.data.length === 0 || rows.length >= result.total) break;
-  }
-  return rows;
+  return 1 - previous[b.length] / Math.max(a.length, b.length);
+}
+
+function duplicateScore(left, right, resource) {
+  if (resource === 'contacts' && norm(left.email) && norm(left.email) === norm(right.email)) return 1;
+  const leftName = left.name;
+  const rightName = right.name;
+  return similarity(leftName, rightName);
 }
 
 export default function registerDataOpsRoutes(app) {
@@ -175,7 +171,9 @@ export default function registerDataOpsRoutes(app) {
         });
         // Group score is kept as a sort key only: the best direct match vs primary.
         const score = Math.max(0, ...matches.map(m => m.score ?? 0));
-        return { ids: group.ids, names: group.names, score, matches };
+        const records = group.idxs.map(i => rows[i]);
+        const confidence = Math.round(score * 100);
+        return { ids: group.ids, names: group.names, records, confidence, score, matches };
       })
       .sort((a, b) => b.score - a.score);
     res.json({ resource, duplicates, total: duplicates.reduce((n, g) => n + g.ids.length, 0) });
@@ -188,6 +186,37 @@ export default function registerDataOpsRoutes(app) {
     if (!keepId || !mergeIds.length) return res.status(400).json({ error: 'keepId and at least one mergeId are required' });
     if (mergeIds.includes(keepId)) return res.status(400).json({ error: 'keepId and mergeIds must be distinct' });
     if (new Set(mergeIds).size !== mergeIds.length) return res.status(400).json({ error: 'mergeIds must be unique' });
+    if (PG_RESOURCES.has(resource)) {
+      const table = resource === 'contacts' ? 'contacts' : 'companies';
+      const writable = table === 'contacts'
+        ? ['workspace_id', 'company_id', 'first_name', 'last_name', 'email', 'phone', 'title', 'owner_id', 'custom_fields']
+        : ['workspace_id', 'name', 'domain', 'industry', 'website', 'country', 'size', 'employees', 'owner', 'custom_fields'];
+      // All participants are locked and checked before either update or delete.
+      const result = await transaction(async client => {
+        const { rows } = await client.query(`SELECT * FROM ${table} WHERE id = ANY($1::text[]) FOR UPDATE`, [[keepId, ...mergeIds]]);
+        if (rows.length !== mergeIds.length + 1) return null;
+        const original = rows.find(row => row.id === keepId);
+        const keep = pgToLegacy(original, resource);
+        for (const mergeId of mergeIds) {
+          const merge = pgToLegacy(rows.find(row => row.id === mergeId), resource);
+          for (const [key, value] of Object.entries(merge)) {
+            if (['id', 'createdAt', 'updatedAt'].includes(key)) continue;
+            if ((keep[key] === undefined || keep[key] === null || keep[key] === '') && value !== undefined && value !== '') keep[key] = value;
+          }
+        }
+        const data = legacyToPg(keep, resource);
+        const fields = writable.filter(key => Object.hasOwn(data, key));
+        const values = fields.map(key => data[key]);
+        const assignments = fields.map((key, index) => `"${key}" = $${index + 1}`);
+        values.push(keepId);
+        const updated = await client.query(`UPDATE ${table} SET ${assignments.join(', ')}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`, values);
+        await client.query(`DELETE FROM ${table} WHERE id = ANY($1::text[])`, [mergeIds]);
+        return pgToLegacy(updated.rows[0], resource);
+      });
+      if (!result) return res.status(404).json({ error: 'One or both records not found' });
+      await cacheFlush(`${resource}:list:*`);
+      return res.json(result);
+    }
     const result = await mutateDb(db => {
       const rows = db[resource] || [];
       const keep = rows.find(r => r.id === keepId);
@@ -212,33 +241,15 @@ export default function registerDataOpsRoutes(app) {
   app.post('/api/portal/access', createRateLimiter({ windowMs: 60_000, max: 25, prefix: 'portal' }), async (req, res, next) => {
     const email = norm(req.body?.email);
     if (!email) return res.status(400).json({ error: 'Email is required' });
-    try {
-      // Every read goes through loadRows so the portal reflects the same
-      // source of truth as the write path. Reading these arrays out of db.json
-      // would return empty lists as soon as records are created, because these
-      // resources are written to Postgres: contacts and leads in
-      // 004_contacts_leads.sql, the revenue tables in 006_revenue_tables.sql,
-      // and tickets in 007_marketing_service_tables.sql. loadRows picks the
-      // right source per resource from PG_RESOURCES, so the portal covers
-      // tickets with no change beyond adding the resource to that set.
-      const [contactRows, quoteRows, contractRows, invoiceRows, ticketRows] = await Promise.all([
-        loadRows('contacts'),
-        loadRows('quotes'),
-        loadRows('contracts'),
-        loadRows('invoices'),
-        loadRows('tickets'),
-      ]);
-      const pick = rows => rows.filter(r => emailEquals(r, email));
-      const contact = contactRows.find(c => norm(c.email) === email) || null;
-      res.json({
-        customer: { email, name: contact?.name || email },
-        quotes: pick(quoteRows),
-        contracts: pick(contractRows),
-        invoices: pick(invoiceRows),
-        tickets: pick(ticketRows)
-      });
-    } catch (err) {
-      return next(err);
-    }
+    const db = await readDb();
+    const contact = (db.contacts || []).find(c => norm(c.email) === email) || null;
+    const pick = rows => (rows || []).filter(r => emailEquals(r, email));
+    res.json({
+      customer: { email, name: contact?.name || email },
+      quotes: pick(db.quotes),
+      contracts: pick(db.contracts),
+      invoices: pick(db.invoices),
+      tickets: pick(db.tickets)
+    });
   });
 }

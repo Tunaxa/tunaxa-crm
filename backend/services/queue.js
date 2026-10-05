@@ -1,4 +1,5 @@
 import { readDb, mutateDb } from '../store.js';
+import { findRecord } from '../db/legacy-records.js';
 import { id, now } from '../helpers.js';
 import { runAction, deliverMessages } from './actions.js';
 import { DEFAULT_SETTINGS } from './config.js';
@@ -89,11 +90,10 @@ export async function processExecutionQueue() {
           live.status = 'processing';
           live.attempts = (live.attempts || 0) + 1;
         });
-        // Resolved before the mutateDb below: the repository read cannot run
-        // inside the store snapshot, and the JSON fallback would re-enter the
-        // store the callback already holds.
-        const record = await findRecord(item.resource, item.recordId);
-        await mutateDb(async db => {
+        await mutateDb(db => {
+          const record = item.resource && db[item.resource]
+            ? (db[item.resource].find(x => x.id === item.recordId) || null)
+            : null;
           if (item.recordId && !record) {
             const live = db.executionQueue.find(x => x.id === item.id);
             if (live) {
