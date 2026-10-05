@@ -5,7 +5,10 @@ on:
     branches: [main, dev]
   push:
     branches: [main, dev]
-
+    
+permissions:
+  contents: read
+  
 jobs:
   ci:
     uses: ./.github/workflows/lint-test.yml
