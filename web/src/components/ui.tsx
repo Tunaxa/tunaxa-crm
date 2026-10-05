@@ -188,22 +188,29 @@ type PhotoFieldProps = {
   value?: string;
   radius?: number;
   onChange: (url: string) => void;
+  onBusyChange?: (busy: boolean) => void;
+  onError?: (error: unknown) => void;
 };
 
-export function PhotoField({ label, name, value, radius = 56, onChange }: PhotoFieldProps) {
+export function PhotoField({ label, name, value, radius = 56, onChange, onBusyChange, onError }: PhotoFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
   async function pick(file?: File) {
     if (!file) return;
     setBusy(true);
+    onBusyChange?.(true);
     try {
       const form = new FormData();
       form.append('files', file);
       const [saved] = await api<{ url: string }[]>('/uploads', { method: 'POST', body: form });
       onChange(saved?.url || '');
+    } catch (error) {
+      if (onError) onError(error);
+      else throw error;
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
       if (inputRef.current) inputRef.current.value = '';
     }
   }

@@ -33,6 +33,7 @@ import {
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Icon } from "./components/Icon";
+import { InlineEditField } from "./components/InlineEditField";
 import {
   Avatar,
   Badge,
@@ -2539,9 +2540,10 @@ function RecordDetailPage({
   const navigate = useNavigate();
   const { toast, user } = useApp();
   const [record, setRecord] = useState<Row | null>(null);
+  const recordRoute = useRef("");
+  recordRoute.current = `${resource}/${id}`;
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<DetailTab>("Overview");
-  const [edit, setEdit] = useState(false);
   const [activities, setActivities] = useState<Row[]>([]);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("All");
   const [activityLoading, setActivityLoading] = useState(false);
@@ -2562,7 +2564,9 @@ function RecordDetailPage({
     label: resource === "companies" ? "Logo" : "Photo",
     type: "photo",
   };
-  const detailFields: FieldSpec[] = resource === "contracts" ? fields : [photoField, ...fields];
+  const detailFields: FieldSpec[] = resource === "contracts"
+    ? fields
+    : [photoField, ...fields.filter((field) => field.key !== photoKey)];
 
   useEffect(() => {
     if (!id) return;
@@ -2761,13 +2765,6 @@ function RecordDetailPage({
               </Badge>
             ) : null}
             <button
-              className="btn secondary compact"
-              disabled={resource === "contracts" && user?.role !== "admin" && user?.role !== "member"}
-              onClick={() => setEdit(true)}
-            >
-              <Icon name="edit" /> Edit
-            </button>
-            <button
               className="btn ghost compact danger-link"
               disabled={resource === "contracts" && user?.role !== "admin" && user?.role !== "member"}
               aria-label={`Delete ${record.name || record.title || "record"}`}
@@ -2807,20 +2804,34 @@ function RecordDetailPage({
             <div className="detail-section">
               <h3>{resource === "contracts" ? "Contract summary" : "Contact information"}</h3>
               <dl className="detail-props">
-                {fields.map((f) =>
-                  resource === "contracts" || record[f.key] ? (
+                {detailFields.map((f) => (
                     <div key={f.key}>
                       <dt>{f.label}</dt>
                       <dd>
-                        {resource === "contracts"
-                          ? contractSummaryValue(record[f.key], f.type, f.key)
-                          : f.type === "number" && f.key === "value"
-                          ? money(record[f.key])
-                          : String(record[f.key])}
+                        <InlineEditField
+                          key={`${resource}/${record.id}/${f.key}`}
+                          field={f}
+                          value={record[f.key]}
+                          disabled={user?.role !== "admin" && user?.role !== "member"}
+                          displayValue={f.type === "photo" ? (record[f.key] ? "Change image" : "Add image")
+                            : record[f.key] == null || record[f.key] === "" ? undefined
+                            : resource === "contracts" ? contractSummaryValue(record[f.key], f.type, f.key)
+                            : f.type === "number" && f.key === "value" ? money(record[f.key]) : undefined}
+                          onSave={async (value) => {
+                            const route = `${resource}/${record.id}`;
+                            const updated = await api<Row>(`/${resource}/${record.id}`, json("PATCH", { [f.key]: value }));
+                            if (recordRoute.current !== route) return;
+                            setRecord((previous) => previous?.id === record.id ? {
+                              ...previous,
+                              [f.key]: Object.prototype.hasOwnProperty.call(updated, f.key) ? updated[f.key] : value,
+                              updatedAt: updated.updatedAt ?? previous.updatedAt,
+                            } : previous);
+                            toast(`${f.label} updated`);
+                          }}
+                        />
                       </dd>
                     </div>
-                  ) : null,
-                )}
+                  ))}
               </dl>
             </div>
             {resource === "contracts" ? <ContractDetails record={record} /> : null}
@@ -3007,26 +3018,6 @@ function RecordDetailPage({
         )}
       </div>
 
-      {edit ? (
-        <RecordForm
-          title={`Edit ${title.slice(0, -1)}`}
-          fields={detailFields}
-          initial={record}
-          onClose={() => setEdit(false)}
-          onSave={async (data) => {
-            try {
-              const payload = resource === "contracts" ? data : { ...record, ...data };
-              await api(`/${resource}/${record.id}`, json("PUT", payload));
-              setRecord((prev) => (prev ? { ...prev, ...payload } : prev));
-              setEdit(false);
-              toast("Updated");
-            } catch (error) {
-              if (resource === "contracts") throw error;
-              toast((error as Error).message, "error");
-            }
-          }}
-        />
-      ) : null}
     </div>
   );
 }
