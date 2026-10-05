@@ -5,6 +5,7 @@ import { id, now } from '../helpers.js';
 import { getSettings, isEmailConfigured } from '../services/config.js';
 import { sendEmail } from '../services/smtp.js';
 import { broadcast } from './sse.js';
+import { checkWriteFieldMask } from './permissions.js';
 
 export function renderMerge(template, record) {
   return String(template ?? '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
@@ -34,7 +35,7 @@ export default function registerSequenceRoutes(app) {
     res.json({ data: db.sequences || [], total: (db.sequences || []).length });
   });
 
-  app.post('/api/sequences', auth, requireRole('admin', 'member'), async (req, res) => {
+  app.post('/api/sequences', auth, requireRole('admin', 'member'), checkWriteFieldMask('sequence'), async (req, res) => {
     const { name, steps = [], exitRules = [], enabled = true } = req.body || {};
     if (!name) return res.status(400).json({ error: 'Sequence name is required' });
     if (!Array.isArray(steps) || steps.length === 0) return res.status(400).json({ error: 'Sequence must contain at least one step' });
@@ -47,7 +48,7 @@ export default function registerSequenceRoutes(app) {
     res.status(201).json(sequence);
   });
 
-  app.put('/api/sequences/:id', auth, requireRole('admin', 'member'), async (req, res) => {
+  app.put('/api/sequences/:id', auth, requireRole('admin', 'member'), checkWriteFieldMask('sequence'), async (req, res) => {
     const sequence = await mutateDb(db => {
       const found = (db.sequences || []).find(s => s.id === req.params.id);
       if (!found) return null;

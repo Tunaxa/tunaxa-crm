@@ -7,6 +7,13 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Security
+- **RBAC Field-Masking on Write (`backend/routes/permissions.js` & route handlers):**
+  - Implemented write-side field-mask validation engine preventing unauthorized users from writing, updating, or clearing masked attributes via `POST`, `PUT`, `PATCH`, and batch endpoints.
+  - Added `normalizeFieldKey` folding keys to snake_case so casing variations (`firstName`, `first_name`, `First Name`) cannot bypass field permission masks.
+  - Added `submittedFieldKeys` expanding nested `customFields` and `custom_fields` payloads, treating any key presence (including `null`, `false`, `0`, and empty strings) as an intentional write operation.
+  - Implemented `checkWriteFieldMask(resource, pick)` middleware: returns HTTP 403 Forbidden with `{ error, maskedFields[] }` before data validation runs, fails closed with 500 on store errors, and skips checks for admin roles (`ADMIN_ROLES`).
+  - Added `objectTypeOf` shared singularization helper synchronizing read and write permission keys.
+  - Attached write-mask enforcement across 13 write routes: generic resource CRUD (`POST`, `PUT`, `PATCH`, batch updates), all four `/api/v1/objects` endpoints, dedicated entity routes (`tickets`, `forms`, `goals`, `sequences`), and `POST /api/:resource/merge` to prevent bypasses via `fieldOverrides`.
 - **Cross-Tenant IDOR Remediations (`backend/routes/` & repositories):**
   - Remediated un-scoped generic CRUD and CSV export in `backend/routes/resources.js` to enforce tenant workspace boundaries across all 19 entities. The tenant is now server-derived on every write, so a `workspace_id` supplied in a request body is ignored on both create and update; cross-tenant reads and writes return `404` rather than `403` so a response does not confirm that an id exists.
   - Enforced workspace isolation across all forms endpoints (`GET /api/forms`, `findById`, `update`, `delete`) in `backend/routes/forms.js`.
@@ -30,6 +37,8 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- **Write-Side Field Masking Test Suite (`backend/__tests__/rbac-field-mask-write.test.js`):**
+  - Added 37 unit and mutation-verified integration tests verifying 403 Forbidden responses on attempted writes to masked scalar columns and nested custom fields, asserting database records remain untouched, verifying admin bypasses, and confirming merge override protections.
 - **Atomic Duplicate Merge Engine (`backend/services/merge.js` & `backend/routes/dataops.js`):**
   - Implemented transactional record merging for `contacts`, `companies` and `leads`, wrapped in a single database transaction (`BEGIN` … `COMMIT`, with `ROLLBACK` on any failure) and holding `SELECT … FOR UPDATE` row locks on both records, so a mid-merge failure can no longer leave a partially merged state behind.
   - Re-points every foreign key child reference from the duplicate id to the surviving primary id before the duplicate row is deleted. Candidate children are `activities`, `deals`, `tasks`, `tickets`, `quotes`, `contracts`, `orders`, `invoices` and `expenses`; the pointer columns actually present are resolved from `information_schema` at runtime rather than hardcoded, because the live schema deviates from the migrations — `tickets` carries no `contact_id`/`company_id` foreign key at all, only denormalized `contact`/`contact_email` display text that must not be rewritten.
@@ -313,6 +322,8 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- **Stale Repository SQL Assertions (`backend/db/repositories/__tests__/`):**
+  - Four repository tests (`contacts`, `companies`, `leads`, `email-lists`) asserted on the pre-merge `custom_fields = $n` overwrite form and on a structured object in the bound parameters, so they failed against the JSONB merge rewrite introduced with the atomic duplicate merge engine. Both expectations now assert the merge expression `COALESCE(custom_fields, '{}'::jsonb) || $n::jsonb` and the serialized JSON parameter that the `::jsonb` cast requires. Assertions were tightened to name the merge explicitly rather than loosened to a substring that would match either form.
 - **Email Dedup Case Sensitivity (`backend/services/dedup.js`):**
   - `emailMetric` compared the raw address strings for the exact-match check, so `Sarah.Connor@Acme.com` and `sarah.connor@acme.com` failed equality and fell through to the same-domain near-miss branch, scoring 0.5 instead of 1.0. Both addresses are now normalized before any comparison, so casing can no longer suppress the exact-match path. Found by the new suite's first run.
 - **Database Probe Race in Test Harness (`backend/__tests__/atomic-merge-fuzzy.test.js`):**

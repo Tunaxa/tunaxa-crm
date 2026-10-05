@@ -3,6 +3,7 @@ import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
 import { broadcast } from './sse.js';
+import { checkWriteFieldMask } from './permissions.js';
 import { repoFor } from '../db/repositories/index.js';
 import { pgToLegacy, legacyToPg } from '../db/legacy-shape.js';
 
@@ -81,7 +82,7 @@ export default function registerTicketRoutes(app) {
     }
   });
 
-  app.post('/api/tickets', auth, requireRole('admin', 'member'), async (req, res) => {
+  app.post('/api/tickets', auth, requireRole('admin', 'member'), checkWriteFieldMask('ticket'), async (req, res) => {
     const { subject, contact, contactEmail, priority = 'Normal', description = '', source = 'Email' } = req.body || {};
     if (!subject) return res.status(400).json({ error: 'Ticket subject is required' });
     try {
@@ -142,7 +143,7 @@ export default function registerTicketRoutes(app) {
     res.json(saved);
   });
 
-  app.put('/api/tickets/:id', auth, requireRole('admin', 'member'), async (req, res) => {
+  app.put('/api/tickets/:id', auth, requireRole('admin', 'member'), checkWriteFieldMask('ticket'), async (req, res) => {
     const nowIso = now();
     const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     // Same two rules the JSON handler applied, kept verbatim: moving a ticket
