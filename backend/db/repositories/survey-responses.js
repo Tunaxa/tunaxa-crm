@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 import { toJsonb } from "./json.js";
 
 const SORT_COLUMNS = new Set([
@@ -57,6 +58,7 @@ export async function findAll({
   q = "",
   survey = "",
   respondentEmail = "",
+  workspaceId,
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
@@ -68,6 +70,12 @@ export async function findAll({
   const { column, direction } = getSort(sortBy);
   const conditions = [];
   const params = [];
+  if (workspaceId !== undefined && workspaceId !== null) {
+    params.push(workspaceId);
+    conditions.push(
+      `(workspace_id = $${params.length} OR ($${params.length} = 'default' AND workspace_id IS NULL))`,
+    );
+  }
   if (searchTerm) {
     params.push(searchTerm);
     const p = `$${params.length}`;
@@ -113,10 +121,13 @@ export async function findAll({
   };
 }
 
-export async function findById(id) {
+export async function findById(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    "SELECT * FROM survey_responses WHERE id = $1",
-    [id],
+    scoped
+      ? "SELECT * FROM survey_responses WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))"
+      : "SELECT * FROM survey_responses WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
   );
   return result.rows[0] || null;
 }
@@ -144,38 +155,30 @@ export async function create(data = {}) {
   return result.rows[0] || null;
 }
 
-export async function update(id, data = {}) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
-
-  const JSONB_FIELDS = new Set(["responses", "custom_fields"]);
-  const values = fields.map((field) => {
-    if (JSONB_FIELDS.has(field)) return toJsonb(data[field], null);
-    if (field === "submitted_at" && data[field] === "") return null;
-    return data[field];
+export async function update(id, data = {}, workspaceId) {
+  const statement = buildUpdateStatement({
+    id,
+    table: "survey_responses",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields", "responses"],
+    jsonbFallback: {"custom_fields":"{}"},
+    serialize: (field, value) =>
+      field === "submitted_at" && value === "" ? null : value,
   });
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  values.push(id);
-  const result = await query(
-    `UPDATE survey_responses
-     SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}
-     RETURNING *`,
-    values,
-  );
+  if (!statement) return null;
+
+  const result = await query(statement.sql, statement.values);
   return result.rows[0] || null;
 }
-
-async function remove(id) {
+async function remove(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    "DELETE FROM survey_responses WHERE id = $1 RETURNING id",
-    [id],
+    scoped
+      ? "DELETE FROM survey_responses WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL)) RETURNING id"
+      : "DELETE FROM survey_responses WHERE id = $1 RETURNING id",
+    scoped ? [id, workspaceId] : [id],
   );
   return result.rowCount > 0;
 }

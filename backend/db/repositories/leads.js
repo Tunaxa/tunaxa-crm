@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -75,6 +76,7 @@ export async function findAll({
   limit = 20,
   sortBy = "created_at:desc",
   q = "",
+  workspaceId,
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
@@ -84,26 +86,38 @@ export async function findAll({
   const offset = (normalizedPage - 1) * normalizedLimit;
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
-  const whereClause = searchTerm
-    ? "WHERE (first_name ILIKE $1 OR last_name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1 OR company_name ILIKE $1)"
-    : "";
+  // Ordered condition list so the workspace predicate can be prepended without
+  // renumbering the search placeholders by hand.
+  const conditions = [];
+  const params = [];
+  if (workspaceId !== undefined && workspaceId !== null) {
+    params.push(workspaceId);
+    conditions.push(
+      `(workspace_id = $${params.length} OR ($${params.length} = 'default' AND workspace_id IS NULL))`,
+    );
+  }
+  if (searchTerm) {
+    params.push(searchTerm);
+    const p = `$${params.length}`;
+    conditions.push(
+      `(first_name ILIKE ${p} OR last_name ILIKE ${p} OR email ILIKE ${p} OR phone ILIKE ${p} OR company_name ILIKE ${p})`,
+    );
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
      FROM leads
      ${whereClause}`,
-    searchTerm ? [searchTerm] : [],
+    [...params],
   );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
+  const params2 = [...params, normalizedLimit, offset];
   const dataResult = await query(
     `SELECT *
      FROM leads
      ${whereClause}
      ORDER BY ${column} ${direction}
-     LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
-    searchTerm
-      ? [searchTerm, normalizedLimit, offset]
-      : [normalizedLimit, offset],
+     LIMIT $${params2.length - 1} OFFSET $${params2.length}`,
+    params2,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
   return {
@@ -209,53 +223,47 @@ export async function create(data = {}) {
   return enrichLead(result.rows[0]) || null;
 }
 
-export async function update(id, data = {}) {
+export async function update(id, data = {}, workspaceId) {
+  // The lead score has no column of its own: enrichLead() reads it back out of
+  // the custom_fields bag, so a score change is a bag change. The bag itself is
+  // merged in SQL (see update-builder.js), so folding the score keys in here
+  // only adds the scored keys - the keys already on the row survive.
   const updateData = { ...data };
-  if (
-    updateData.score !== undefined ||
-    updateData.last_scored_at !== undefined ||
-    updateData.lead_score !== undefined ||
-    updateData.score_factors !== undefined
-  ) {
-    const existingCf =
+  const SCORE_KEYS = ["score", "lead_score", "score_factors", "last_scored_at"];
+  const scored = SCORE_KEYS.filter((key) => updateData[key] !== undefined);
+  if (scored.length) {
+    const bag =
       typeof updateData.custom_fields === "object" && updateData.custom_fields !== null
         ? updateData.custom_fields
         : {};
     updateData.custom_fields = {
-      ...existingCf,
-      ...(updateData.score !== undefined ? { score: updateData.score } : {}),
-      ...(updateData.lead_score !== undefined ? { lead_score: updateData.lead_score } : {}),
-      ...(updateData.score_factors !== undefined ? { score_factors: updateData.score_factors } : {}),
-      ...(updateData.last_scored_at !== undefined ? { last_scored_at: updateData.last_scored_at } : {}),
+      ...bag,
+      ...Object.fromEntries(scored.map((key) => [key, updateData[key]])),
     };
   }
 
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(updateData, field) &&
-      updateData[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
+  const statement = buildUpdateStatement({
+    id,
+    table: "leads",
+    allowedFields: UPDATE_FIELDS,
+    data: updateData,
+    workspaceId,
+    jsonbFields: ["custom_fields"],
+    jsonbFallback: { custom_fields: "{}" },
+  });
+  if (!statement) return null;
 
-  const values = fields.map((field) => updateData[field]);
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  values.push(id);
-  const result = await query(
-    `UPDATE leads
-     SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}
-     RETURNING *`,
-    values,
-  );
+  const result = await query(statement.sql, statement.values);
   return enrichLead(result.rows[0]) || null;
 }
 
-async function remove(id) {
+async function remove(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    "DELETE FROM leads WHERE id = $1 RETURNING id",
-    [id],
+    scoped
+      ? "DELETE FROM leads WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL)) RETURNING id"
+      : "DELETE FROM leads WHERE id = $1 RETURNING id",
+    scoped ? [id, workspaceId] : [id],
   );
   return result.rowCount > 0;
 }

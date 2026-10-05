@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 import { toJsonb } from "./json.js";
 
 const UPDATE_FIELDS = [
@@ -38,42 +39,31 @@ export async function create(data = {}) {
   return result.rows[0] || null;
 }
 
-export async function update(id, data = {}) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
-
-  const values = [];
-  const assignments = [];
-  fields.forEach((field, index) => {
-    let val = data[field];
-    if (field === "steps") {
-      val = toJsonb(val, "[]");
-    } else if (field === "custom_fields") {
-      val = toJsonb(val, "{}");
-    } else if (field === "completed_at" && val) {
-      val = new Date(val);
-    }
-    values.push(val);
-    assignments.push(`${field} = $${index + 1}`);
+export async function update(id, data = {}, workspaceId) {
+  const statement = buildUpdateStatement({
+    id,
+    table: "workflow_runs",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields", "steps"],
+    jsonbFallback: {"custom_fields":"{}", "steps":"[]"},
+    serialize: (field, value) =>
+      field === "completed_at" && value ? new Date(value) : value,
   });
-  values.push(id);
+  if (!statement) return null;
 
-  const result = await query(
-    `UPDATE workflow_runs
-     SET ${assignments.join(", ")}
-     WHERE id = $${values.length}
-     RETURNING *`,
-    values,
-  );
+  const result = await query(statement.sql, statement.values);
   return result.rows[0] || null;
 }
-
-export async function findById(id) {
-  const result = await query("SELECT * FROM workflow_runs WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM workflow_runs WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))"
+      : "SELECT * FROM workflow_runs WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
   return result.rows[0] || null;
 }
 
