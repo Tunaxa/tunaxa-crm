@@ -34,6 +34,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { Icon } from "./components/Icon";
 import { AssociatedRecords } from "./components/AssociatedRecords";
+import { LifecycleStage } from "./components/LifecycleStage";
 import { InlineEditField } from "./components/InlineEditField";
 import {
   Avatar,
@@ -2722,6 +2723,18 @@ function RecordDetailPage({
 
   const propertiesPanel = (
             <div className="detail-section">
+              {(resource === "contacts" || resource === "leads") && <LifecycleStage
+                key={`${resource}/${record.id}`}
+                recordId={record.id}
+                stage={record.lifecycleStage}
+                disabled={user?.role !== "admin" && user?.role !== "member"}
+                onSaved={(updated) => {
+                  if (recordRoute.current !== `${resource}/${record.id}`) return;
+                  setRecord((previous) => previous?.id === record.id ? { ...previous, ...updated } : previous);
+                  setActivityRetry((value) => value + 1);
+                  toast("Lifecycle stage updated");
+                }}
+              />}
               <h3>{resource === "contracts" ? "Contract summary" : "Contact information"}</h3>
               <dl className="detail-props">
                 {detailFields.map((f) => (
