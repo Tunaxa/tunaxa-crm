@@ -5,6 +5,10 @@ import { runAction, deliverMessages } from './actions.js';
 import { matchCondition } from './conditions.js';
 import { scheduleExecution } from './queue.js';
 import { repoFor } from '../db/repositories/index.js';
+import { parseDelayToMs } from './duration.js';
+import { scheduleWorkflowWaitJob } from './workflowQueue.js';
+
+export { parseDelayToMs };
 
 const id = prefix => `${prefix}_${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
@@ -83,6 +87,7 @@ export const NODE_META = {
   trigger: { label: 'Trigger' },
   condition: { label: 'If / Else branch' },
   delay: { label: 'Wait & schedule' },
+  wait: { label: 'Wait' },
   action: { label: 'Action' }
 };
 
@@ -486,23 +491,36 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
   const outgoing = getOutgoingEdges(workflow);
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
-  // Locate trigger nodes
-  let triggerNodes = nodes.filter(n => n.type === 'trigger' || n.type === 'start');
-  if (event && triggerNodes.length > 1) {
-    const matching = triggerNodes.filter(n => {
-      const nodeEvent = n.config?.event || n.data?.event || n.event;
-      return !nodeEvent || nodeEvent === event;
+  // Locate start nodes (from context.startNodeIds if resuming, else trigger/start nodes)
+  let queue;
+  if (context.startNodeIds) {
+    const startIds = Array.isArray(context.startNodeIds)
+      ? context.startNodeIds
+      : [context.startNodeIds].filter(Boolean);
+    queue = [...startIds];
+  } else {
+    let triggerNodes = nodes.filter(n => {
+      const t = String(n.type || '').trim().toLowerCase();
+      return t === 'trigger' || t === 'start';
     });
-    if (matching.length) triggerNodes = matching;
-  }
-
-  if (!triggerNodes.length) {
-    const targetIds = new Set();
-    for (const list of outgoing.values()) {
-      for (const edge of list) targetIds.add(edge.target);
+    if (event && triggerNodes.length > 1) {
+      const matching = triggerNodes.filter(n => {
+        const nodeEvent = n.config?.event || n.data?.event || n.event;
+        return !nodeEvent || nodeEvent === event;
+      });
+      if (matching.length) triggerNodes = matching;
     }
-    const rootNodes = nodes.filter(n => !targetIds.has(n.id));
-    triggerNodes = rootNodes.length ? rootNodes : [nodes[0]];
+
+    if (!triggerNodes.length) {
+      const targetIds = new Set();
+      for (const list of outgoing.values()) {
+        for (const edge of list) targetIds.add(edge.target);
+      }
+      const rootNodes = nodes.filter(n => !targetIds.has(n.id));
+      triggerNodes = rootNodes.length ? rootNodes : [nodes[0]];
+    }
+
+    queue = [...triggerNodes.map(n => n.id)];
   }
 
   const resource = context.resource ||
@@ -510,12 +528,27 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
     '';
 
   const visited = new Set();
-  const queue = [...triggerNodes.map(n => n.id)];
   const executedNodes = [];
   const executedActions = [];
   const outbound = [];
-  const stepsLog = [];
+  let stepsLog = [];
+
+  if (context.isResume && runId) {
+    const repo = repoFor('workflowRuns');
+    if (repo && typeof repo.findById === 'function') {
+      try {
+        const existingRun = await repo.findById(runId);
+        if (existingRun && existingRun.steps) {
+          stepsLog = Array.isArray(existingRun.steps)
+            ? [...existingRun.steps]
+            : (typeof existingRun.steps === 'string' ? JSON.parse(existingRun.steps) : []);
+        }
+      } catch (_) {}
+    }
+  }
+
   let hasErrors = false;
+  let isWaiting = false;
   let finalErrorMessage = null;
   let steps = 0;
   const MAX_STEPS = 200;
@@ -531,7 +564,9 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
         if (!node) continue;
         executedNodes.push(nodeId);
 
-        if (node.type === 'trigger' || node.type === 'start') {
+        const nodeType = String(node.type || '').trim().toLowerCase();
+
+        if (nodeType === 'trigger' || nodeType === 'start') {
           stepsLog.push({
             nodeId: node.id,
             nodeType: node.type || 'trigger',
@@ -549,7 +584,7 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
           continue;
         }
 
-        if (node.type === 'condition') {
+        if (nodeType === 'condition') {
           let passes = false;
           let condError = null;
           try {
@@ -599,7 +634,7 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
           continue;
         }
 
-        if (node.type === 'delay') {
+        if (nodeType === 'delay') {
           let delayError = null;
           try {
             const config = node.config || node.data || {};
@@ -735,9 +770,11 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
     if (!finalErrorMessage) finalErrorMessage = err.message;
   }
 
+  const finalStatus = hasErrors ? 'failed' : (isWaiting ? 'waiting' : 'success');
+
   if (runId) {
     await updateRunRecord(runId, {
-      status: hasErrors ? 'failed' : 'success',
+      status: finalStatus,
       steps: stepsLog,
       error_message: finalErrorMessage || null
     });
@@ -749,7 +786,40 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
     await deliverMessages(outbound, settings);
   }
 
-  return { executedNodes, executedActions, outbound, runId, steps: stepsLog, status: hasErrors ? 'failed' : 'success' };
+  return { executedNodes, executedActions, outbound, runId, steps: stepsLog, status: finalStatus };
+}
+
+/**
+ * Resumes workflow node graph execution from a set of target nodes
+ * (e.g. after a Wait node delay has elapsed).
+ *
+ * @param {object} params
+ * @param {object} params.workflow - Workflow definition
+ * @param {string} params.runId - Existing workflow run ID
+ * @param {string|string[]} params.targetNodeIds - Downstream node ID(s) to execute
+ * @param {object} params.record - Record being processed
+ * @param {object} [params.context] - Execution context
+ * @param {string} [params.event] - Event name
+ * @returns {Promise<object>}
+ */
+export async function resumeNodeGraphExecution({
+  workflow,
+  runId,
+  targetNodeIds,
+  record,
+  context = {},
+  event,
+}) {
+  const normalizedTargets = Array.isArray(targetNodeIds)
+    ? targetNodeIds
+    : [targetNodeIds].filter(Boolean);
+
+  return await executeNodeGraph(workflow, event, record, {
+    ...context,
+    runId,
+    startNodeIds: normalizedTargets,
+    isResume: true,
+  });
 }
 
 export async function executeLegacyWorkflow(flow, event, record, context = {}) {
@@ -952,6 +1022,23 @@ export function dryRunFlow(flow, record) {
         type: 'delay',
         result: 'scheduled',
         minutes: Number(node.config?.minutes ?? node.data?.minutes ?? 0)
+      });
+      const edges = outgoing.get(node.id) || [];
+      for (const edge of edges) {
+        if (!visited.has(edge.target)) queue.push(edge.target);
+      }
+      continue;
+    }
+
+    if (node.type === 'wait') {
+      const delayRaw = node.config?.delay ?? node.data?.delay ?? node.config?.duration ?? node.data?.duration;
+      const delayMs = parseDelayToMs(delayRaw);
+      steps.push({
+        node: node.id,
+        type: 'wait',
+        result: 'waiting',
+        delay: delayRaw,
+        delayMs
       });
       const edges = outgoing.get(node.id) || [];
       for (const edge of edges) {
