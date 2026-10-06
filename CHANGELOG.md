@@ -8,23 +8,6 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
-- **Workflow "Wait" Node & Delay Engine (`backend/services/workflows.js`):**
-  - Added support for `wait` nodes in visual workflow graphs.
-  - Halts synchronous execution along the active branch when a `wait` node is encountered and records a step with `status: 'waiting'`, `delayMs`, and `scheduledResumeAt`.
-  - Added `resumeNodeGraphExecution()` allowing asynchronous workers to resume traversal from downstream target nodes while appending steps into the existing `workflow_runs` row.
-  - Added `wait` to `NODE_META` and simulated wait step execution in `dryRunFlow()`.
-- **Duration Parsing Utility (`backend/services/duration.js`):**
-  - Implemented `parseDelayToMs(delay)` supporting human-readable strings (`"1 day"`, `"2 hours"`, `"30 minutes"`, `"45 seconds"`, `"1 week"`), structured duration objects (`{ amount: 3, unit: 'days' }`), and raw millisecond numbers.
-- **BullMQ Delayed Queue Service (`backend/services/workflowQueue.js`):**
-  - Configured `'workflow-wait-queue'` with BullMQ delayed jobs (`{ delay: delayMs }`) and worker resumption handling.
-  - Implemented automatic fallback to an in-memory wait queue when Redis is offline or unconfigured, ensuring robust zero-dependency local and CI test execution.
-- **Wait Node Unit & Integration Tests (`backend/services/__tests__/workflows-wait.test.js`):**
-  - Added 14 unit and integration tests covering duration parsing, in-memory queue fallback, wait step status logging, worker graph resumption, conditional branch skipping with wait nodes, and dry run simulation.
-- **Workflow Execution Runs Migration (Migration 009):** Added `backend/db/migrations/009_workflow_runs.sql` creating the `workflow_runs` table with `TEXT` primary keys, `workspace_id` tenant isolation, `status` tracking (`running`, `success`, `failed`), `started_at`/`completed_at` timestamps, `steps JSONB`, `error_message`, and `update_updated_at_column()` triggers with 5 secondary indexes.
-- **Workflow Runs Repository:** Implemented `backend/db/repositories/workflow-runs.js` providing `create`, `update`, `findById`, `findByWorkflowId`, and `findAll` with JSONB serialization (`toJsonb`) and workspace isolation. Registered in repository index under `workflowRuns` and `workflow_runs`.
-- **Workflow Execution Tracking (`backend/services/workflows.js`):** Instrumented `triggerWorkflows()` to log run records on trigger and capture detailed per-node step execution metadata (`nodeId`, `nodeType`, `nodeName`, `status`, `output`, `error`, `executedAt`). Downstream nodes on inactive branches are explicitly recorded with `status: 'skipped'`.
-- **Workflow Runs API (`backend/routes/workflowbuilder.js`):** Added `GET /api/workflows/:id/runs` endpoint with pagination and workspace isolation under `auth` and `requireRole('admin', 'member')`.
-- **Workflow Runs Tests:** Added repository unit tests (`backend/db/repositories/__tests__/workflow-runs.test.js`) and end-to-end integration tests (`backend/__tests__/workflow-runs.test.js`) verifying graph step tracking, skipped condition branches, failure handling, 404 validation, and workspace isolation.
 - **Workflow Node Graph Execution Engine (`backend/services/workflows.js`):**
   - Upgraded `triggerWorkflows()` to support visual node graph execution (`Trigger` → `Condition` → `Action`/`Delay`) in addition to legacy flat action lists.
   - Implemented graph adjacency traversal supporting edge schemas (`{ source, target, sourceHandle }` and `{ from, to, fromHandle }`) as well as direct node pointers (`node.next`, `trueNext`, `falseNext`).

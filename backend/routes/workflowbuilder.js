@@ -4,7 +4,8 @@ import { requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
 import { dryRunFlow, EVENT_META, ACTION_META, NODE_META } from '../services/workflows.js';
 import { broadcast } from './sse.js';
-import { repoFor } from '../db/repositories/index.js';
+import { getWorkflow } from './workflowbuilder-get.js';
+import { app } from '../server.js';
 
 function clean(flow) {
   const cleaned = {
@@ -63,12 +64,12 @@ async function createWorkflow(req, res, { requireGraph = false } = {}) {
   res.status(201).json(saved);
 }
 
-async function getWorkflow(req, res) {
-  const db = await readDb();
-  const flow = (db.workflows || []).find(f => f.id === req.params.id);
-  if (!flow) return res.status(404).json({ error: 'Workflow not found' });
-  res.json(clean(flow));
-}
+  app.get('/api/workflows/:id', auth, async (req, res) => {
+    const db = await readDb();
+    const flow = (db.workflows || []).find(f => f.id === req.params.id);
+    if (!flow) return res.status(404).json({ error: 'Workflow not found' });
+    res.json(clean(flow));
+  });
 
 async function updateWorkflow(req, res) {
   const body = req.body || {};

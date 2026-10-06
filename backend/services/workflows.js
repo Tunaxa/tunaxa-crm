@@ -435,40 +435,11 @@ function getConditionEdges(edgesFromNode, passes) {
 
     return edgesFromNode.filter(e => !isFalseHandle(e.sourceHandle));
   } else {
-    return edgesFromNode.filter(e => isFalseHandle(e.sourceHandle));
-  }
-}
-
-async function createRunRecord({ workflow, event, context = {} }) {
-  try {
-    const repo = repoFor('workflowRuns');
-    if (!repo || typeof repo.create !== 'function') return null;
-    return await repo.create({
-      workflow_id: workflow.id,
-      trigger_event: event || workflow.event || 'unknown',
-      status: 'running',
-      started_at: new Date().toISOString(),
-      steps: [],
-      workspace_id: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
+    // Condition failed: only follow edges explicitly marked false
+    return edgesFromNode.filter(e => {
+      const h = String(e.sourceHandle ?? '').trim().toLowerCase();
+      return h === 'false' || h === 'no' || h === 'fail' || h === '0';
     });
-  } catch (err) {
-    return null;
-  }
-}
-
-async function updateRunRecord(runId, { status, steps, error_message }) {
-  if (!runId) return null;
-  try {
-    const repo = repoFor('workflowRuns');
-    if (!repo || typeof repo.update !== 'function') return null;
-    return await repo.update(runId, {
-      status,
-      completed_at: new Date().toISOString(),
-      steps: Array.isArray(steps) ? steps : [],
-      error_message: error_message || null
-    });
-  } catch (err) {
-    return null;
   }
 }
 
@@ -680,13 +651,10 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
           continue;
         }
 
-        if (node.type === 'action') {
-          let actionError = null;
-          let actionResult = null;
-          try {
-            const actionData = node.config || node.data || {};
-            const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
-            const normalizedType = normalizeActionType(actionType);
+      if (node.type === 'action') {
+        const actionData = node.config || node.data || {};
+        const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
+        const normalizedType = normalizeActionType(actionType);
 
             const actionConfig = {
               ...actionData,
