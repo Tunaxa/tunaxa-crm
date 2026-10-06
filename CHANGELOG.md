@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- Initial CRM MVP: Express 5 backend (REST + GraphQL, JSON store, V1 PostgreSQL object API, workflows, webhooks, forms, surveys, reports, calls/recordings, AI, live chat, knowledge base, RBAC, file uploads, SSE) and React 18 + Vite frontend (dashboard, pipeline, all CRM modules, global search, quick-create, i18n EN/FR, dark mode), with tests and CI.
 - **Workflow Node Graph Execution Engine (`backend/services/workflows.js`):**
   - Upgraded `triggerWorkflows()` to support visual node graph execution (`Trigger` → `Condition` → `Action`/`Delay`) in addition to legacy flat action lists.
   - Implemented graph adjacency traversal supporting edge schemas (`{ source, target, sourceHandle }` and `{ from, to, fromHandle }`) as well as direct node pointers (`node.next`, `trueNext`, `falseNext`).
@@ -59,6 +60,9 @@ and this project adheres to Semantic Versioning.
 
 ### Changed
 
+- Standardized string quoting and improved logout error handling in `AppContext` (`d57414b`).
+- Removed `--open` from Vite dev startup (`836239a`); updated Vite config in `package.json` and `web/vite.config.ts` (`4e9bc9b`).
+- Added ESLint config and devDependencies (`fde1c02`, `fb9c4b4`); added `backend/data/db.json.bac` seed template (`f7890c0`).
 - **Forms Route Cutover (`backend/routes/forms.js`):** Swapped permalink resolution and form submission handlers to use repositories; added workspace isolation to prevent cross-tenant overwrites; preserved custom fields during partial submissions; and wired activity creation into PostgreSQL.
 - **Tickets Route Cutover (`backend/routes/tickets.js`):** Swapped ticket CRUD and comments to repositories; moved `PUT /api/tickets/sla` before parameterized `:id` routes to resolve route shadowing; and wired ticket activities to PostgreSQL.
 - **Portal Ticket Resolution (`backend/routes/dataops.js`):** Updated `emailEquals` to check `contactEmail` so tickets are properly matched in `/api/portal/access`.
@@ -101,15 +105,3 @@ and this project adheres to Semantic Versioning.
 ### Security
 
 - Added a scoped, short-lived (120s) query-token authentication path for the SSE endpoint only (`GET /api/events`), since browsers cannot attach custom headers to `EventSource` connections. Tokens are minted per-connection via a new authenticated endpoint (`POST /api/auth/events-token`), scoped to `purpose: "sse"`, and cannot be used on any other route. All other existing routes continue using standard header-based authentication, unchanged.
-
-## [2.1.0] - 2026-09-16
-
-### Added
-
-- Initial CRM MVP: Express 5 backend (REST + GraphQL, JSON store, V1 PostgreSQL object API, workflows, webhooks, forms, surveys, reports, calls/recordings, AI, live chat, knowledge base, RBAC, file uploads, SSE) and React 18 + Vite frontend (dashboard, pipeline, all CRM modules, global search, quick-create, i18n EN/FR, dark mode), with tests and CI.
-
-### Changed
-
-- Standardized string quoting and improved logout error handling in `AppContext` (`d57414b`).
-- Removed `--open` from Vite dev startup (`836239a`); updated Vite config in `package.json` and `web/vite.config.ts` (`4e9bc9b`).
-- Added ESLint config and devDependencies (`fde1c02`, `fb9c4b4`); added `backend/data/db.json.bac` seed template (`f7890c0`).

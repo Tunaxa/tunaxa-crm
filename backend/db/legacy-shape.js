@@ -25,17 +25,17 @@ export const PG_RESOURCES = new Set([
   "quotes",
   "contracts",
   "orders",
-    "invoices",
-    "expenses",
-    "campaigns",
-    "emailLists",
-    "email_lists",
-    "forms",
-    "tickets",
-    "surveys",
-    "surveyResponses",
-    "survey_responses",
-  ]);
+  "invoices",
+  "expenses",
+  "campaigns",
+  "emailLists",
+  "email_lists",
+  "forms",
+  "tickets",
+  "surveys",
+  "surveyResponses",
+  "survey_responses",
+]);
 
 /**
  * Per-resource column knowledge for the four core entities.
@@ -267,7 +267,14 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: ["name", "subject", "quoteNumber", "number", "customerEmail", "email"],
+    titleFallbacks: [
+      "name",
+      "subject",
+      "quoteNumber",
+      "number",
+      "customerEmail",
+      "email",
+    ],
   },
   contracts: {
     columns: [
@@ -314,7 +321,14 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: ["name", "subject", "contractNumber", "number", "customerEmail", "email"],
+    titleFallbacks: [
+      "name",
+      "subject",
+      "contractNumber",
+      "number",
+      "customerEmail",
+      "email",
+    ],
   },
   orders: {
     columns: [
@@ -675,11 +689,24 @@ export const RESOURCE_MAPPINGS = {
  * the snake_case spelling before giving up.
  */
 function mappingFor(resource) {
-  if (!resource) return null;
-  const direct = RESOURCE_MAPPINGS[resource];
-  const mapping = direct || RESOURCE_MAPPINGS[resource.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()] || null;
-  if (mapping && !mapping.columnSet) mapping.columnSet = new Set(mapping.columns);
-  return mapping;
+  if (typeof resource !== "string" || !resource) return null;
+  const normalized = resource
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+  const direct = Object.prototype.hasOwnProperty.call(
+    RESOURCE_MAPPINGS,
+    resource,
+  )
+    ? RESOURCE_MAPPINGS[resource]
+    : null;
+  const mapping =
+    direct ||
+    (Object.prototype.hasOwnProperty.call(RESOURCE_MAPPINGS, normalized)
+      ? RESOURCE_MAPPINGS[normalized]
+      : null);
+  return mapping
+    ? { ...mapping, columnSet: mapping.columnSet || new Set(mapping.columns) }
+    : null;
 }
 
 /** Convert a PG timestamp value to the ISO string the legacy contract expects. */
@@ -697,23 +724,33 @@ const TEMPORAL_COLUMNS = new Set([
   "expected_close_date",
   "date",
   "expiration_date",
-    "start_date",
-    "end_date",
-    "paid_at",
-    // Added with migration 007. routes/tickets.js seeded firstResponseAt and
-    // resolvedAt with empty strings, and a legacy client may send "" for
-    // submitted_at too; without these the empty string reaches a timestamptz
-    // column and the server rejects it with 22007 invalid datetime format.
-    "first_response_at",
-    "resolved_at",
-    "submitted_at",
-  ]);
+  "start_date",
+  "end_date",
+  "paid_at",
+  // Added with migration 007. routes/tickets.js seeded firstResponseAt and
+  // resolvedAt with empty strings, and a legacy client may send "" for
+  // submitted_at too; without these the empty string reaches a timestamptz
+  // column and the server rejects it with 22007 invalid datetime format.
+  "first_response_at",
+  "resolved_at",
+  "submitted_at",
+]);
 
 /** Coerce a legacy date value to something the timestamptz column accepts. */
 function normalizeTemporalValue(value) {
   if (value === "" || value === undefined) return null;
   if (value instanceof Date) return value.toISOString();
   return value;
+}
+
+/** Set an enumerable own property without invoking the legacy __proto__ setter. */
+function setOwn(object, key, value) {
+  Object.defineProperty(object, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
 }
 
 /**
@@ -732,7 +769,9 @@ export function pgToLegacy(row, resource) {
   const out = {};
   for (const [key, value] of Object.entries(row)) {
     if (mapping.hidden.includes(key)) continue;
-    const legacyKey = mapping.toLegacy[key] || key;
+    const legacyKey = Object.prototype.hasOwnProperty.call(mapping.toLegacy, key)
+      ? mapping.toLegacy[key]
+      : key;
     if (value == null && (key === "created_at" || key === "updated_at")) {
       continue;
     }
@@ -740,7 +779,7 @@ export function pgToLegacy(row, resource) {
     // covers created_at/updated_at and every other timestamp column
     // (due_date, expected_close_date, ...) that res.json would otherwise have
     // to serialize for us.
-    out[legacyKey] = value instanceof Date ? toIsoString(value) : value;
+    setOwn(out, legacyKey, value instanceof Date ? toIsoString(value) : value);
   }
 
   // Overflow bag last, so a real column always wins over a bag entry that
@@ -748,7 +787,7 @@ export function pgToLegacy(row, resource) {
   const extra = row.custom_fields;
   if (extra && typeof extra === "object" && !Array.isArray(extra)) {
     for (const [key, value] of Object.entries(extra)) {
-      if (!(key in out)) out[key] = value;
+      if (!Object.prototype.hasOwnProperty.call(out, key)) setOwn(out, key, value);
     }
   }
 
@@ -814,9 +853,15 @@ export function legacyToPg(body, resource) {
       if (column === "items") {
         // `lineItems` and `items` both land here; anything that is not already
         // an array is wrapped, because jsonb[] rejects a bare object.
-        out[column] = Array.isArray(value) ? value : value == null || value === "" ? [] : [value];
+        out[column] = Array.isArray(value)
+          ? value
+          : value == null || value === ""
+            ? []
+            : [value];
       } else {
-        out[column] = TEMPORAL_COLUMNS.has(column) ? normalizeTemporalValue(value) : value;
+        out[column] = TEMPORAL_COLUMNS.has(column)
+          ? normalizeTemporalValue(value)
+          : value;
       }
     } else {
       extra[key] = value;
@@ -841,29 +886,32 @@ export function legacyToPg(body, resource) {
  * fallbacks, since a product with no name has nothing sensible to derive.
  */
 function applyTitleFallback(mapping, out, body) {
-    const fallbacks = mapping.titleFallbacks;
-    if (!fallbacks) return;
-    // The required label column differs per table: `title` for quotes,
-    // contracts and expenses, `name` for campaigns, email_lists, forms and
-    // surveys, `subject` for tickets. Defaulting to `title` keeps the existing
-    // three mappings working unchanged.
-    const column = mapping.titleColumn || "title";
-    if (out[column] !== undefined && out[column] !== null && out[column] !== "") return;
+  const fallbacks = mapping.titleFallbacks;
+  if (!fallbacks) return;
+  // The required label column differs per table: `title` for quotes,
+  // contracts and expenses, `name` for campaigns, email_lists, forms and
+  // surveys, `subject` for tickets. Defaulting to `title` keeps the existing
+  // three mappings working unchanged.
+  const column = mapping.titleColumn || "title";
+  if (out[column] !== undefined && out[column] !== null && out[column] !== "")
+    return;
 
-    for (const key of fallbacks) {
-      const value = body?.[key];
-      const text = value == null ? "" : String(value).trim();
-      if (text) {
-        out[column] = text;
-        return;
-      }
+  for (const key of fallbacks) {
+    const value = body?.[key];
+    const text = value == null ? "" : String(value).trim();
+    if (text) {
+      out[column] = text;
+      return;
     }
   }
+}
 
 function genericLegacyToPg(body) {
   const out = { ...body };
   if ("name" in out) {
-    const parts = String(out.name || "").trim().split(/\s+/);
+    const parts = String(out.name || "")
+      .trim()
+      .split(/\s+/);
     out.first_name = parts[0] || "";
     out.last_name = parts.slice(1).join(" ") || undefined;
     delete out.name;
