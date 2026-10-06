@@ -4,6 +4,11 @@ import { DEFAULT_SETTINGS } from './config.js';
 import { runAction, deliverMessages } from './actions.js';
 import { matchCondition } from './conditions.js';
 import { scheduleExecution } from './queue.js';
+import { repoFor } from '../db/repositories/index.js';
+import { parseDelayToMs } from './duration.js';
+import { scheduleWorkflowWaitJob } from './workflowQueue.js';
+
+export { parseDelayToMs };
 
 const id = prefix => `${prefix}_${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
@@ -82,6 +87,7 @@ export const NODE_META = {
   trigger: { label: 'Trigger' },
   condition: { label: 'If / Else branch' },
   delay: { label: 'Wait & schedule' },
+  wait: { label: 'Wait' },
   action: { label: 'Action' }
 };
 
@@ -407,20 +413,27 @@ function getOutgoingEdges(workflow) {
   return outgoing;
 }
 
+function isTrueHandle(handle) {
+  if (!handle) return true;
+  const h = String(handle).trim().toLowerCase();
+  return h === 'true' || h === 'yes' || h === 'pass' || h === 'success' || h === '1';
+}
+
+function isFalseHandle(handle) {
+  if (!handle) return false;
+  const h = String(handle).trim().toLowerCase();
+  return h === 'false' || h === 'no' || h === 'fail' || h === '0';
+}
+
 function getConditionEdges(edgesFromNode, passes) {
   if (passes) {
-    // Look for explicit true handles first
     const explicitTrue = edgesFromNode.filter(e => {
       const h = String(e.sourceHandle ?? '').trim().toLowerCase();
       return h === 'true' || h === 'yes' || h === 'pass' || h === 'success' || h === '1';
     });
     if (explicitTrue.length > 0) return explicitTrue;
 
-    // Fallback: follow untyped edges (excluding explicit false handles)
-    return edgesFromNode.filter(e => {
-      const h = String(e.sourceHandle ?? '').trim().toLowerCase();
-      return h !== 'false' && h !== 'no' && h !== 'fail' && h !== '0';
-    });
+    return edgesFromNode.filter(e => !isFalseHandle(e.sourceHandle));
   } else {
     // Condition failed: only follow edges explicitly marked false
     return edgesFromNode.filter(e => {
@@ -437,29 +450,48 @@ function getConditionEdges(edgesFromNode, passes) {
 export async function executeNodeGraph(workflow, event, record, context = {}) {
   const nodes = Array.isArray(workflow.nodes) ? workflow.nodes : [];
   if (!nodes.length) {
-    return { executedNodes: [], executedActions: [], outbound: [] };
+    return { executedNodes: [], executedActions: [], outbound: [], steps: [] };
+  }
+
+  let runId = context.runId;
+  if (!runId) {
+    const run = await createRunRecord({ workflow, event, context });
+    if (run) runId = run.id;
   }
 
   const outgoing = getOutgoingEdges(workflow);
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
-  // Locate trigger nodes
-  let triggerNodes = nodes.filter(n => n.type === 'trigger' || n.type === 'start');
-  if (event && triggerNodes.length > 1) {
-    const matching = triggerNodes.filter(n => {
-      const nodeEvent = n.config?.event || n.data?.event || n.event;
-      return !nodeEvent || nodeEvent === event;
+  // Locate start nodes (from context.startNodeIds if resuming, else trigger/start nodes)
+  let queue;
+  if (context.startNodeIds) {
+    const startIds = Array.isArray(context.startNodeIds)
+      ? context.startNodeIds
+      : [context.startNodeIds].filter(Boolean);
+    queue = [...startIds];
+  } else {
+    let triggerNodes = nodes.filter(n => {
+      const t = String(n.type || '').trim().toLowerCase();
+      return t === 'trigger' || t === 'start';
     });
-    if (matching.length) triggerNodes = matching;
-  }
-
-  if (!triggerNodes.length) {
-    const targetIds = new Set();
-    for (const list of outgoing.values()) {
-      for (const edge of list) targetIds.add(edge.target);
+    if (event && triggerNodes.length > 1) {
+      const matching = triggerNodes.filter(n => {
+        const nodeEvent = n.config?.event || n.data?.event || n.event;
+        return !nodeEvent || nodeEvent === event;
+      });
+      if (matching.length) triggerNodes = matching;
     }
-    const rootNodes = nodes.filter(n => !targetIds.has(n.id));
-    triggerNodes = rootNodes.length ? rootNodes : [nodes[0]];
+
+    if (!triggerNodes.length) {
+      const targetIds = new Set();
+      for (const list of outgoing.values()) {
+        for (const edge of list) targetIds.add(edge.target);
+      }
+      const rootNodes = nodes.filter(n => !targetIds.has(n.id));
+      triggerNodes = rootNodes.length ? rootNodes : [nodes[0]];
+    }
+
+    queue = [...triggerNodes.map(n => n.id)];
   }
 
   const resource = context.resource ||
@@ -467,134 +499,254 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
     '';
 
   const visited = new Set();
-  const queue = [...triggerNodes.map(n => n.id)];
   const executedNodes = [];
   const executedActions = [];
   const outbound = [];
+  let stepsLog = [];
+
+  if (context.isResume && runId) {
+    const repo = repoFor('workflowRuns');
+    if (repo && typeof repo.findById === 'function') {
+      try {
+        const existingRun = await repo.findById(runId);
+        if (existingRun && existingRun.steps) {
+          stepsLog = Array.isArray(existingRun.steps)
+            ? [...existingRun.steps]
+            : (typeof existingRun.steps === 'string' ? JSON.parse(existingRun.steps) : []);
+        }
+      } catch (_) {}
+    }
+  }
+
+  let hasErrors = false;
+  let isWaiting = false;
+  let finalErrorMessage = null;
   let steps = 0;
   const MAX_STEPS = 200;
 
-  await mutateDb(async db => {
-    while (queue.length > 0 && steps++ < MAX_STEPS) {
-      const nodeId = queue.shift();
-      if (!nodeId || visited.has(nodeId)) continue;
-      visited.add(nodeId);
+  try {
+    await mutateDb(async db => {
+      while (queue.length > 0 && steps++ < MAX_STEPS) {
+        const nodeId = queue.shift();
+        if (!nodeId || visited.has(nodeId)) continue;
+        visited.add(nodeId);
 
-      const node = nodeMap.get(nodeId);
-      if (!node) continue;
-      executedNodes.push(nodeId);
+        const node = nodeMap.get(nodeId);
+        if (!node) continue;
+        executedNodes.push(nodeId);
 
-      if (node.type === 'trigger' || node.type === 'start') {
-        const edgesFromNode = outgoing.get(nodeId) || [];
-        for (const edge of edgesFromNode) {
-          if (!visited.has(edge.target)) queue.push(edge.target);
-        }
-        continue;
-      }
+        const nodeType = String(node.type || '').trim().toLowerCase();
 
-      if (node.type === 'condition') {
-        const condConfig = node.config || node.data || node;
-        const passes = evaluateCondition(condConfig, record, context);
-        const edgesToFollow = getConditionEdges(outgoing.get(nodeId) || [], passes);
-        for (const edge of edgesToFollow) {
-          if (!visited.has(edge.target)) queue.push(edge.target);
-        }
-        continue;
-      }
-
-      if (node.type === 'delay') {
-        const config = node.config || node.data || {};
-        const minutes = Number(config.minutes ?? config.delayMinutes ?? (Number(config.hours ?? config.delayHours ?? 0) * 60)) || 0;
-        if (config.action?.type) {
-          const dueAt = new Date(Date.now() + minutes * 60000).toISOString();
-          scheduleExecution(db, {
-            flowId: workflow.id,
-            flowName: workflow.name,
-            resource,
-            record,
-            action: config.action,
-            dueAt,
-            context
+        if (nodeType === 'trigger' || nodeType === 'start') {
+          stepsLog.push({
+            nodeId: node.id,
+            nodeType: node.type || 'trigger',
+            nodeName: node.data?.label || node.config?.name || 'Trigger',
+            status: 'success',
+            output: { event },
+            error: null,
+            executedAt: new Date().toISOString()
           });
-          db.audit.unshift({
-            id: id('audit'),
-            action: `Workflow "${workflow.name}" scheduled a delayed action`,
-            actor: 'Workflow',
-            createdAt: now()
+
+          const edgesFromNode = outgoing.get(nodeId) || [];
+          for (const edge of edgesFromNode) {
+            if (!visited.has(edge.target)) queue.push(edge.target);
+          }
+          continue;
+        }
+
+        if (nodeType === 'condition') {
+          let passes = false;
+          let condError = null;
+          try {
+            const condConfig = node.config || node.data || node;
+            passes = evaluateCondition(condConfig, record, context);
+          } catch (err) {
+            condError = err;
+            hasErrors = true;
+            if (!finalErrorMessage) finalErrorMessage = err.message;
+          }
+
+          stepsLog.push({
+            nodeId: node.id,
+            nodeType: 'condition',
+            nodeName: node.data?.label || node.config?.name || 'Condition',
+            status: condError ? 'failed' : 'success',
+            output: { result: passes },
+            error: condError?.message || null,
+            executedAt: new Date().toISOString()
           });
+
+          const edgesFromNode = outgoing.get(nodeId) || [];
+          const edgesToFollow = getConditionEdges(edgesFromNode, passes);
+
+          // Mark skipped branch nodes
+          const skippedEdges = passes
+            ? edgesFromNode.filter(e => isFalseHandle(e.sourceHandle))
+            : edgesFromNode.filter(e => isTrueHandle(e.sourceHandle));
+          for (const edge of skippedEdges) {
+            const skippedNode = nodeMap.get(edge.target);
+            if (skippedNode && !visited.has(skippedNode.id)) {
+              stepsLog.push({
+                nodeId: skippedNode.id,
+                nodeType: skippedNode.type || 'action',
+                nodeName: skippedNode.data?.label || skippedNode.config?.name || skippedNode.type,
+                status: 'skipped',
+                output: null,
+                error: null,
+                executedAt: new Date().toISOString()
+              });
+            }
+          }
+
+          for (const edge of edgesToFollow) {
+            if (!visited.has(edge.target)) queue.push(edge.target);
+          }
+          continue;
         }
-        const edgesFromNode = outgoing.get(nodeId) || [];
-        for (const edge of edgesFromNode) {
-          if (!visited.has(edge.target)) queue.push(edge.target);
+
+        if (nodeType === 'delay') {
+          let delayError = null;
+          try {
+            const config = node.config || node.data || {};
+            const minutes = Number(config.minutes ?? config.delayMinutes ?? (Number(config.hours ?? config.delayHours ?? 0) * 60)) || 0;
+            if (config.action?.type) {
+              const dueAt = new Date(Date.now() + minutes * 60000).toISOString();
+              scheduleExecution(db, {
+                flowId: workflow.id,
+                flowName: workflow.name,
+                resource,
+                record,
+                action: config.action,
+                dueAt,
+                context
+              });
+              db.audit.unshift({
+                id: id('audit'),
+                action: `Workflow "${workflow.name}" scheduled a delayed action`,
+                actor: 'Workflow',
+                createdAt: now()
+              });
+            }
+          } catch (err) {
+            delayError = err;
+            hasErrors = true;
+            if (!finalErrorMessage) finalErrorMessage = err.message;
+          }
+
+          stepsLog.push({
+            nodeId: node.id,
+            nodeType: 'delay',
+            nodeName: node.data?.label || node.config?.name || 'Delay',
+            status: delayError ? 'failed' : 'success',
+            output: delayError ? null : { scheduled: true },
+            error: delayError?.message || null,
+            executedAt: new Date().toISOString()
+          });
+
+          const edgesFromNode = outgoing.get(nodeId) || [];
+          for (const edge of edgesFromNode) {
+            if (!visited.has(edge.target)) queue.push(edge.target);
+          }
+          continue;
         }
-        continue;
-      }
 
       if (node.type === 'action') {
         const actionData = node.config || node.data || {};
         const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
         const normalizedType = normalizeActionType(actionType);
 
-        const actionConfig = {
-          ...actionData,
-          ...(typeof actionData.action === 'object' ? actionData.action : {}),
-          type: normalizedType
-        };
+            const actionConfig = {
+              ...actionData,
+              ...(typeof actionData.action === 'object' ? actionData.action : {}),
+              type: normalizedType
+            };
 
-        const delayMinutes = Number(actionConfig.delayMinutes ?? (Number(actionConfig.delayHours ?? 0) * 60)) || 0;
-        if (delayMinutes > 0) {
-          const dueAt = new Date(Date.now() + delayMinutes * 60000).toISOString();
-          scheduleExecution(db, {
-            flowId: workflow.id,
-            flowName: workflow.name,
-            resource,
-            record,
-            action: actionConfig,
-            dueAt,
-            context
-          });
-          db.audit.unshift({
-            id: id('audit'),
-            action: `Workflow "${workflow.name}" scheduled a delayed action`,
-            actor: 'Workflow',
-            createdAt: now()
-          });
-        } else {
-          const messages = await runAction(db, actionConfig, record, {
-            resource,
-            flowId: workflow.id,
-            flowName: workflow.name,
-            ...context
-          });
-          if (Array.isArray(messages)) {
-            outbound.push(...messages);
+            const delayMinutes = Number(actionConfig.delayMinutes ?? (Number(actionConfig.delayHours ?? 0) * 60)) || 0;
+            if (delayMinutes > 0) {
+              const dueAt = new Date(Date.now() + delayMinutes * 60000).toISOString();
+              scheduleExecution(db, {
+                flowId: workflow.id,
+                flowName: workflow.name,
+                resource,
+                record,
+                action: actionConfig,
+                dueAt,
+                context
+              });
+              db.audit.unshift({
+                id: id('audit'),
+                action: `Workflow "${workflow.name}" scheduled a delayed action`,
+                actor: 'Workflow',
+                createdAt: now()
+              });
+              actionResult = { scheduled: true, dueAt };
+            } else {
+              const messages = await runAction(db, actionConfig, record, {
+                resource,
+                flowId: workflow.id,
+                flowName: workflow.name,
+                ...context
+              });
+              if (Array.isArray(messages)) {
+                outbound.push(...messages);
+              }
+              actionResult = { executed: true, messagesCount: Array.isArray(messages) ? messages.length : 0 };
+            }
+            executedActions.push(nodeId);
+          } catch (err) {
+            actionError = err;
+            hasErrors = true;
+            if (!finalErrorMessage) finalErrorMessage = err.message;
           }
-        }
-        executedActions.push(nodeId);
 
+          stepsLog.push({
+            nodeId: node.id,
+            nodeType: 'action',
+            nodeName: node.data?.label || node.config?.name || node.config?.type || node.type,
+            status: actionError ? 'failed' : 'success',
+            output: actionResult,
+            error: actionError?.message || null,
+            executedAt: new Date().toISOString()
+          });
+
+          const edgesFromNode = outgoing.get(nodeId) || [];
+          for (const edge of edgesFromNode) {
+            if (!visited.has(edge.target)) queue.push(edge.target);
+          }
+          continue;
+        }
+
+        // Any other node type: follow outgoing edges
         const edgesFromNode = outgoing.get(nodeId) || [];
         for (const edge of edgesFromNode) {
           if (!visited.has(edge.target)) queue.push(edge.target);
         }
-        continue;
       }
 
-      // Any other node type: follow outgoing edges
-      const edgesFromNode = outgoing.get(nodeId) || [];
-      for (const edge of edgesFromNode) {
-        if (!visited.has(edge.target)) queue.push(edge.target);
+      if (executedActions.length > 0) {
+        db.audit.unshift({
+          id: id('audit'),
+          action: `Workflow "${workflow.name}" executed (${event || workflow.event || 'graph'})`,
+          actor: 'Workflow',
+          createdAt: now()
+        });
       }
-    }
+    });
+  } catch (err) {
+    hasErrors = true;
+    if (!finalErrorMessage) finalErrorMessage = err.message;
+  }
 
-    if (executedActions.length > 0) {
-      db.audit.unshift({
-        id: id('audit'),
-        action: `Workflow "${workflow.name}" executed (${event || workflow.event || 'graph'})`,
-        actor: 'Workflow',
-        createdAt: now()
-      });
-    }
-  });
+  const finalStatus = hasErrors ? 'failed' : (isWaiting ? 'waiting' : 'success');
+
+  if (runId) {
+    await updateRunRecord(runId, {
+      status: finalStatus,
+      steps: stepsLog,
+      error_message: finalErrorMessage || null
+    });
+  }
 
   if (outbound.length > 0) {
     const db = await readDb();
@@ -602,41 +754,127 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
     await deliverMessages(outbound, settings);
   }
 
-  return { executedNodes, executedActions, outbound };
+  return { executedNodes, executedActions, outbound, runId, steps: stepsLog, status: finalStatus };
+}
+
+/**
+ * Resumes workflow node graph execution from a set of target nodes
+ * (e.g. after a Wait node delay has elapsed).
+ *
+ * @param {object} params
+ * @param {object} params.workflow - Workflow definition
+ * @param {string} params.runId - Existing workflow run ID
+ * @param {string|string[]} params.targetNodeIds - Downstream node ID(s) to execute
+ * @param {object} params.record - Record being processed
+ * @param {object} [params.context] - Execution context
+ * @param {string} [params.event] - Event name
+ * @returns {Promise<object>}
+ */
+export async function resumeNodeGraphExecution({
+  workflow,
+  runId,
+  targetNodeIds,
+  record,
+  context = {},
+  event,
+}) {
+  const normalizedTargets = Array.isArray(targetNodeIds)
+    ? targetNodeIds
+    : [targetNodeIds].filter(Boolean);
+
+  return await executeNodeGraph(workflow, event, record, {
+    ...context,
+    runId,
+    startNodeIds: normalizedTargets,
+    isResume: true,
+  });
 }
 
 export async function executeLegacyWorkflow(flow, event, record, context = {}) {
   const db = await readDb();
   const settings = { ...DEFAULT_SETTINGS, ...(db.settings || {}) };
-  return executeFlow(flow, record, settings, context);
+  return executeFlow(flow, event, record, settings, context);
 }
 
-async function executeFlow(flow, record, settings, context = {}) {
+async function executeFlow(flow, event, record, settings, context = {}) {
   const actions = Array.isArray(flow.actions) ? flow.actions.filter(action => action && action.type) : [];
-  if (!actions.length) return;
+
+  let runId = context.runId;
+  if (!runId) {
+    const run = await createRunRecord({ workflow: flow, event, context });
+    if (run) runId = run.id;
+  }
+
+  if (!actions.length) {
+    if (runId) {
+      await updateRunRecord(runId, {
+        status: 'success',
+        steps: [],
+        error_message: null
+      });
+    }
+    return { runId, steps: [], status: 'success' };
+  }
 
   const resource = context.resource || RESOURCE_BY_EVENT_PREFIX[String(flow.event || '').split('.')[0]];
   const outbound = [];
+  const stepsLog = [];
+  let hasErrors = false;
+  let finalErrorMessage = null;
 
-  await mutateDb(async db => {
-    for (const action of actions) {
-      const messages = await runAction(db, action, record, {
-        resource,
-        flowId: flow.id,
-        flowName: flow.name,
-        ...context
+  try {
+    await mutateDb(async db => {
+      for (let index = 0; index < actions.length; index++) {
+        const action = actions[index];
+        let actionError = null;
+        let actionResult = null;
+        try {
+          const messages = await runAction(db, action, record, {
+            resource,
+            flowId: flow.id,
+            flowName: flow.name,
+            ...context
+          });
+          if (Array.isArray(messages)) outbound.push(...messages);
+          actionResult = { executed: true, messagesCount: Array.isArray(messages) ? messages.length : 0 };
+        } catch (err) {
+          actionError = err;
+          hasErrors = true;
+          if (!finalErrorMessage) finalErrorMessage = err.message;
+        }
+
+        stepsLog.push({
+          nodeId: action.id || `step_${index + 1}`,
+          nodeType: 'action',
+          nodeName: action.title || action.name || action.type || 'Action',
+          status: actionError ? 'failed' : 'success',
+          output: actionResult,
+          error: actionError?.message || null,
+          executedAt: new Date().toISOString()
+        });
+      }
+      db.audit.unshift({
+        id: id('audit'),
+        action: `Workflow "${flow.name}" executed (${flow.event})`,
+        actor: 'Workflow',
+        createdAt: now()
       });
-      if (Array.isArray(messages)) outbound.push(...messages);
-    }
-    db.audit.unshift({
-      id: id('audit'),
-      action: `Workflow "${flow.name}" executed (${flow.event})`,
-      actor: 'Workflow',
-      createdAt: now()
     });
-  });
+  } catch (err) {
+    hasErrors = true;
+    if (!finalErrorMessage) finalErrorMessage = err.message;
+  }
+
+  if (runId) {
+    await updateRunRecord(runId, {
+      status: hasErrors ? 'failed' : 'success',
+      steps: stepsLog,
+      error_message: finalErrorMessage || null
+    });
+  }
 
   await deliverMessages(outbound, settings);
+  return { runId, steps: stepsLog, status: hasErrors ? 'failed' : 'success' };
 }
 
 export async function triggerWorkflows(resourceOrEvent, eventOrRecord, recordOrContext, maybeContext) {
@@ -679,10 +917,12 @@ export async function triggerWorkflows(resourceOrEvent, eventOrRecord, recordOrC
 
     for (const flow of flows) {
       if (!matchesFilter(flow, record)) continue;
+      const run = await createRunRecord({ workflow: flow, event, context });
+      const flowContext = { ...context, runId: run?.id };
       if (Array.isArray(flow.nodes) && flow.nodes.length > 0) {
-        await executeNodeGraph(flow, event, record, context);
+        await executeNodeGraph(flow, event, record, flowContext);
       } else {
-        await executeLegacyWorkflow(flow, event, record, context);
+        await executeLegacyWorkflow(flow, event, record, flowContext);
       }
     }
   } catch (error) {
@@ -750,6 +990,23 @@ export function dryRunFlow(flow, record) {
         type: 'delay',
         result: 'scheduled',
         minutes: Number(node.config?.minutes ?? node.data?.minutes ?? 0)
+      });
+      const edges = outgoing.get(node.id) || [];
+      for (const edge of edges) {
+        if (!visited.has(edge.target)) queue.push(edge.target);
+      }
+      continue;
+    }
+
+    if (node.type === 'wait') {
+      const delayRaw = node.config?.delay ?? node.data?.delay ?? node.config?.duration ?? node.data?.duration;
+      const delayMs = parseDelayToMs(delayRaw);
+      steps.push({
+        node: node.id,
+        type: 'wait',
+        result: 'waiting',
+        delay: delayRaw,
+        delayMs
       });
       const edges = outgoing.get(node.id) || [];
       for (const edge of edges) {

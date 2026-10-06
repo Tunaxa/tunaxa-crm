@@ -63,6 +63,7 @@ and this project adheres to Semantic Versioning.
 - Standardized string quoting and improved logout error handling in `AppContext` (`d57414b`).
 - Removed `--open` from Vite dev startup (`836239a`); updated Vite config in `package.json` and `web/vite.config.ts` (`4e9bc9b`).
 - Added ESLint config and devDependencies (`fde1c02`, `fb9c4b4`); added `backend/data/db.json.bac` seed template (`f7890c0`).
+- **Test Database Setup (`backend/__tests__/setup.js`):** Included `workflow_runs` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
 - **Forms Route Cutover (`backend/routes/forms.js`):** Swapped permalink resolution and form submission handlers to use repositories; added workspace isolation to prevent cross-tenant overwrites; preserved custom fields during partial submissions; and wired activity creation into PostgreSQL.
 - **Tickets Route Cutover (`backend/routes/tickets.js`):** Swapped ticket CRUD and comments to repositories; moved `PUT /api/tickets/sla` before parameterized `:id` routes to resolve route shadowing; and wired ticket activities to PostgreSQL.
 - **Portal Ticket Resolution (`backend/routes/dataops.js`):** Updated `emailEquals` to check `contactEmail` so tickets are properly matched in `/api/portal/access`.
