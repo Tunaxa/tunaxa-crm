@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
 import { dryRunFlow, EVENT_META, ACTION_META, NODE_META } from '../services/workflows.js';
 import { broadcast } from './sse.js';
+import { repoFor } from '../db/repositories/index.js';
 
 function clean(flow) {
   const cleaned = {
