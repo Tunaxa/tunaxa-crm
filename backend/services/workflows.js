@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
 import { DEFAULT_SETTINGS } from './config.js';
 import { runAction, deliverMessages } from './actions.js';
-import { matchCondition, matchConditions } from './conditions.js';
+import { matchCondition } from './conditions.js';
 import { scheduleExecution } from './queue.js';
 import { repoFor } from '../db/repositories/index.js';
 import { parseDelayToMs } from './duration.js';
@@ -435,43 +435,11 @@ function getConditionEdges(edgesFromNode, passes) {
 
     return edgesFromNode.filter(e => !isFalseHandle(e.sourceHandle));
   } else {
-    return edgesFromNode.filter(e => isFalseHandle(e.sourceHandle));
-  }
-}
-
-async function createRunRecord({ workflow, event, context = {} }) {
-  try {
-    const repo = repoFor('workflowRuns');
-    if (!repo || typeof repo.create !== 'function') return null;
-    return await repo.create({
-      workflow_id: workflow.id,
-      trigger_event: event || workflow.event || 'unknown',
-      status: 'running',
-      started_at: new Date().toISOString(),
-      steps: [],
-      workspace_id: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
+    // Condition failed: only follow edges explicitly marked false
+    return edgesFromNode.filter(e => {
+      const h = String(e.sourceHandle ?? '').trim().toLowerCase();
+      return h === 'false' || h === 'no' || h === 'fail' || h === '0';
     });
-  } catch (err) {
-    return null;
-  }
-}
-
-async function updateRunRecord(runId, { status, steps, error_message }) {
-  if (!runId) return null;
-  try {
-    const repo = repoFor('workflowRuns');
-    if (!repo || typeof repo.update !== 'function') return null;
-    const updatePayload = {
-      status,
-      steps: Array.isArray(steps) ? steps : [],
-      error_message: error_message || null
-    };
-    if (status !== 'waiting') {
-      updatePayload.completed_at = new Date().toISOString();
-    }
-    return await repo.update(runId, updatePayload);
-  } catch (err) {
-    return null;
   }
 }
 
@@ -683,58 +651,10 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
           continue;
         }
 
-        if (nodeType === 'wait') {
-          let waitError = null;
-          const delayRaw = node.config?.delay ?? node.data?.delay ?? node.config?.duration ?? node.data?.duration;
-          const delayStr = typeof delayRaw === 'object'
-            ? (delayRaw.delay || delayRaw.duration || (delayRaw.amount && delayRaw.unit ? `${delayRaw.amount} ${delayRaw.unit}` : JSON.stringify(delayRaw)))
-            : String(delayRaw ?? '');
-          const delayMs = parseDelayToMs(delayRaw);
-          const scheduledResumeAt = new Date(Date.now() + delayMs).toISOString();
-
-          stepsLog.push({
-            nodeId: node.id,
-            nodeType: 'wait',
-            nodeName: node.data?.label || node.config?.name || 'Wait',
-            status: 'waiting',
-            output: { delay: delayStr, delayMs, scheduledResumeAt },
-            error: null,
-            executedAt: new Date().toISOString()
-          });
-
-          const edgesFromNode = outgoing.get(nodeId) || [];
-          const targetNodeIds = edgesFromNode.map(e => e.target).filter(Boolean);
-
-          try {
-            await scheduleWorkflowWaitJob({
-              workflowId: workflow.id,
-              runId,
-              waitNodeId: node.id,
-              targetNodeIds,
-              delayMs,
-              record,
-              context,
-              event,
-              workspaceId: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
-            });
-            isWaiting = true;
-          } catch (err) {
-            waitError = err;
-            hasErrors = true;
-            if (!finalErrorMessage) finalErrorMessage = err.message;
-          }
-
-          // Do NOT execute downstream nodes synchronously — halt traversal along this branch
-          continue;
-        }
-
-        if (nodeType === 'action') {
-          let actionError = null;
-          let actionResult = null;
-          try {
-            const actionData = node.config || node.data || {};
-            const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
-            const normalizedType = normalizeActionType(actionType);
+      if (node.type === 'action') {
+        const actionData = node.config || node.data || {};
+        const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
+        const normalizedType = normalizeActionType(actionType);
 
             const actionConfig = {
               ...actionData,

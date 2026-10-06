@@ -8,33 +8,6 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
-- **Quote PDF Generation Service (`backend/services/quotePdf.js`):**
-  - Added `@react-pdf/renderer` server-side rendering for PDF generation in Node.js ESM using `React.createElement`.
-  - Designed professional quote template featuring Tunaxa brand badge, quote reference metadata, customer/company details grid, styled line items table, financial totals (subtotal, discount, tax, grand total), terms/notes, and dual signature block (Prepared By & Accepted By).
-  - Exported `renderQuotePdfStream()` for direct HTTP streaming and `renderQuotePdfBuffer()` for binary buffers.
-- **Quote PDF Streaming Route (`backend/routes/quotes.js`):**
-  - Added authenticated `GET /api/quotes/:id/pdf` endpoint streaming quote PDFs with `inline` `Content-Disposition`.
-  - Enriches quote metadata with referenced company and contact names/emails from PostgreSQL repositories.
-  - Registered quote routes in `backend/server.js` with proper route precedence.
-- **Quote PDF Test Suite (`backend/__tests__/quote-pdf.test.js`):**
-  - Added 7 unit and integration tests covering binary buffer generation, empty line item fallbacks, stream readability, 401 authentication checks, 404 missing quote handling, HTTP streaming headers, and company/contact enrichment.
-- **Workflow "Wait" Node & Delay Engine (`backend/services/workflows.js`):**
-  - Added support for `wait` nodes in visual workflow graphs.
-  - Halts synchronous execution along the active branch when a `wait` node is encountered and records a step with `status: 'waiting'`, `delayMs`, and `scheduledResumeAt`.
-  - Added `resumeNodeGraphExecution()` allowing asynchronous workers to resume traversal from downstream target nodes while appending steps into the existing `workflow_runs` row.
-  - Added `wait` to `NODE_META` and simulated wait step execution in `dryRunFlow()`.
-- **Duration Parsing Utility (`backend/services/duration.js`):**
-  - Implemented `parseDelayToMs(delay)` supporting human-readable strings (`"1 day"`, `"2 hours"`, `"30 minutes"`, `"45 seconds"`, `"1 week"`), structured duration objects (`{ amount: 3, unit: 'days' }`), and raw millisecond numbers.
-- **BullMQ Delayed Queue Service (`backend/services/workflowQueue.js`):**
-  - Configured `'workflow-wait-queue'` with BullMQ delayed jobs (`{ delay: delayMs }`) and worker resumption handling.
-  - Implemented automatic fallback to an in-memory wait queue when Redis is offline or unconfigured, ensuring robust zero-dependency local and CI test execution.
-- **Wait Node Unit & Integration Tests (`backend/services/__tests__/workflows-wait.test.js`):**
-  - Added 14 unit and integration tests covering duration parsing, in-memory queue fallback, wait step status logging, worker graph resumption, conditional branch skipping with wait nodes, and dry run simulation.
-- **Workflow Execution Runs Migration (Migration 009):** Added `backend/db/migrations/009_workflow_runs.sql` creating the `workflow_runs` table with `TEXT` primary keys, `workspace_id` tenant isolation, `status` tracking (`running`, `success`, `failed`), `started_at`/`completed_at` timestamps, `steps JSONB`, `error_message`, and `update_updated_at_column()` triggers with 5 secondary indexes.
-- **Workflow Runs Repository:** Implemented `backend/db/repositories/workflow-runs.js` providing `create`, `update`, `findById`, `findByWorkflowId`, and `findAll` with JSONB serialization (`toJsonb`) and workspace isolation. Registered in repository index under `workflowRuns` and `workflow_runs`.
-- **Workflow Execution Tracking (`backend/services/workflows.js`):** Instrumented `triggerWorkflows()` to log run records on trigger and capture detailed per-node step execution metadata (`nodeId`, `nodeType`, `nodeName`, `status`, `output`, `error`, `executedAt`). Downstream nodes on inactive branches are explicitly recorded with `status: 'skipped'`.
-- **Workflow Runs API (`backend/routes/workflowbuilder.js`):** Added `GET /api/workflows/:id/runs` endpoint with pagination and workspace isolation under `auth` and `requireRole('admin', 'member')`.
-- **Workflow Runs Tests:** Added repository unit tests (`backend/db/repositories/__tests__/workflow-runs.test.js`) and end-to-end integration tests (`backend/__tests__/workflow-runs.test.js`) verifying graph step tracking, skipped condition branches, failure handling, 404 validation, and workspace isolation.
 - **Workflow Node Graph Execution Engine (`backend/services/workflows.js`):**
   - Upgraded `triggerWorkflows()` to support visual node graph execution (`Trigger` → `Condition` → `Action`/`Delay`) in addition to legacy flat action lists.
   - Implemented graph adjacency traversal supporting edge schemas (`{ source, target, sourceHandle }` and `{ from, to, fromHandle }`) as well as direct node pointers (`node.next`, `trueNext`, `falseNext`).
@@ -73,7 +46,16 @@ and this project adheres to Semantic Versioning.
 - New `ErrorBoundary` component (`web/src/components/ErrorBoundary.tsx`) wired into `web/src/App.tsx`: protects the whole route tree plus the Dashboard, Pipeline, and Contacts routes individually, each with its own fallback message.
 - Fuzzy duplicate detection in `GET /api/duplicates` (`backend/routes/dataops.js`): near-match grouping at threshold 0.3 — exact keys short-circuit to 1.0; otherwise company names via `fuse.js` bitap and contact email local parts via length-normalized Levenshtein distance (`1 − lev(a,b) / max(len(a),len(b))`), so substring/prefix overlap like `alice` vs `alice.miller` no longer scores near-identical and local parts shorter than 4 characters never fuzzy-match. Each group's `matches[]` reports a per-member `score`/`rawScore` relative to the primary/kept record, which is what drives the UI (the group-level `score` is kept only as a display sort key), and `DuplicatesPage` shows a confidence badge on every duplicate row vs that primary — a "Philp Schmitz" primary with two "Phil Schmitz" members shows ~92% on each row — instead of one misleading group-level percentage.
 - Webhook delivery hardening (inbound): `POST /api/hooks/:token` now logs fuller per-attempt delivery data (`contentType`, `remoteIp`, per-endpoint `attemptNumber`) to `db.webhookDeliveries`, and a new authenticated `GET /api/webhookEndpoints/:id/deliveries` returns that endpoint's recent deliveries (newest first, max 50).
+- Workflow builder API now accepts and persists complete `nodes` and `edges` graph JSON through POST, PUT, and GET workflow endpoints, with validation for malformed graph payloads.
 - Inbound IMAP email sync worker polling every 5 minutes and linking matching contact activities.
+- Added a `useSSE` React hook (`web/src/lib/useSSE.ts`) for live server-sent event updates from the backend, with automatic reconnect (exponential backoff: 1s, 2s, 4s, 8s, capped at 30s) and typed event callbacks. Wired into the app shell so pages like Dashboard and Leads refresh in real time when records change, instead of requiring a manual reload.
+- JSON to PostgreSQL idempotent data migration script (scripts/migrate-json-to-pg.js and npm run migrate:data).
+- Core relational PostgreSQL schema migration (004_core_relational_tables.sql) with workspace foreign keys and auto-update triggers.
+- Inbound IMAP email sync worker polling every 5 minutes and linking matching contact activities.
+- PostgreSQL repository layer for Companies, Deals, Tasks, and Activities with CRUD, pagination, search, sorting whitelists, and pipeline aggregation.
+- Parameterized PostgreSQL repository layer for Contacts and Leads with CRUD, pagination, search, and validated sorting.
+- PostgreSQL repository layer for Companies, Deals, Tasks, and Activities with CRUD, pagination, search, sorting whitelists, and pipeline aggregation.
+- Redis query caching with 60s TTL and pattern-based invalidation across core repository findAll queries.
 
 ### Changed
 
@@ -90,6 +72,7 @@ and this project adheres to Semantic Versioning.
 - **JSONB Serialization Fix:** Ensured array fields (`items` / `lineItems`) are JSON-serialized before parameter binding to prevent PostgreSQL `22P02` array literal syntax errors. node-postgres sends a JS array as a Postgres array literal, which `jsonb` rejects; the same payload now round-trips correctly.
 - **Custom Fields Coercion:** Extended `coerceBuiltIns()` in `backend/helpers.js` to recurse into `custom_fields`, so numeric overflow fields (`products.stock`, `products.minStock`, `contracts.mrr`) coerce to numbers instead of persisting as strings.
 - AXA-154: Optimized the login background as WebP, self-hosted/preloaded Geist WOFF2 fonts, and deferred optional Sentry loading to reduce production preview render blocking and initial JavaScript.
+- Optimized the login background as WebP, self-hosted/preloaded Geist WOFF2 fonts, and deferred optional Sentry loading to reduce production preview render blocking and initial JavaScript.
 - Per-route `ErrorBoundary` instances now get `key={location.pathname}`, so client-side navigation remounts a fresh boundary instead of carrying over a previously caught error's fallback UI.
 
 ### Fixed
@@ -101,8 +84,24 @@ and this project adheres to Semantic Versioning.
 
 ### Testing
 
-- AXA-154: Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
+- Automated axe-core audit of the login screen, all 41 main authenticated routes, and four representative dark-mode routes completed 46 scans with zero critical or serious violations; production build, TypeScript type-check, targeted ESLint, and static JSX accessibility checks also passed.
+- Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
+- Production build, TypeScript type-check, targeted ESLint, and report query/result normalization tests pass (3/3).
+- Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
+- Production build, TypeScript type-check, targeted ESLint, and invitation response/expiry tests pass (3/3).
+- Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
+- Production build, TypeScript type-check, targeted ESLint, and onboarding preference tests pass (3/3).
+- Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
+- Added focused tests for draw/type readiness, required consent, typed-signature data URLs, and XML escaping; production build and targeted lint/type checks pass.
+- Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
+- Added focused tests for progress colors, capped progress-bar width, and newly crossed milestone detection; production build and targeted lint/type checks pass.
+- Added focused unit coverage for line totals, discount-before-tax calculations, percentage limits, negative values, rounding, and legacy item normalization; production build and targeted lint/type checks pass.
+- Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
 - Webhook delivery logging (inbound) — verified by the webhook-Endpoints vitest suite (`backend/__tests__/forms-webhooks.test.js`, 18/18 passing in isolation) and manually via the API: `npm run server`, authenticate (`POST /api/auth/login`, or reuse a live session token from `backend/data/db.json`), `POST /api/webhookEndpoints` with `{"name":"Manual test","enabled":true}` and note the returned `id`/`url`, then `POST <url>` with `Content-Type: application/json` (repeat 3×) and `GET /api/webhookEndpoints/:id/deliveries` with `Authorization: Bearer $TOKEN` → newest-first rows with `status:"received"`, captured `contentType`/`remoteIp`, and per-endpoint `attemptNumber` incrementing 1→2→3…; same GET without a token → 401, bogus endpoint id with a token → 404.
+
+### Security
+
+- Added a scoped, short-lived (120s) query-token authentication path for the SSE endpoint only (`GET /api/events`), since browsers cannot attach custom headers to `EventSource` connections. Tokens are minted per-connection via a new authenticated endpoint (`POST /api/auth/events-token`), scoped to `purpose: "sse"`, and cannot be used on any other route. All other existing routes continue using standard header-based authentication, unchanged.
 
 ## [2.1.0] - 2026-09-16
 

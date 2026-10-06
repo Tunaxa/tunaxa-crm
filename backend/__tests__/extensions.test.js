@@ -120,7 +120,7 @@ describe('Duplicate management', () => {
     const find = await request(app).get('/api/duplicates?resource=contacts').set('Authorization', `Bearer ${token}`);
     expect(find.status).toBe(200);
     expect(find.body.duplicates.find(g => g.names.includes('Dupe Test'))).toBeUndefined();
-    expect(find.body.total).toBe(0);
+    expect(find.body.duplicates.find(g => g.names.includes('Exact Test'))).toBeUndefined();
   });
 
   it('scores each duplicate member against the primary record it would merge into', async () => {
@@ -189,4 +189,22 @@ describe('Customer portal', () => {
     const res = await request(app).post('/api/portal/access').send({});
     expect(res.status).toBe(400);
   });
+});
+
+it('does not change or delete any merge participant when one PostgreSQL id is missing', async () => {
+  const keep = await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`)
+    .send({ name: 'Keeper', email: 'keeper@atomic.test' });
+  const source = await request(app).post('/api/contacts').set('Authorization', `Bearer ${token}`)
+    .send({ name: 'Source', email: 'source@atomic.test', phone: '555-0111' });
+  expect(keep.status).toBe(201);
+  expect(source.status).toBe(201);
+  const merged = await request(app).post('/api/duplicates/merge').set('Authorization', `Bearer ${token}`)
+    .send({ resource: 'contacts', keepId: keep.body.id, mergeIds: [source.body.id, 'missing-contact'] });
+  expect(merged.status).toBe(404);
+  const after = await request(app).get(`/api/contacts/${keep.body.id}`).set('Authorization', `Bearer ${token}`);
+  expect(after.status).toBe(200);
+  expect(after.body.phone).toBe(keep.body.phone);
+  const untouched = await request(app).get(`/api/contacts/${source.body.id}`).set('Authorization', `Bearer ${token}`);
+  expect(untouched.status).toBe(200);
+  expect(untouched.body.phone).toBe('555-0111');
 });
