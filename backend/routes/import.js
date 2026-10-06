@@ -133,7 +133,7 @@ export default function registerImportRoutes(app, upload) {
           });
         });
 
-        broadcast("import.completed", { resource, count: imported, headers });
+        broadcast("import.completed", { resource, count: imported, headers }, req.user.workspaceId || "default");
         res.status(201).json({ imported, headers, total: rows.length });
       } catch (err) {
         res.status(400).json({ error: `Import failed: ${err.message}` });

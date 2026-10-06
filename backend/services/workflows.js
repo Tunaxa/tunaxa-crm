@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { readDb, mutateDb } from '../store.js';
 import { DEFAULT_SETTINGS } from './config.js';
 import { runAction, deliverMessages } from './actions.js';
-import { matchCondition, matchConditions } from './conditions.js';
+import { matchCondition } from './conditions.js';
 import { scheduleExecution } from './queue.js';
 import { repoFor } from '../db/repositories/index.js';
 import { parseDelayToMs } from './duration.js';
@@ -461,15 +461,12 @@ async function updateRunRecord(runId, { status, steps, error_message }) {
   try {
     const repo = repoFor('workflowRuns');
     if (!repo || typeof repo.update !== 'function') return null;
-    const updatePayload = {
+    return await repo.update(runId, {
       status,
+      completed_at: new Date().toISOString(),
       steps: Array.isArray(steps) ? steps : [],
       error_message: error_message || null
-    };
-    if (status !== 'waiting') {
-      updatePayload.completed_at = new Date().toISOString();
-    }
-    return await repo.update(runId, updatePayload);
+    });
   } catch (err) {
     return null;
   }
@@ -683,52 +680,7 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
           continue;
         }
 
-        if (nodeType === 'wait') {
-          let waitError = null;
-          const delayRaw = node.config?.delay ?? node.data?.delay ?? node.config?.duration ?? node.data?.duration;
-          const delayStr = typeof delayRaw === 'object'
-            ? (delayRaw.delay || delayRaw.duration || (delayRaw.amount && delayRaw.unit ? `${delayRaw.amount} ${delayRaw.unit}` : JSON.stringify(delayRaw)))
-            : String(delayRaw ?? '');
-          const delayMs = parseDelayToMs(delayRaw);
-          const scheduledResumeAt = new Date(Date.now() + delayMs).toISOString();
-
-          stepsLog.push({
-            nodeId: node.id,
-            nodeType: 'wait',
-            nodeName: node.data?.label || node.config?.name || 'Wait',
-            status: 'waiting',
-            output: { delay: delayStr, delayMs, scheduledResumeAt },
-            error: null,
-            executedAt: new Date().toISOString()
-          });
-
-          const edgesFromNode = outgoing.get(nodeId) || [];
-          const targetNodeIds = edgesFromNode.map(e => e.target).filter(Boolean);
-
-          try {
-            await scheduleWorkflowWaitJob({
-              workflowId: workflow.id,
-              runId,
-              waitNodeId: node.id,
-              targetNodeIds,
-              delayMs,
-              record,
-              context,
-              event,
-              workspaceId: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
-            });
-            isWaiting = true;
-          } catch (err) {
-            waitError = err;
-            hasErrors = true;
-            if (!finalErrorMessage) finalErrorMessage = err.message;
-          }
-
-          // Do NOT execute downstream nodes synchronously — halt traversal along this branch
-          continue;
-        }
-
-        if (nodeType === 'action') {
+        if (node.type === 'action') {
           let actionError = null;
           let actionResult = null;
           try {
