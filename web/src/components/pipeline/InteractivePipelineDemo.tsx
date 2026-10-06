@@ -1,15 +1,10 @@
 import React, { useState } from 'react';
 import {
-  TrendingUp,
-  ArrowRight,
   RotateCcw,
-  Building2,
   Calendar,
   Sparkles,
   CheckCircle2,
-  Layers,
   Plus,
-  Zap,
 } from 'lucide-react';
 import { CornerBrackets } from '../ui/CornerBrackets';
 import { PixelIndicator } from '../ui/PixelIndicator';
