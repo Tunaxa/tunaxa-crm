@@ -1,3 +1,4 @@
+import { DuplicateResolution } from "./components/DuplicateResolution";
 import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
 
@@ -6135,177 +6136,51 @@ function SurveyResponsesPage() {
 }
 
 function DuplicatesPage() {
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const [scope, setScope] = useState<"contacts" | "companies">("contacts");
-  const [data, setData] = useState<any>(null);
+  const [groups, setGroups] = useState<{ ids: string[]; confidence?: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [skipped, setSkipped] = useState<string[]>([]);
-  const load = () =>
-    api<any>(`/duplicates?resource=${scope}`)
-      .then(setData)
-      .catch((err) => toast(err.message, "error"));
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    const refresh = () => setReload((value) => value + 1);
+    window.addEventListener("tunaxa:resource-changed", refresh);
+    return () => window.removeEventListener("tunaxa:resource-changed", refresh);
+  }, []);
   useEffect(() => {
     setSkipped([]);
-    load();
-    window.addEventListener("tunaxa:resource-changed", load);
-    return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, [scope]);
-  async function mergePair(group: any, keep: Row, merge: Row) {
-    setBusy(true);
-    try {
-      await api(
-        `/duplicates/merge`,
-        json("POST", { resource: scope, keepId: keep.id, mergeId: merge.id }),
-      );
-      toast("Duplicate merged");
-      load();
-      window.dispatchEvent(new Event("tunaxa:resource-changed"));
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-  function skipPair(key: string) {
-    setSkipped((current) => [...current, key]);
-  }
-  const groups = (data?.duplicates || [])
-    .map((group: any) => ({
-      ...group,
-      records:
-        group.records ||
-        group.ids.map((id: string, index: number) => ({
-          id,
-          name: group.names[index],
-        })),
-    }))
-    .flatMap((group: any) =>
-      group.records.slice(1).map((merge: Row) => ({
-        group,
-        keep: group.records[0] as Row,
-        merge,
-        key: `${group.records[0].id}:${merge.id}`,
-      })),
-    )
-    .filter((pair: any) => !skipped.includes(pair.key));
-  const pair = groups[0];
-  const comparisonKeys = pair
-    ? [
-        ...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)]),
-      ].filter((key) => key !== "id")
-    : [];
-  const displayName = (record: Row) =>
-    String(record.name || record.email || record.id || "Untitled");
-  const displayValue = (value: unknown) => {
-    if (value === undefined || value === null || value === "") return "—";
-    if (Array.isArray(value)) return value.join(", ");
-    if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
-  };
-  const labelFor = (key: string) =>
-    key
-      .replace(/([A-Z])/g, " $1")
-      .replace(/^./, (value) => value.toUpperCase());
-  return (
-    <div className="page">
-      <PageHeader
-        title="Duplicate Management"
-        description="Find and merge duplicate contacts and companies sharing the same email or name."
-      >
-        <button
-          className={
-            scope === "contacts"
-              ? "btn primary compact"
-              : "btn secondary compact"
-          }
-          onClick={() => setScope("contacts")}
-        >
-          Contacts
-        </button>
-        <button
-          className={
-            scope === "companies"
-              ? "btn primary compact"
-              : "btn secondary compact"
-          }
-          onClick={() => setScope("companies")}
-        >
-          Companies
-        </button>
-      </PageHeader>
-      <section className="surface duplicate-comparison">
-        {pair ? (
-          <>
-            <div className="duplicate-comparison-head">
-              <div>
-                <span className="eyebrow">Potential duplicate</span>
-                <h2>Review these records</h2>
-              </div>
-              <Badge tone="blue">{pair.group.confidence ?? 0}% match</Badge>
-            </div>
-            <div className="duplicate-columns">
-              <article className="duplicate-record keep">
-                <div className="duplicate-record-head">
-                  <Avatar name={displayName(pair.keep)} />
-                  <div>
-                    <small>Record to keep</small>
-                    <h3>{displayName(pair.keep)}</h3>
-                  </div>
-                </div>
-                <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => (
-                    <div className="duplicate-field" key={key}>
-                      <span>{labelFor(key)}</span>
-                      <b>{displayValue(pair.keep[key])}</b>
-                    </div>
-                  ))}
-                </div>
-              </article>
-              <article className="duplicate-record merge">
-                <div className="duplicate-record-head">
-                  <Avatar name={displayName(pair.merge)} />
-                  <div>
-                    <small>Record to merge and delete</small>
-                    <h3>{displayName(pair.merge)}</h3>
-                  </div>
-                </div>
-                <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => (
-                    <div className="duplicate-field" key={key}>
-                      <span>{labelFor(key)}</span>
-                      <b>{displayValue(pair.merge[key])}</b>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            </div>
-            <div className="duplicate-actions">
-              <button
-                className="btn secondary"
-                disabled={busy}
-                onClick={() => skipPair(pair.key)}
-              >
-                <Icon name="close" /> Skip
-              </button>
-              <button
-                className="btn primary"
-                disabled={busy}
-                onClick={() => mergePair(pair.group, pair.keep, pair.merge)}
-              >
-                <Icon name="check" /> Merge
-              </button>
-            </div>
-          </>
-        ) : (
-          <Empty
-            icon="duplicate"
-            title={`No duplicate ${scope} found`}
-            text={`No ${scope} currently share the same email/name. Data is clean.`}
-          />
-        )}
-      </section>
-    </div>
-  );
+  useEffect(() => {
+    const controller = new AbortController();
+    setGroups([]); setError(""); setLoading(true);
+    api<{ duplicates: { ids: string[]; confidence?: number }[] }>(`/duplicates?resource=${scope}`, { signal: controller.signal })
+      .then((result) => {
+        if (!Array.isArray(result.duplicates) || result.duplicates.some((group) => !Array.isArray(group.ids) || group.ids.some((id) => typeof id !== "string"))) throw new Error("Unexpected duplicate response");
+        if (!controller.signal.aborted) setGroups(result.duplicates);
+      })
+      .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [scope, reload]);
+  const pairs = groups.flatMap((group) => group.ids.slice(1).filter((id) => id !== group.ids[0]).map((id) => ({ primaryId: group.ids[0], secondaryId: id, key: `${group.ids[0]}:${id}` }))).filter((pair) => !skipped.includes(pair.key));
+  const pair = pairs[0];
+  return <div className="page">
+    <PageHeader title="Duplicate Management" description="Compare duplicate contacts and companies and choose the values to keep.">
+      {(["contacts", "companies"] as const).map((resource) => <button key={resource} type="button" className={scope === resource ? "btn primary compact" : "btn secondary compact"} aria-pressed={scope === resource} disabled={busy} onClick={() => setScope(resource)}>{resource === "contacts" ? "Contacts" : "Companies"}</button>)}
+    </PageHeader>
+    <section className="surface duplicate-comparison">
+      {loading ? <p role="status">Finding duplicates…</p> : error ? <p role="alert">{error} <button type="button" onClick={() => setReload((value) => value + 1)}>Retry</button></p> : pair ? <>
+        <p>{pairs.length} potential duplicate pairs to review</p>
+        <DuplicateResolution key={`${scope}/${pair.key}/${reload}`} resource={scope} primaryId={pair.primaryId} secondaryId={pair.secondaryId}
+          disabled={user?.role !== "admin" && user?.role !== "member"} onBusyChange={setBusy}
+          onSkip={() => setSkipped((current) => [...current, pair.key])}
+          onMerged={() => { toast("Duplicate merged"); window.dispatchEvent(new Event("tunaxa:resource-changed")); }} />
+      </> : <Empty icon="duplicate" title={`No remaining duplicate ${scope} pairs`} text={skipped.length ? "Skipped pairs were left unchanged. Refresh to review them again." : "No potential duplicates found."} />}
+      {!!skipped.length && !busy && <button type="button" className="btn secondary compact" onClick={() => setSkipped([])}>Review skipped pairs</button>}
+    </section>
+  </div>;
 }
 
 function PortalView({

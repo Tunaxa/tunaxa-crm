@@ -205,5 +205,13 @@ export const resources = new Set([
   'invoices','expenses',
   'employees','leaveRequests','attendance',
   'quotes','contracts','marketingEmails','marketingEvents','goals','surveys','surveyResponses',
+  // `forms` and `tickets` are deliberately absent even though they are served
+  // from Postgres (see PG_RESOURCES in db/legacy-shape.js). Their dedicated
+  // handlers in routes/forms.js and routes/tickets.js are registered before the
+  // generic /api/:resource handler, so listing them here would not add anything
+  // those handlers do not already cover, and for forms it would actively break
+  // them: routes/forms.js owns `GET /api/forms/:permalink` (public, no auth),
+  // which would shadow the generic `GET /api/forms/export.csv` and
+  // `GET /api/forms/:id` and answer them as an unknown permalink.
   'webhookEndpoints','webhookDeliveries'
 ]);
