@@ -2,7 +2,7 @@ import { readDb, mutateDb } from '../store.js';
 import { findRecord } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { processExecutionQueue, retryExecution, findRecord } from '../services/queue.js';
+import { processExecutionQueue, retryExecution } from '../services/queue.js';
 import { id, now } from '../helpers.js';
 import { broadcast } from './sse.js';
 

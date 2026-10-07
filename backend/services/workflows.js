@@ -461,6 +461,7 @@ async function createRunRecord({ workflow, event, context = {} }) {
       workspace_id: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
     });
   } catch (err) {
+    console.error('Error creating workflow run record:', err);
     return null;
   }
 }
@@ -480,6 +481,7 @@ async function updateRunRecord(runId, { status, steps, error_message }) {
     }
     return await repo.update(runId, updatePayload);
   } catch (err) {
+    console.error('Error updating workflow run record:', err);
     return null;
   }
 }
@@ -555,7 +557,9 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
             ? [...existingRun.steps]
             : (typeof existingRun.steps === 'string' ? JSON.parse(existingRun.steps) : []);
         }
-      } catch (_) {}
+      } catch (err) {
+        console.error('Error fetching existing workflow run:', err);
+      }
     }
   }
 
@@ -693,7 +697,6 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
         }
 
         if (nodeType === 'wait') {
-          let waitError = null;
           const delayRaw = node.config?.delay ?? node.data?.delay ?? node.config?.duration ?? node.data?.duration;
           const delayStr = typeof delayRaw === 'object'
             ? (delayRaw.delay || delayRaw.duration || (delayRaw.amount && delayRaw.unit ? `${delayRaw.amount} ${delayRaw.unit}` : JSON.stringify(delayRaw)))
@@ -728,7 +731,6 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
             });
             isWaiting = true;
           } catch (err) {
-            waitError = err;
             hasErrors = true;
             if (!finalErrorMessage) finalErrorMessage = err.message;
           }
