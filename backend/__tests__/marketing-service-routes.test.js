@@ -7,14 +7,6 @@ import { query } from '../db/pg.js';
 // Every assertion here proves a record reached Postgres. A response that could
 // equally have come from the JSON store would pass even with the cutover
 // reverted, so the tests read the tables back directly instead.
-// const TABLES = [
-//   'campaigns',
-//   'email_lists',
-//   'forms',
-//   'tickets',
-//   'surveys',
-//   'survey_responses',
-// ];
 
 const countRows = async (table) => {
   const { rows } = await query(`SELECT COUNT(*)::int AS total FROM ${table}`);
