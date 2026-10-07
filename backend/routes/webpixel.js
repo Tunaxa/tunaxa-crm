@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { readDb, mutateDb } from "../store.js";
+import { loadRecords, saveRecord } from "../db/legacy-records.js";
 import { auth } from "../middleware/auth.js";
 import { now } from "../helpers.js";
 import { createRateLimiter } from "../services/rateLimit.js";
@@ -94,13 +95,13 @@ export default function registerWebTrackingRoutes(app) {
     if (!vid || !email)
       return res.status(400).json({ error: "vid and email are required" });
     let contactId = "";
-    await mutateDb((db) => {
+    await mutateDb(async (db) => {
       if (!db.webVisits) db.webVisits = [];
-      const contact = db.contacts.find(
+      const contact = (await loadRecords('contacts', db)).find(
         (c) =>
           String(c.email || "").toLowerCase() === String(email).toLowerCase(),
       );
-      const lead = db.leads.find(
+      const lead = (await loadRecords('leads', db)).find(
         (l) =>
           String(l.email || "").toLowerCase() === String(email).toLowerCase(),
       );
@@ -120,6 +121,7 @@ export default function registerWebTrackingRoutes(app) {
           record.attributionSource =
             prior[0]?.page || record.attributionSource || "";
         }
+        await saveRecord(contact ? 'contacts' : 'leads', record, db);
       } else if ((db.webVisits || []).some((v) => v.vid === vid)) {
         db.pendingAttribution = db.pendingAttribution || [];
         db.pendingAttribution.unshift({ vid, email, createdAt: now() });

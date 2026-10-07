@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GoalProgress, getGoalProgress } from "./GoalProgress";
+import {
+  GoalProgress,
+  getCrossedGoalMilestone,
+  getGoalProgress,
+} from "./GoalProgress";
 
 describe("goal progress thresholds", () => {
   it.each([
@@ -38,5 +42,24 @@ describe("goal progress thresholds", () => {
     );
     expect(markup).toContain("Set target");
     expect(markup).toContain("no target set");
+  });
+});
+
+describe("goal milestone celebrations", () => {
+  it.each([
+    [49, 50, 50],
+    [60, 80, 75],
+    [80, 100, 100],
+    [40, 110, 100],
+  ])(
+    "detects the highest newly crossed milestone",
+    (before, after, milestone) => {
+      expect(getCrossedGoalMilestone(before, 100, after, 100)).toBe(milestone);
+    },
+  );
+
+  it("does not celebrate unchanged or decreasing progress", () => {
+    expect(getCrossedGoalMilestone(75, 100, 75, 100)).toBeNull();
+    expect(getCrossedGoalMilestone(80, 100, 60, 100)).toBeNull();
   });
 });

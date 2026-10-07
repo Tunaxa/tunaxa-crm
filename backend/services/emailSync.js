@@ -122,11 +122,14 @@ export async function syncInboxOnce() {
       newActivities.push({
         id: `act_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         title: parsed.subject || '(No Subject)',
+        subject: parsed.subject || '(No Subject)',
         type: 'Email',
         contact: contact.name || contact.email || senderEmail,
         notes: parsed.text || parsed.html || '',
+        body: parsed.text || parsed.html || '',
         date: (parsed.date || new Date()).toISOString().slice(0, 10),
         recordId: contact.id,
+        contactId: contact.id,
         dealId: null,
         direction: 'inbound',
         createdAt: (parsed.date || new Date()).toISOString(),
@@ -141,7 +144,7 @@ export async function syncInboxOnce() {
     if (newActivities.length > 0 || maxUid > lastSeenUid) {
       await mutateDb(db => {
         if (newActivities.length > 0) {
-          db.activities.unshift(...newActivities.slice().reverse());
+          db.activities.unshift(...newActivities.slice().sort((left, right) => right.metadata.uid - left.metadata.uid));
         }
         if (maxUid > lastSeenUid) {
           db.settings ??= {};

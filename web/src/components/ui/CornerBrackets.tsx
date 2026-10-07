@@ -28,10 +28,6 @@ export const CornerBrackets: React.FC<CornerBracketsProps> = ({
     ...(stroke ? { color: stroke } : {}),
   };
 
-  const defaultBorderClass = stroke
-    ? ""
-    : "border-[#d1d1d1] dark:border-[#263140]";
-
   return (
     <>
       {/* Top Left */}

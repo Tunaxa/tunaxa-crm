@@ -1,4 +1,5 @@
 import express from "express";
+import helmet from "helmet";
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -18,6 +19,7 @@ import registerMessageRoutes from "./routes/messages.js";
 import registerV1ObjectRoutes from "./routes/v1objects.js";
 import registerV1AssociationRoutes from "./routes/v1associations.js";
 import registerWebhookRoutes from "./routes/webhooks.js";
+import registerContactRoutes from "./routes/contacts.js";
 import registerTemplateRoutes from "./routes/templates.js";
 import registerTrackingRoutes from "./routes/tracking.js";
 import registerAiRoutes from "./routes/ai.js";
@@ -59,6 +61,23 @@ import { seedPlaybooks } from "./services/seedPlaybooks.js";
 
 const app = express();
 app.disable("x-powered-by");
+app.use(
+  helmet({
+    frameguard: { action: "deny" },
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "data:", "blob:", "http:", "https:"],
+        connectSrc: ["'self'", "http:", "https:", "ws:", "wss:"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    hsts: {
+      maxAge: 31_536_000,
+      includeSubDomains: true,
+      preload: true,
+    },
+  }),
+);
 
 if (process.env.SENTRY_DSN && process.env.VITEST !== "true") {
   Sentry.init({
