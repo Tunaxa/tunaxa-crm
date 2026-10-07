@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
+import { updateRecord } from "../services/resources.js";
 import { requireRole } from "../middleware/rbac.js";
 import {
   id,
@@ -23,6 +24,102 @@ import { cacheFlush } from "../services/cache.js";
 import { recordRevision } from "../services/revisions.js";
 import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
 import { fileURLToPath } from "node:url";
+import { repoFor } from "../db/repositories/index.js";
+import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
+
+/**
+ * Build the CSV representation of a single row, quoting every cell.
+ */
+function buildCsvRow(columns, row) {
+  const cell = (value) => {
+    const text =
+      value == null
+        ? ""
+        : typeof value === "object"
+          ? JSON.stringify(value)
+          : String(value);
+    return `"${text.replace(/"/g, '""')}"`;
+  };
+  return columns.map((col) => cell(row[col])).join(",");
+}
+
+// Query params that are filters rather than paging controls. The legacy JSON
+// path applied these in JS after loading the whole file; forwarding them to the
+// repository keeps the same results while pushing the work into SQL. Repos
+// ignore the keys they do not implement.
+//
+// `category` has to be listed here or it never reaches SQL: products and
+// expenses both implement a category filter, and because findAll() destructures
+// its argument, an unlisted key is dropped silently rather than rejected.
+//
+// The 007 entities add filters on their own vocabulary: campaigns by channel,
+// forms by enabled/submitTo, tickets by priority/source, surveys by audience,
+// and survey responses by survey name and respondent email. `stage` and
+// `status` are already covered by the revenue cutover.
+const PG_FILTER_KEYS = [
+  "q",
+  "type",
+  "contact",
+  "recordId",
+  "stage",
+  "status",
+  "category",
+  "channel",
+  "enabled",
+  "submitTo",
+  "priority",
+  "source",
+  "audience",
+  "survey",
+  "respondentEmail",
+];
+
+// Hard stop on page-through loops. A repository that reports a total it cannot
+// deliver would otherwise spin until the request times out.
+const MAX_PG_PAGES = 50;
+
+function readPgFilters(query) {
+  const filters = {};
+  for (const key of PG_FILTER_KEYS) {
+    if (query[key] !== undefined && query[key] !== "") filters[key] = query[key];
+  }
+  // `completed` has to arrive as a real boolean: a non-empty string is truthy
+  // in SQL, so the string "false" would filter for completed work.
+  if (query.completed !== undefined && query.completed !== "") {
+    filters.completed = query.completed === "true";
+  }
+  return filters;
+}
+
+/**
+ * Fetch every row of a PG resource as a flat legacy array.
+ *
+ * The legacy contract is a bare JSON array, so this pages the whole result set
+ * rather than returning a single page. A caller that asks for a specific
+ * `page`/`limit` gets exactly that, which is what makes `export.csv` and the
+ * duplicate detector see the complete set.
+ */
+async function pgFindAll(resource, query = {}) {
+  const repo = repoFor(resource);
+  const filters = readPgFilters(query);
+  if (query.sortBy) filters.sortBy = query.sortBy;
+
+  const hasPaging = query.page !== undefined || query.limit !== undefined;
+  if (hasPaging) {
+    filters.page = Number(query.page) || 1;
+    filters.limit = Number(query.limit) || 20;
+    const result = await repo.findAll(filters);
+    return result.data.map((row) => pgToLegacy(row, resource));
+  }
+
+  const rows = [];
+  for (let page = 1; page <= MAX_PG_PAGES; page++) {
+    const result = await repo.findAll({ ...filters, page, limit: 100 });
+    rows.push(...result.data.map((row) => pgToLegacy(row, resource)));
+    if (result.data.length === 0 || rows.length >= result.total) break;
+  }
+  return rows;
+}
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
@@ -30,7 +127,6 @@ const uploadDir = path.join(root, "..", "uploads");
 // Fields the client may never set when updating a record: the stored values
 // always win. Stripped from the payload rather than re-pinned after the merge,
 // so there is a single mechanism to reason about.
-const IMMUTABLE_FIELDS = ["id", "createdAt"];
 
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
@@ -224,6 +320,27 @@ export default function registerResourceRoutes(app) {
       const resource = req.params.resource;
 
       if (!resources.has(resource)) return next();
+
+      // ── PG path ──────────────────────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = repoFor(resource);
+        try {
+          const pgData = legacyToPg({ ...req.body }, resource);
+          // Coerce numeric built-ins (e.g. deals.value, companies.employees)
+          coerceBuiltIns(resource, pgData);
+          const row = await repo.create(pgData);
+          const item = pgToLegacy(row, resource);
+          const event = createdEvent(resource);
+          if (event) triggerWorkflows(resource, event, item);
+          broadcast("record.created", { resource, item });
+          cacheFlush(resource);
+          return res.status(201).json(item);
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
       const item = await mutateDb((db) => {
         const createdAt = now();
         const data = { ...req.body };
@@ -352,6 +469,27 @@ export default function registerResourceRoutes(app) {
     async (req, res, next) => {
       const resource = req.params.resource;
       if (!resources.has(resource)) return next();
+
+      // ── PG path ──────────────────────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = repoFor(resource);
+        try {
+          const pgData = legacyToPg({ ...req.body }, resource);
+          coerceBuiltIns(resource, pgData);
+          const row = await repo.update(req.params.id, pgData);
+          if (!row) return res.status(404).json({ error: "Record not found" });
+          const item = pgToLegacy(row, resource);
+          const event = updatedEvent(resource);
+          if (event) triggerWorkflows(resource, event, item);
+          broadcast("record.updated", { resource, item });
+          cacheFlush(resource);
+          return res.json(item);
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
       let previous = null;
       let revisionId = null;
       const item = await mutateDb((db) => {
@@ -400,7 +538,7 @@ export default function registerResourceRoutes(app) {
         ? { ...item, revisionId }
         : item,
     );
-  };
+  });
 
   app.put(
     "/api/:resource/:id",

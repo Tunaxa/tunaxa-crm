@@ -105,7 +105,7 @@ export default function WorkflowCanvas({
     return initialNodes;
   });
 
-  const [edges, setEdges] = useState<Edge[]>(() => {
+  const [edges] = useState<Edge[]>(() => {
     const initialEdges: Edge[] = [];
 
     let previousId = "trigger";

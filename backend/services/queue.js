@@ -3,8 +3,6 @@ import { findRecord } from '../db/legacy-records.js';
 import { id, now } from '../helpers.js';
 import { runAction, deliverMessages } from './actions.js';
 import { DEFAULT_SETTINGS } from './config.js';
-import { repoFor } from '../db/repositories/index.js';
-import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
 
 const MAX_QUEUE = 2000;
 let running = false;
@@ -23,17 +21,6 @@ let running = false;
  * pgToLegacy so the action templates still see the legacy field names they were
  * written against. Anything else still comes from the JSON store.
  */
-export async function findRecord(resource, recordId) {
-  if (!resource || !recordId) return null;
-  if (PG_RESOURCES.has(resource)) {
-    const repo = repoFor(resource);
-    if (!repo || typeof repo.findById !== 'function') return null;
-    const row = await repo.findById(recordId);
-    return row ? pgToLegacy(row, resource) : null;
-  }
-  const db = await readDb();
-  return (db[resource] || []).find(x => x.id === recordId) || null;
-}
 
 // Schedules a delayed workflow action. Call inside a mutateDb snapshot so the
 // item is persisted atomically with any other changes.
@@ -90,10 +77,11 @@ export async function processExecutionQueue() {
           live.status = 'processing';
           live.attempts = (live.attempts || 0) + 1;
         });
-        await mutateDb(db => {
-          const record = item.resource && db[item.resource]
-            ? (db[item.resource].find(x => x.id === item.recordId) || null)
-            : null;
+        // Resolved before the mutateDb below: the repository read cannot run
+        // inside the store snapshot, and the JSON fallback would re-enter the
+        // store the callback already holds.
+        const record = await findRecord(item.resource, item.recordId);
+        await mutateDb(async db => {
           if (item.recordId && !record) {
             const live = db.executionQueue.find(x => x.id === item.id);
             if (live) {

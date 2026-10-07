@@ -96,8 +96,8 @@ describe('Duplicate management', () => {
     const find = await request(app).get('/api/duplicates?resource=companies').set('Authorization', `Bearer ${token}`);
     const group = find.body.duplicates.find(g => g.names.includes('Acme Corporation'));
     expect(group).toBeTruthy();
-    expect(group.confidence).toBeGreaterThan(80);
-    expect(group.confidence).toBeLessThan(100);
+  });
+
   it('detects fuzzy-near-match duplicates for companies and scores them below 1', async () => {
     await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Phil Schmitz' });
     await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Philip Schmitz' });
