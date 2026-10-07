@@ -98,8 +98,6 @@ describe('Duplicate management', () => {
     expect(group).toBeTruthy();
     expect(group.confidence).toBeGreaterThan(80);
     expect(group.confidence).toBeLessThan(100);
-  });
-
   it('detects fuzzy-near-match duplicates for companies and scores them below 1', async () => {
     await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Phil Schmitz' });
     await request(app).post('/api/companies').set('Authorization', `Bearer ${token}`).send({ name: 'Philip Schmitz' });
