@@ -1,4 +1,12 @@
 import { query } from "../pg.js";
+import {
+  cacheGet,
+  cacheSet,
+  cacheFlush,
+  hashParams,
+} from "../../services/cache.js";
+
+const RESOURCE = "activities";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -75,15 +83,20 @@ function searchCondition(param) {
     .join(" OR ");
 }
 
-export async function findAll({
-  page = 1,
-  limit = 20,
-  sortBy = "created_at:desc",
-  q = "",
-  type = "",
-  contact = "",
-  recordId = "",
-} = {}) {
+export async function findAll(params = {}) {
+  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const {
+    page = 1,
+    limit = 20,
+    sortBy = "created_at:desc",
+    q = "",
+    type = "",
+    contact = "",
+    recordId = "",
+  } = params;
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -96,11 +109,11 @@ export async function findAll({
   const recordIdFilter = String(recordId || "").trim();
   const contactFilter = String(contact || "").trim().toLowerCase();
   const conditions = [];
-  const params = [];
+  const whereParams = [];
 
   if (searchTerm) {
-    params.push(searchTerm);
-    const p = `$${params.length}`;
+    whereParams.push(searchTerm);
+    const p = `$${whereParams.length}`;
     conditions.push(`(${searchCondition(p)})`);
   }
 
@@ -112,8 +125,8 @@ export async function findAll({
         ).join(", ")})`,
       );
     } else {
-      params.push(typeFilter);
-      conditions.push(`LOWER(COALESCE(type, '')) = $${params.length}`);
+      whereParams.push(typeFilter);
+      conditions.push(`LOWER(COALESCE(type, '')) = $${whereParams.length}`);
     }
   }
 
@@ -122,12 +135,12 @@ export async function findAll({
   // to show a record's events when only its name is known.
   const recordConditions = [];
   if (recordIdFilter) {
-    params.push(recordIdFilter);
-    recordConditions.push(`record_id = $${params.length}`);
+    whereParams.push(recordIdFilter);
+    recordConditions.push(`record_id = $${whereParams.length}`);
   }
   if (contactFilter) {
-    params.push(contactFilter);
-    const p = `$${params.length}`;
+    whereParams.push(contactFilter);
+    const p = `$${whereParams.length}`;
     recordConditions.push(
       `LOWER(COALESCE(contact, '')) = ${p}`,
       `LOWER(COALESCE(company, '')) = ${p}`,
@@ -145,9 +158,9 @@ export async function findAll({
     `SELECT COUNT(*)::int AS total
      FROM activities
      ${whereClause}`,
-    [...params],
+    [...whereParams],
   );
-  const dataParams = [...params, normalizedLimit, offset];
+  const dataParams = [...whereParams, normalizedLimit, offset];
   const dataResult = await query(
     `SELECT *
      FROM activities
@@ -157,13 +170,15 @@ export async function findAll({
     dataParams,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  return {
+  const result = {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
+  await cacheSet(cacheKey, result, 60);
+  return result;
 }
 
 export async function findById(id) {
@@ -198,6 +213,7 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
@@ -221,6 +237,7 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
@@ -229,6 +246,7 @@ async function remove(id) {
     "DELETE FROM activities WHERE id = $1 RETURNING id",
     [id],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rowCount > 0;
 }
 

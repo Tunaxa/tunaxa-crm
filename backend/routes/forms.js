@@ -283,14 +283,38 @@ export default function registerFormRoutes(app) {
         }, target), target));
       }
 
-      const legacyRecord = pgToLegacy(record, recordResource);
+      let legacyRecord = pgToLegacy(record, recordResource);
 
-      // Attribute web visits (pixel) to this record
+      // Attribute web visits (pixel) to this record. Marking the visit rows is
+      // not enough on its own: the visitor's page history has to land on the
+      // lead/contact so the 360 profile can show where they came from.
       if (vid) {
+        const prior = (db.webVisits || []).filter(v => v.vid === vid);
+        if (prior.length) {
+          const storedBag =
+            record.custom_fields && typeof record.custom_fields === 'object'
+              ? record.custom_fields
+              : {};
+          const bag = {
+            ...storedBag,
+            visitCount: Number(storedBag.visitCount || 0) + prior.length,
+            attributionSource:
+              prior[prior.length - 1]?.page || prior[0]?.page || storedBag.attributionSource || '',
+            lastVisitAt: now(),
+          };
+          if (!bag.firstVisitAt) {
+            bag.firstVisitAt = prior[prior.length - 1]?.createdAt || prior[0]?.createdAt || now();
+          }
+          const updated = await repoFor(recordResource).update(legacyRecord.id, { custom_fields: bag });
+          if (updated) {
+            record = updated;
+            legacyRecord = pgToLegacy(record, recordResource);
+          }
+        }
         await mutateDb(store => {
           if (!store.webVisits) store.webVisits = [];
-          const prior = store.webVisits.filter(v => v.vid === vid);
-          prior.forEach(v => { v.recordId = legacyRecord.id; v.attributed = true; });
+          const visits = store.webVisits.filter(v => v.vid === vid);
+          visits.forEach(v => { v.recordId = legacyRecord.id; v.attributed = true; });
           store.pendingAttribution = (store.pendingAttribution || []).filter(p => p.vid !== vid);
         });
       }

@@ -2,7 +2,6 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
-
 import { requireRole } from "../middleware/rbac.js";
 import {
   id,
@@ -229,8 +228,13 @@ export default function registerResourceRoutes(app) {
       );
     }
 
-    // AXA-128: pagination for messages
-    if (req.params.resource === "messages") {
+    // AXA-128: pagination for messages is opt-in. A bare GET keeps returning the
+    // flat array callers and tests rely on; pass ?page/?limit (or ?total=1) to
+    // get the { items, total, ... } envelope the paged UI consumes.
+    if (
+      req.params.resource === "messages" &&
+      (req.query.page !== undefined || req.query.limit !== undefined)
+    ) {
       const total = rows.length;
       const paginatedRows = rows.slice(start, start + limit);
 
@@ -330,9 +334,22 @@ export default function registerResourceRoutes(app) {
           coerceBuiltIns(resource, pgData);
           const row = await repo.create(pgData);
           const item = pgToLegacy(row, resource);
+          if (resource !== "audit") {
+            await mutateDb((db) => {
+              db.audit.unshift(
+                auditEntry({
+                  action: `Created ${resource.slice(0, -1)}`,
+                  actor: req.user.name,
+                  createdAt: now(),
+                  req,
+                  resourceId: item.id,
+                }),
+              );
+            });
+          }
           const event = createdEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
-          broadcast("record.created", { resource, item });
+          broadcast("record.created", { resource, item }, req.user.workspaceId || "default");
           cacheFlush(resource);
           return res.status(201).json(item);
         } catch (err) {
@@ -461,12 +478,7 @@ export default function registerResourceRoutes(app) {
     },
   );
 
-  app.put(
-    "/api/:resource/:id",
-    auth,
-    requireRole("admin", "member"),
-    validate(ResourceSchema),
-    async (req, res, next) => {
+  const updateRecord = async (req, res, next) => {
       const resource = req.params.resource;
       if (!resources.has(resource)) return next();
 
@@ -474,16 +486,49 @@ export default function registerResourceRoutes(app) {
       if (PG_RESOURCES.has(resource)) {
         const repo = repoFor(resource);
         try {
+          const existingRow = await repo.findById(req.params.id);
+          if (!existingRow) {
+            return res.status(404).json({ error: "Record not found" });
+          }
+          const previous = pgToLegacy(existingRow, resource);
+
           const pgData = legacyToPg({ ...req.body }, resource);
           coerceBuiltIns(resource, pgData);
-          const row = await repo.update(req.params.id, pgData);
-          if (!row) return res.status(404).json({ error: "Record not found" });
+          // Merge the overflow bag rather than replacing it, so a partial
+          // update cannot wipe custom fields it did not send.
+          if (pgData.custom_fields && typeof pgData.custom_fields === "object") {
+            const existingBag =
+              existingRow.custom_fields &&
+              typeof existingRow.custom_fields === "object"
+                ? existingRow.custom_fields
+                : {};
+            pgData.custom_fields = { ...existingBag, ...pgData.custom_fields };
+          }
+
+          const updatedRow = await repo.update(req.params.id, pgData);
+          // A body carrying only immutable/no-op keys leaves the row untouched;
+          // that is a successful no-op, not a missing record.
+          const row = updatedRow || existingRow;
           const item = pgToLegacy(row, resource);
+
+          let revisionId = null;
+          if (resource !== "audit") {
+            await mutateDb((db) => {
+              revisionId = recordRevision(db, resource, previous, item, req.user);
+              db.audit.unshift(auditEntry({
+                action: `Updated ${resource.slice(0, -1)}`,
+                actor: req.user.name,
+                req,
+                resourceId: req.params.id,
+              }));
+            });
+          }
+
           const event = updatedEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
-          broadcast("record.updated", { resource, item });
+          broadcast("record.updated", { resource, item, revisionId }, req.user.workspaceId || "default");
           cacheFlush(resource);
-          return res.json(item);
+          return res.json(revisionId ? { ...item, revisionId } : item);
         } catch (err) {
           return next(err);
         }
@@ -538,7 +583,7 @@ export default function registerResourceRoutes(app) {
         ? { ...item, revisionId }
         : item,
     );
-  });
+  };
 
   app.put(
     "/api/:resource/:id",

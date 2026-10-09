@@ -13,6 +13,43 @@ export { parseDelayToMs };
 const id = prefix => `${prefix}_${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
 
+// Workflow run history is persisted in Postgres. These helpers are best-effort:
+// a missing repo or a failed insert must never break the workflow itself.
+async function createRunRecord({ workflow, event, context = {} }) {
+  try {
+    const repo = repoFor('workflowRuns');
+    if (!repo || typeof repo.create !== 'function') return null;
+    return await repo.create({
+      workflow_id: workflow.id,
+      trigger_event: event || workflow.event || 'unknown',
+      status: 'running',
+      started_at: new Date().toISOString(),
+      steps: [],
+      workspace_id: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
+    });
+  } catch (err) {
+    return null;
+  }
+}
+
+async function updateRunRecord(runId, { status, steps, error_message }) {
+  if (!runId) return null;
+  try {
+    const repo = repoFor('workflowRuns');
+    if (!repo || typeof repo.update !== 'function') return null;
+    return await repo.update(runId, {
+      status,
+      // A run that is still waiting has not completed; only a terminal status
+      // gets a completion timestamp.
+      completed_at: (status === 'success' || status === 'failed') ? new Date().toISOString() : null,
+      steps: Array.isArray(steps) ? steps : [],
+      error_message: error_message || null
+    });
+  } catch (err) {
+    return null;
+  }
+}
+
 const RESOURCE_BY_EVENT_PREFIX = {
   lead: 'leads',
   contact: 'contacts',
@@ -651,11 +688,57 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
           continue;
         }
 
+        if (nodeType === 'wait') {
+          let waitError = null;
+          let scheduledResumeAt = null;
+          const delayRaw = node.config?.delay ?? node.data?.delay ?? node.config?.duration ?? node.data?.duration;
+          const delayStr = typeof delayRaw === 'object'
+            ? (delayRaw.delay || delayRaw.duration || (delayRaw.amount && delayRaw.unit ? `${delayRaw.amount} ${delayRaw.unit}` : ''))
+            : String(delayRaw ?? '');
+          const delayMs = parseDelayToMs(delayRaw);
+
+          try {
+            await scheduleWorkflowWaitJob({
+              workflowId: workflow.id,
+              runId,
+              waitNodeId: node.id,
+              targetNodeIds: (outgoing.get(nodeId) || []).map(edge => edge.target).filter(Boolean),
+              delayMs,
+              record,
+              context,
+              event,
+              workspaceId: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
+            });
+            isWaiting = true;
+            scheduledResumeAt = new Date(Date.now() + delayMs).toISOString();
+          } catch (err) {
+            waitError = err;
+            hasErrors = true;
+            if (!finalErrorMessage) finalErrorMessage = err.message;
+          }
+
+          stepsLog.push({
+            nodeId: node.id,
+            nodeType: 'wait',
+            nodeName: node.data?.label || node.config?.name || 'Wait',
+            status: waitError ? 'failed' : 'waiting',
+            output: waitError ? null : { scheduled: true, delay: delayStr, delayMs, scheduledResumeAt },
+            error: waitError?.message || null,
+            executedAt: new Date().toISOString()
+          });
+
+          // Do NOT execute downstream nodes synchronously — halt traversal along this branch
+          continue;
+        }
+
       if (node.type === 'action') {
         const actionData = node.config || node.data || {};
         const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
         const normalizedType = normalizeActionType(actionType);
 
+        let actionError = null;
+        let actionResult = null;
+        try {
             const actionConfig = {
               ...actionData,
               ...(typeof actionData.action === 'object' ? actionData.action : {}),
@@ -778,17 +861,23 @@ export async function resumeNodeGraphExecution({
   context = {},
   event,
 }) {
-}) {
   const normalizedTargets = Array.isArray(targetNodeIds)
     ? targetNodeIds
     : [targetNodeIds].filter(Boolean);
 
   return await executeNodeGraph(workflow, event, record, {
+    ...context,
     runId,
     startNodeIds: normalizedTargets,
     isResume: true,
   });
+}
+
+export async function executeLegacyWorkflow(flow, event, record, context = {}) {
+  const db = await readDb();
   const settings = { ...DEFAULT_SETTINGS, ...(db.settings || {}) };
+  return executeFlow(flow, event, record, settings, context);
+}
 
 async function executeFlow(flow, event, record, settings, context = {}) {
   const actions = Array.isArray(flow.actions) ? flow.actions.filter(action => action && action.type) : [];

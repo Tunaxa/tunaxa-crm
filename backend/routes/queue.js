@@ -47,7 +47,9 @@ export default function registerExecutionRoutes(app) {
     // Resolved through the repository for PG-backed resources; a JSON-store
     // lookup would call every lead, contact or ticket "missing" now that those
     // tables own the data.
-    const record = await findRecord(resource, recordId);
+    const db = await readDb();
+    const found = await findRecord(recordId, [resource], db);
+    const record = found?.record || null;
     if (recordId && !record) return res.status(400).json({ error: 'Record not found' });
     const result = await mutateDb(db => {
       const flow = (db.workflows || []).find(f => f.id === flowId);

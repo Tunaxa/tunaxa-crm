@@ -1,4 +1,12 @@
 import { query } from "../pg.js";
+import {
+  cacheGet,
+  cacheSet,
+  cacheFlush,
+  hashParams,
+} from "../../services/cache.js";
+
+const RESOURCE = "deals";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -53,13 +61,18 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll({
-  page = 1,
-  limit = 20,
-  sortBy = "created_at:desc",
-  q = "",
-  stage = "",
-} = {}) {
+export async function findAll(params = {}) {
+  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const {
+    page = 1,
+    limit = 20,
+    sortBy = "created_at:desc",
+    q = "",
+    stage = "",
+  } = params;
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -72,26 +85,26 @@ export async function findAll({
   // rather than fuzzily the way `q` does.
   const stageFilter = String(stage || "").trim().toLowerCase();
   const conditions = [];
-  const params = [];
+  const whereParams = [];
   if (searchTerm) {
-    params.push(searchTerm);
-    const p = `$${params.length}`;
+    whereParams.push(searchTerm);
+    const p = `$${whereParams.length}`;
     conditions.push(
       `(title ILIKE ${p} OR company ILIKE ${p} OR stage ILIKE ${p})`,
     );
   }
   if (stageFilter) {
-    params.push(stageFilter);
-    conditions.push(`LOWER(COALESCE(stage, '')) = $${params.length}`);
+    whereParams.push(stageFilter);
+    conditions.push(`LOWER(COALESCE(stage, '')) = $${whereParams.length}`);
   }
   const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
      FROM deals
      ${whereClause}`,
-    [...params],
+    [...whereParams],
   );
-  const params2 = [...params, normalizedLimit, offset];
+  const params2 = [...whereParams, normalizedLimit, offset];
   const dataResult = await query(
     `SELECT *
      FROM deals
@@ -101,13 +114,15 @@ export async function findAll({
     params2,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  return {
+  const result = {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
+  await cacheSet(cacheKey, result, 60);
+  return result;
 }
 
 export async function findById(id) {
@@ -139,6 +154,7 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
@@ -162,6 +178,7 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rows[0] || null;
 }
 
@@ -170,6 +187,7 @@ async function remove(id) {
     "DELETE FROM deals WHERE id = $1 RETURNING id",
     [id],
   );
+  await cacheFlush(`${RESOURCE}:list:*`);
   return result.rowCount > 0;
 }
 

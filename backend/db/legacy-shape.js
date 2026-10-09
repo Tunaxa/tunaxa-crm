@@ -805,7 +805,14 @@ export function pgToLegacy(row, resource) {
  * rebuild `name` from first_name / last_name, pass everything else through.
  */
 function genericPgToLegacy(row) {
-  const out = { ...row };
+  const { custom_fields: bag, ...rest } = row;
+  const out = {};
+  // Overflow fields are re-exposed as top-level legacy keys, then the real
+  // columns are layered on top so a column always wins a name collision.
+  if (bag && typeof bag === "object" && !Array.isArray(bag)) {
+    Object.assign(out, bag);
+  }
+  Object.assign(out, rest);
   if (out.created_at instanceof Date) {
     out.createdAt = out.created_at.toISOString();
   } else if (out.created_at) {
@@ -834,7 +841,7 @@ function genericPgToLegacy(row) {
  */
 export function legacyToPg(body, resource) {
   const mapping = mappingFor(resource);
-  if (!mapping) return genericLegacyToPg(body);
+  if (!mapping) return genericLegacyToPg(body, resource);
 
   const out = {};
   const extra = {};
@@ -906,18 +913,66 @@ function applyTitleFallback(mapping, out, body) {
   }
 }
 
-function genericLegacyToPg(body) {
-  const out = { ...body };
-  if ("name" in out) {
-    const parts = String(out.name || "")
+// Contacts and leads predate the mapping table above, but they still need the
+// same column-vs-custom_fields split: any field without a home of its own goes
+// into the JSONB overflow bag so a partial update can round-trip it instead of
+// silently dropping it.
+const GENERIC_COLUMNS = {
+  contacts: new Set([
+    "workspace_id",
+    "company_id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "title",
+    "owner_id",
+  ]),
+  leads: new Set([
+    "workspace_id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "company_name",
+    "status",
+    "source",
+    "value",
+    "owner_id",
+  ]),
+};
+
+function genericLegacyToPg(body, resource) {
+  const data = { ...(body || {}) };
+  const columns = GENERIC_COLUMNS[resource];
+  const out = {};
+  const extra = {};
+
+  if ("name" in data) {
+    const parts = String(data.name || "")
       .trim()
       .split(/\s+/);
     out.first_name = parts[0] || "";
     out.last_name = parts.slice(1).join(" ") || undefined;
-    delete out.name;
+    delete data.name;
   }
-  // Drop camelCase timestamp fields if accidentally sent in body
-  delete out.createdAt;
-  delete out.updatedAt;
+
+  for (const [key, value] of Object.entries(data)) {
+    // The database owns the id and both timestamps.
+    if (key === "id" || key === "createdAt" || key === "updatedAt") continue;
+    if (key === "custom_fields") {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        Object.assign(extra, value);
+      }
+      continue;
+    }
+    if (!columns || columns.has(key)) {
+      out[key] = value;
+    } else {
+      extra[key] = value;
+    }
+  }
+
+  if (Object.keys(extra).length) out.custom_fields = extra;
   return out;
 }
