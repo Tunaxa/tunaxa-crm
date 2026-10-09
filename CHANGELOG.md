@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Multiple Pipelines (`backend/routes/pipeline-definitions.js`):**
+  - Added REST CRUD for pipeline definitions (`GET`/`POST /api/pipeline/definitions`, `PUT`/`DELETE /api/pipeline/definitions/:id`), backed by the JSON store with per-workspace isolation.
+  - Deals can now be linked to any pipeline via `pipelineId` (`pipeline_id` column). When a deal omits `pipelineId`, it falls back to the primary/first pipeline.
+  - Added `backend/__tests__/multiple-pipelines.test.js` covering pipeline definition CRUD, two pipelines coexisting with different stages, and creating a deal linked to a custom pipeline.
 - **Quote Share Token Service (`backend/services/quoteToken.js`):**
   - Implemented secure HMAC-SHA256 time-limited signing tokens (`createQuoteSignToken`) with constant-time verification (`crypto.timingSafeEqual`) to prevent timing attacks.
   - Added share link generator (`createQuoteShareLink`) formatting client signing URLs with token query parameters.
