@@ -3,6 +3,12 @@ import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import { id, now } from "../helpers.js";
 import { broadcast } from "./sse.js";
+import {
+  normalizeListQuery,
+  buildPaginationEnvelope,
+  sortRecords,
+  wantsEnvelope,
+} from "../middleware/pagination.js";
 
 // A stage is `{ key, label, probability, order }`. Accept a few aliases so the
 // endpoint is forgiving of clients that send `name`/`stage` instead.
@@ -49,7 +55,28 @@ export default function registerPipelineDefinitionRoutes(app) {
   // its own set of stages. Deals reference one via `pipelineId`.
   app.get("/api/pipeline/definitions", auth, async (req, res) => {
     const db = await readDb();
-    res.json(Array.isArray(db.pipelineDefinitions) ? db.pipelineDefinitions : []);
+    let list = Array.isArray(db.pipelineDefinitions)
+      ? db.pipelineDefinitions
+      : [];
+
+    const { page, limit, sortBy, sortDir } = normalizeListQuery(req.query);
+    if (req.query.sortBy !== undefined || req.query.sortDir !== undefined) {
+      list = sortRecords(list, sortBy, sortDir);
+    }
+
+    // Bare GET stays a plain array for existing clients; `?envelope=true`
+    // opts into the uniform paged shape (see docs/api-query-params.md).
+    if (wantsEnvelope(req.query)) {
+      const start = (page - 1) * limit;
+      return res.json(
+        buildPaginationEnvelope(list.slice(start, start + limit), list.length, {
+          page,
+          limit,
+        }),
+      );
+    }
+
+    res.json(list);
   });
 
   app.get("/api/pipeline/definitions/:id", auth, async (req, res) => {

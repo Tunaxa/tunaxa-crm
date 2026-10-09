@@ -8,6 +8,11 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Unified List Query Contract (`backend/middleware/pagination.js`, `docs/api-query-params.md`):**
+  - Added centralized normalization for `page`, `limit`, `sortBy`, and `sortDir`, shared by the generic `/api/:resource` router and dedicated list endpoints (`/api/pipeline/definitions`, `/api/forms`, `/api/workflows/:id/runs`).
+  - Enforced bounds: `page >= 1` (default `1`), `limit` `1..100` (default `20`), `sortBy` sanitized against prototype pollution and invalid identifiers (default `createdAt`), `sortDir` normalized to `asc`/`desc` (default `desc`).
+  - Added an opt-in uniform pagination envelope (`?envelope=true`) returning `{ data, page, limit, total, totalPages }`, while preserving the legacy bare-array responses existing clients depend on.
+  - Documented the contract once in `docs/api-query-params.md`.
 - **Multiple Pipelines (`backend/routes/pipeline-definitions.js`):**
   - Added REST CRUD for pipeline definitions (`GET`/`POST /api/pipeline/definitions`, `PUT`/`DELETE /api/pipeline/definitions/:id`), backed by the JSON store with per-workspace isolation.
   - Deals can now be linked to any pipeline via `pipelineId` (`pipeline_id` column). When a deal omits `pipelineId`, it falls back to the primary/first pipeline.
