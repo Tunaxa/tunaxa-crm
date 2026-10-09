@@ -778,23 +778,17 @@ export async function resumeNodeGraphExecution({
   context = {},
   event,
 }) {
+}) {
   const normalizedTargets = Array.isArray(targetNodeIds)
     ? targetNodeIds
     : [targetNodeIds].filter(Boolean);
 
   return await executeNodeGraph(workflow, event, record, {
-    ...context,
     runId,
     startNodeIds: normalizedTargets,
     isResume: true,
   });
-}
-
-export async function executeLegacyWorkflow(flow, event, record, context = {}) {
-  const db = await readDb();
   const settings = { ...DEFAULT_SETTINGS, ...(db.settings || {}) };
-  return executeFlow(flow, event, record, settings, context);
-}
 
 async function executeFlow(flow, event, record, settings, context = {}) {
   const actions = Array.isArray(flow.actions) ? flow.actions.filter(action => action && action.type) : [];
