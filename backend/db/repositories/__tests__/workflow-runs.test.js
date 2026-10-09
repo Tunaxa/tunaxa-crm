@@ -6,7 +6,7 @@ vi.mock("../../pg.js", () => ({ query: pg.query }));
 
 import * as workflowRuns from "../workflow-runs.js";
 
-const { create, update, findById, findByWorkflowId, findAll } = workflowRuns;
+const { create, update, findById, findByWorkflowId } = workflowRuns;
 
 beforeEach(() => {
   pg.query.mockReset();

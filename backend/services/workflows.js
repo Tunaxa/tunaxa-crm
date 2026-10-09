@@ -27,7 +27,7 @@ async function createRunRecord({ workflow, event, context = {} }) {
       steps: [],
       workspace_id: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
     });
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -45,7 +45,7 @@ async function updateRunRecord(runId, { status, steps, error_message }) {
       steps: Array.isArray(steps) ? steps : [],
       error_message: error_message || null
     });
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -551,7 +551,9 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
             ? [...existingRun.steps]
             : (typeof existingRun.steps === 'string' ? JSON.parse(existingRun.steps) : []);
         }
-      } catch (_) {}
+      } catch {
+        // A transient/missing run record must not abort the resume.
+      }
     }
   }
 

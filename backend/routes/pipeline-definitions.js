@@ -170,7 +170,7 @@ export default function registerPipelineDefinitionRoutes(app) {
         const db = await readDb();
         const fallback = primaryPipelineId(db);
         if (fallback) req.body.pipelineId = fallback;
-      } catch (_) {
+      } catch {
         // A missing/empty store must not block deal creation.
       }
     }

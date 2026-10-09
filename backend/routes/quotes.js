@@ -3,7 +3,7 @@ import { repoFor } from '../db/repositories/index.js';
 import { pgToLegacy } from '../db/legacy-shape.js';
 import { readDb, mutateDb } from '../store.js';
 import { renderQuotePdfStream } from '../services/quotePdf.js';
-import { createQuoteSignToken, verifyQuoteSignToken, createQuoteShareLink } from '../services/quoteToken.js';
+import { createQuoteSignToken, verifyQuoteSignToken } from '../services/quoteToken.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATA_URL_REGEX = /^data:image\/(png|jpeg|svg\+xml);base64,[A-Za-z0-9+/=]+$/;
@@ -43,7 +43,7 @@ export default function registerQuoteRoutes(app) {
           if (compRow) {
             quote.companyName = compRow.name || compRow.title;
           }
-        } catch (_) {}
+        } catch { /* optional relation enrichment; ignore lookup failures */ }
       }
 
       // Enrich with contact details if referenced
@@ -59,7 +59,7 @@ export default function registerQuoteRoutes(app) {
               legacyContact.name;
             quote.contactEmail = quote.contactEmail || legacyContact.email;
           }
-        } catch (_) {}
+        } catch { /* optional relation enrichment; ignore lookup failures */ }
       }
 
       const filename = `quote-${quote.quoteNumber || quote.number || quote.id}.pdf`;
