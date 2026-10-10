@@ -7,6 +7,7 @@ import {
   createQuoteShareLink,
 } from '../services/quoteToken.js';
 import { repoFor } from '../db/repositories/index.js';
+import { readDb, mutateDb } from '../store.js';
 
 let app;
 let token;
@@ -306,6 +307,201 @@ describe('E-Signature Routes', () => {
 
       expect([400, 409]).toContain(res.status);
       expect(res.body.error).toMatch(/already.*signed/i);
+    });
+  });
+
+  describe('Post-Signing Automations (Workflow, Owner Notification & Audit Logging)', () => {
+    it('dispatches quote.signed event to workflow engine and executes configured workflow', async () => {
+      // 1. Seed a workflow listening for quote.signed
+      await mutateDb((db) => {
+        if (!Array.isArray(db.workflows)) db.workflows = [];
+        db.workflows.push({
+          id: 'wf_quote_signed_test',
+          name: 'Quote Signed Auto Task',
+          enabled: true,
+          event: 'quote.signed',
+          actions: [
+            {
+              id: 'act_1',
+              type: 'task',
+              title: 'Onboard Client for {{title}}',
+              dueDate: new Date(Date.now() + 3 * 86400000).toISOString(),
+            },
+          ],
+        });
+      });
+
+      // 2. Seed a quote
+      const quote = await repoFor('quotes').create({
+        workspace_id: 'default',
+        title: 'Enterprise Security Package',
+        quote_number: 'Q-AUTO-WF-01',
+        status: 'Sent',
+        total: 12000,
+      });
+
+      const signToken = createQuoteSignToken(quote.id);
+
+      // 3. Sign the quote
+      const res = await request(app)
+        .post(`/api/quotes/${quote.id}/sign`)
+        .send({
+          token: signToken,
+          signatureDataUrl: SAMPLE_SIGNATURE,
+          signerName: 'Sarah Connor',
+          signerEmail: 'sarah@connor.test',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      // 4. Verify workflow execution generated the task
+      const allTasks = await repoFor('tasks').findAll({ limit: 100 });
+      const task = (allTasks?.data || allTasks?.items || []).find((t) => t.title && t.title.includes('Enterprise Security Package'));
+      expect(task).toBeDefined();
+
+      // 5. Verify workflow audit entry exists
+      const db = await readDb();
+      const wfAudit = (db.audit || []).find((a) => a.action && a.action.includes('Quote Signed Auto Task'));
+      expect(wfAudit).toBeDefined();
+    });
+
+    it('sends email notification to the assigned deal owner upon quote signature', async () => {
+      // 1. Seed owner user in db.users
+      const ownerUser = {
+        id: `usr_deal_owner_${Date.now()}`,
+        name: 'Alex Sales Rep',
+        email: 'alex.rep@tunaxa.test',
+        role: 'Sales',
+      };
+      await mutateDb((db) => {
+        if (!Array.isArray(db.users)) db.users = [];
+        db.users.push(ownerUser);
+      });
+
+      // 2. Create deal with owner_id
+      const deal = await repoFor('deals').create({
+        workspace_id: 'default',
+        title: 'Mega Deal 2026',
+        owner_id: ownerUser.id,
+        value: 75000,
+        stage: 'Proposal',
+      });
+
+      // 3. Create quote linked to this deal
+      const quote = await repoFor('quotes').create({
+        workspace_id: 'default',
+        title: 'Mega Deal Quote',
+        quote_number: 'Q-DEAL-NOTIF-01',
+        deal_id: deal.id,
+        status: 'Sent',
+        total: 75000,
+      });
+
+      const signToken = createQuoteSignToken(quote.id);
+
+      // 4. Sign the quote
+      const res = await request(app)
+        .post(`/api/quotes/${quote.id}/sign`)
+        .send({
+          token: signToken,
+          signatureDataUrl: SAMPLE_SIGNATURE,
+          signerName: 'John Matrix',
+          signerEmail: 'matrix@action.test',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      // 5. Verify message/notification delivered to deal owner
+      const db = await readDb();
+      const ownerMessage = (db.messages || []).find((m) => m.to === 'alex.rep@tunaxa.test');
+      expect(ownerMessage).toBeDefined();
+      expect(ownerMessage.subject).toContain('Q-DEAL-NOTIF-01');
+      expect(ownerMessage.body).toContain('John Matrix');
+      expect(ownerMessage.body).toContain('matrix@action.test');
+      expect(ownerMessage.body).toContain('Mega Deal 2026');
+      expect(ownerMessage.body).toContain('75000');
+
+      const ownerNotif = (db.notifications || []).find((n) => n.recipientEmail === 'alex.rep@tunaxa.test');
+      expect(ownerNotif).toBeDefined();
+      expect(ownerNotif.quoteId).toBe(quote.id);
+      expect(ownerNotif.dealId).toBe(deal.id);
+    });
+
+    it('falls back gracefully when quote has no associated deal or owner', async () => {
+      // Create quote without deal_id or owner
+      const quote = await repoFor('quotes').create({
+        workspace_id: 'default',
+        title: 'Unassigned Quote',
+        quote_number: 'Q-ORPHAN-01',
+        status: 'Draft',
+        total: 500,
+      });
+
+      const signToken = createQuoteSignToken(quote.id);
+
+      const res = await request(app)
+        .post(`/api/quotes/${quote.id}/sign`)
+        .send({
+          token: signToken,
+          signatureDataUrl: SAMPLE_SIGNATURE,
+          signerName: 'Anonymous Signer',
+          signerEmail: 'anon@sign.test',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.quote.status).toBe('Signed');
+      expect(res.body.contract).toBeDefined();
+      expect(res.body.contract.status).toBe('Active');
+    });
+
+    it('records an audit trail entry for the signing event with signer metadata', async () => {
+      const quote = await repoFor('quotes').create({
+        workspace_id: 'default',
+        title: 'Audit Trail Test Quote',
+        quote_number: 'Q-AUDIT-01',
+        status: 'Sent',
+        total: 15000,
+      });
+
+      const signToken = createQuoteSignToken(quote.id);
+      const testIp = '198.51.100.42';
+      const testUa = 'AuditVerifierBot/2.0';
+
+      const res = await request(app)
+        .post(`/api/quotes/${quote.id}/sign`)
+        .set('X-Forwarded-For', testIp)
+        .set('User-Agent', testUa)
+        .send({
+          token: signToken,
+          signatureDataUrl: SAMPLE_SIGNATURE,
+          signerName: 'Ellen Ripley',
+          signerEmail: 'ripley@weyland.test',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const db = await readDb();
+      const auditEntry = (db.audit || []).find(
+        (a) => a.action === 'quote.signed' && (a.entityId === quote.id || a.resourceId === quote.id)
+      );
+
+      expect(auditEntry).toBeDefined();
+      expect(auditEntry.action).toBe('quote.signed');
+      expect(auditEntry.entity).toBe('quotes');
+      expect(auditEntry.actor.name).toBe('Ellen Ripley');
+      expect(auditEntry.actor.email).toBe('ripley@weyland.test');
+      expect(auditEntry.actor.type).toBe('external_signer');
+      expect(auditEntry.actor.ip).toContain(testIp);
+      expect(auditEntry.actor.userAgent).toBe(testUa);
+      expect(auditEntry.details.quoteNumber).toBe('Q-AUDIT-01');
+      expect(auditEntry.details.contractId).toBe(res.body.contract.id);
+      expect(auditEntry.details.total).toBe(15000);
+      expect(auditEntry.timestamp).toBeDefined();
+      expect(auditEntry.createdAt).toBeDefined();
     });
   });
 });

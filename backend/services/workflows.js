@@ -55,6 +55,8 @@ const RESOURCE_BY_EVENT_PREFIX = {
   contact: 'contacts',
   company: 'companies',
   deal: 'deals',
+  quote: 'quotes',
+  contract: 'contracts',
   task: 'tasks',
   call: 'calls',
   message: 'messages',
@@ -108,7 +110,12 @@ export const EVENT_META = [
   { value: 'leaveRequest.updated', label: 'Leave request updated', resource: 'leaveRequests' },
   { value: 'attendance.created', label: 'Attendance created', resource: 'attendance' },
   { value: 'attendance.updated', label: 'Attendance updated', resource: 'attendance' },
-  { value: 'webhook.received', label: 'Webhook received', resource: 'webhookEndpoints' }
+  { value: 'webhook.received', label: 'Webhook received', resource: 'webhookEndpoints' },
+  { value: 'quote.created', label: 'Quote created', resource: 'quotes' },
+  { value: 'quote.updated', label: 'Quote updated', resource: 'quotes' },
+  { value: 'quote.signed', label: 'Quote signed', resource: 'quotes' },
+  { value: 'contract.created', label: 'Contract created', resource: 'contracts' },
+  { value: 'contract.updated', label: 'Contract updated', resource: 'contracts' }
 ];
 
 export const ACTION_META = [
@@ -146,14 +153,16 @@ export const createdEvent = resource => ({
   leads: 'lead.created', contacts: 'contact.created', companies: 'company.created', deals: 'deal.created', tasks: 'task.created',
   products: 'product.created', orders: 'order.created', invoices: 'invoice.created', expenses: 'expense.created',
   campaigns: 'campaign.created', emailLists: 'emailList.created', landingPages: 'landingPage.created',
-  employees: 'employee.created', leaveRequests: 'leaveRequest.created', attendance: 'attendance.created'
+  employees: 'employee.created', leaveRequests: 'leaveRequest.created', attendance: 'attendance.created',
+  quotes: 'quote.created', contracts: 'contract.created'
 }[resource] || null);
 
 export const updatedEvent = resource => ({
   leads: 'lead.updated', contacts: 'contact.updated', companies: 'company.updated', deals: 'deal.updated', tasks: 'task.updated',
   products: 'product.updated', orders: 'order.updated', invoices: 'invoice.updated', expenses: 'expense.updated',
   campaigns: 'campaign.updated', emailLists: 'emailList.updated', landingPages: 'landingPage.updated',
-  employees: 'employee.updated', leaveRequests: 'leaveRequest.updated', attendance: 'attendance.updated'
+  employees: 'employee.updated', leaveRequests: 'leaveRequest.updated', attendance: 'attendance.updated',
+  quotes: 'quote.updated', contracts: 'contract.updated'
 }[resource] || null);
 
 /**
@@ -472,11 +481,7 @@ function getConditionEdges(edgesFromNode, passes) {
 
     return edgesFromNode.filter(e => !isFalseHandle(e.sourceHandle));
   } else {
-    // Condition failed: only follow edges explicitly marked false
-    return edgesFromNode.filter(e => {
-      const h = String(e.sourceHandle ?? '').trim().toLowerCase();
-      return h === 'false' || h === 'no' || h === 'fail' || h === '0';
-    });
+    return edgesFromNode.filter(e => isFalseHandle(e.sourceHandle));
   }
 }
 
