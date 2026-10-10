@@ -10,6 +10,8 @@ import { contractSummaryValue, ContractDetails } from "../contracts/ContractDeta
 import { money, Avatar, Badge, Empty } from "../ui";
 import { GenerateInvoiceButton } from "../quotes/GenerateInvoiceButton";
 import { AssociatedRecords } from "../AssociatedRecords";
+import { EmailComposerDrawer } from "../../modules/communications/composer/EmailComposerDrawer";
+import { canSendEmail, fetchInbox, mailbox } from "../../modules/communications/inbox/inboxModel";
 
 export const detailTabList = ["Overview", "Activity", "Notes", "Emails", "Calls", "History"] as const;
 
@@ -63,6 +65,7 @@ export function RecordDetailPage({
   const [revisions, setRevisions] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
+  const [composeEmail, setComposeEmail] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
   const showActivityFilters =
@@ -84,6 +87,7 @@ export function RecordDetailPage({
     setRecord(null);
     setTab(resource === "contacts" ? "Activity" : "Overview");
     setNoteText("");
+    setComposeEmail(false);
     setActivityFilter("All");
     const controller = new AbortController();
     api<Row>(`/${resource}/${id}`, { signal: controller.signal })
@@ -139,11 +143,11 @@ export function RecordDetailPage({
     if (!record?.email || tab !== "Emails") return;
     const controller = new AbortController();
     setEmailLoading(true); setEmailError(false);
-    api<Row[] | { data: Row[] }>("/messages", { signal: controller.signal })
-      .then((response) => {
-        const items = Array.isArray(response) ? response : response.data;
-        if (!Array.isArray(items)) throw new Error("Invalid message response");
-        if (!controller.signal.aborted) setMessages(items.filter((message) => message.to === record.email && (!message.channel || message.channel.toLowerCase() === "email")));
+    fetchInbox(path => api(path, { signal: controller.signal }))
+      .then((items) => {
+        const address = mailbox(String(record.email));
+        if (!controller.signal.aborted) setMessages(items.filter(message => address &&
+          (mailbox(message.to) === address || mailbox(message.from) === address)));
       })
       .catch(() => { if (!controller.signal.aborted) setEmailError(true); })
       .finally(() => { if (!controller.signal.aborted) setEmailLoading(false); });
@@ -317,6 +321,11 @@ export function RecordDetailPage({
   </p>
 </div>
           <div className="detail-actions">
+            {(resource === "contacts" || resource === "leads") && canSendEmail(user?.role) && (
+              <button type="button" className="btn primary compact" disabled={!mailbox(String(record.email || ""))}
+                title={!mailbox(String(record.email || "")) ? "Add a valid email address to this record first" : undefined}
+                onClick={() => setComposeEmail(true)}><Icon name="send" />Send email</button>
+            )}
             {resource === "quotes" ? (
               <GenerateInvoiceButton key={record.id} quote={record} />
             ) : null}
@@ -565,6 +574,12 @@ export function RecordDetailPage({
 
         </section>
       </div>
+      {composeEmail && (resource === "contacts" || resource === "leads") && <EmailComposerDrawer
+        key={`${resource}/${record.id}`} recipient={mailbox(String(record.email || ""))} contact={String(record.name || record.title || "")}
+        onClose={() => setComposeEmail(false)} onSent={() => {
+          if (recordRoute.current !== `${resource}/${record.id}`) return;
+          setEmailRetry(value => value + 1); setActivityRetry(value => value + 1); setTab("Emails");
+        }} />}
     </div>
   );
 }
