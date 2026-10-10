@@ -55,6 +55,7 @@ import registerQuoteRoutes from "./routes/quotes.js";
 import registerGoalRoutes from "./routes/goals.js";
 import registerEmailSyncRoutes from "./routes/emailSync.js";
 import registerDealRoutes from "./routes/deals.js";
+import registerIntegrationRoutes from "./routes/integrations.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { originGuard } from "./middleware/csrf.js";
 import {
@@ -256,6 +257,7 @@ registerQuoteRoutes(app);
 registerGoalRoutes(app);
 registerEmailSyncRoutes(app);
 registerDealRoutes(app);
+registerIntegrationRoutes(app);
 registerResourceRoutes(app);
 
 // ============================================

@@ -33,6 +33,40 @@ function filled(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
 
+// CORS for the public embed surface. A third-party site renders these forms, so
+// the browser must get a preflight answer before a cross-origin JSON submission
+// is attempted and response headers that let the page's script read the result.
+// The origin guard already exempts this path in middleware/csrf.js; these
+// headers only tell the browser the exchange is legal. `*` is acceptable here
+// because the endpoint is anonymous by design and never carries a session.
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Accept, X-Requested-With',
+  'Access-Control-Max-Age': '86400',
+};
+
+function applyCorsHeaders(res) {
+  for (const [name, value] of Object.entries(CORS_HEADERS)) res.setHeader(name, value);
+}
+
+// Honeypot anti-bot defense. These inputs are hidden from human visitors with
+// CSS, but indiscriminate spam bots scrape every input on the page and fill
+// them all. A non-empty value in any of these names is a bot tell; the handler
+// drops the submission before any lookups, validation or writes run.
+const HONEYPOT_FIELDS = new Set(['_hp', '_gotcha', 'website', 'honeypot']);
+
+function detectHoneypot(payload) {
+  for (const key of HONEYPOT_FIELDS) {
+    if (filled(payload[key])) return key;
+  }
+  return null;
+}
+
+function stripHoneypot(payload) {
+  for (const key of HONEYPOT_FIELDS) delete payload[key];
+}
+
 function fieldValue(payload, field) {
   if (payload[field.key] !== undefined) return payload[field.key];
   if (field.name && payload[field.name] !== undefined) return payload[field.name];
@@ -173,15 +207,40 @@ export default function registerFormRoutes(app) {
     }
   });
 
+  // CORS preflight for the public embed surface. A browser asks whether a
+  // cross-origin POST is legal before attempting it (required once the payload
+  // is JSON rather than a simple form body). Answered with 204 and the
+  // embeddable headers; the origin guard treats OPTIONS as a safe method.
+  app.options('/api/forms/:permalink/submit', (req, res) => {
+    applyCorsHeaders(res);
+    res.sendStatus(204);
+  });
+
   // Submit a form submission.
   app.post('/api/forms/:permalink/submit', publicLimiter, async (req, res) => {
     const permalink = String(req.params.permalink || '').toLowerCase();
+    // Every answer to this public endpoint is readable by the embedding page,
+    // success, validation error or honeypot drop alike.
+    applyCorsHeaders(res);
     try {
       const found = await findForm(permalink);
       if (!found) return res.status(404).json({ error: 'Form not found' });
       const { form, workspaceId } = found;
 
       const payload = { ...(req.body.payload || req.body || {}) };
+
+      // Honeypot bot detection runs before validation and before any read or
+      // write: a recognised non-empty honeypot value means the submitter filled
+      // in a field no human could see, so the submission is dropped with a
+      // convincing success so the bot does not change its payload strategy.
+      const botField = detectHoneypot(payload);
+      if (botField) {
+        console.warn(`[FormHardening] Bot submission dropped via honeypot for form ${permalink}`);
+        return res.status(200).json({ success: true, message: 'Submission received' });
+      }
+      // A "clean" payload must not carry the honeypot keys into custom_fields.
+      stripHoneypot(payload);
+
       const recordId = payload.recordId || '';
       const vid = payload.vid || '';
       delete payload.recordId;

@@ -27,6 +27,7 @@ import { getFieldPermissions, applyFieldMasking, checkWriteFieldMask, objectType
 import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
 import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
+import { triggerDealWonIntegrations } from "../services/integrations.js";
 
 /**
  * Build the CSV representation of a single row, quoting every cell.
@@ -142,6 +143,28 @@ const uploadDir = path.join(root, "..", "uploads");
  */
 function tenantOf(req) {
   return req.user?.workspaceId || req.user?.workspace_id || "default";
+}
+
+/**
+ * Fire deal.won webhooks for a single deal update that landed in a won stage.
+ * Runs after the write and never throws: the integrations service already
+ * absorbs webhook failures, and this guard keeps a repo.read hiccup from
+ * turning a successful update into a 500.
+ */
+async function notifyDealWonGuarded({ row, before, workspaceId }) {
+  if (!row || !before) return;
+  try {
+    await triggerDealWonIntegrations({
+      deal: coerceBuiltIns("deals", pgToLegacy(row, "deals")),
+      previousStage: before.stage,
+      workspaceId,
+    });
+  } catch (error) {
+    console.error(
+      `[integrations] deal.won dispatch error for deal ${row.id}:`,
+      error.message || error,
+    );
+  }
 }
 
 export default function registerResourceRoutes(app) {
@@ -414,14 +437,27 @@ export default function registerResourceRoutes(app) {
       // ── PG path ──────────────────────────────────────────────────────────
       if (PG_RESOURCES.has(resource)) {
         const repo = repoFor(resource);
+        const workspaceId = tenantOf(req);
         try {
+          // Pre-read for the integrations hook below: firing deal.won webhooks
+          // requires the stage the deal had before this write.
+          const before =
+            resource === "deals"
+              ? await repo.findById(req.params.id, workspaceId)
+              : null;
+          if (resource === "deals" && !before) {
+            return res.status(404).json({ error: "Record not found" });
+          }
           const pgData = legacyToPg({ ...req.body }, resource);
           coerceBuiltIns(resource, pgData);
-          const row = await repo.update(req.params.id, pgData, tenantOf(req));
+          const row = await repo.update(req.params.id, pgData, workspaceId);
           if (!row) return res.status(404).json({ error: "Record not found" });
           const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
           const event = updatedEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
+          if (resource === "deals") {
+            await notifyDealWonGuarded({ row, before, workspaceId });
+          }
           broadcast("record.updated", { resource, item });
           cacheFlush(resource);
           return res.json(item);
@@ -488,24 +524,36 @@ export default function registerResourceRoutes(app) {
       // ── PG path ──────────────────────────────────────────────────────────
       if (PG_RESOURCES.has(resource)) {
         const repo = repoFor(resource);
+        const workspaceId = tenantOf(req);
         try {
           // `partial` skips the NOT NULL title fallback: that exists so a body
           // carrying only an invoice number can still be inserted, and on a
           // delta it would copy some other field over the stored title.
           const pgData = legacyToPg(delta, resource, { partial: true });
           coerceBuiltIns(resource, pgData);
-          const tenant = tenantOf(req);
+          // Pre-read for the integrations hook below: firing deal.won webhooks
+          // requires the stage the deal had before this write.
+          const before =
+            resource === "deals"
+              ? await repo.findById(req.params.id, workspaceId)
+              : null;
+          if (resource === "deals" && !before) {
+            return res.status(404).json({ error: "Record not found" });
+          }
           // A PATCH with nothing in it is not a missing record. Read the row
           // back so an inline editor that submits an unchanged field still gets
           // the full state it expects to render.
           const row =
             Object.keys(pgData).length === 0
-              ? await repo.findById(req.params.id, tenant)
-              : await repo.update(req.params.id, pgData, tenant);
+              ? await repo.findById(req.params.id, workspaceId)
+              : await repo.update(req.params.id, pgData, workspaceId);
           if (!row) return res.status(404).json({ error: "Record not found" });
           const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
           const event = updatedEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
+          if (resource === "deals") {
+            await notifyDealWonGuarded({ row, before, workspaceId });
+          }
           broadcast("record.updated", { resource, item });
           cacheFlush(resource);
           return res.json(item);

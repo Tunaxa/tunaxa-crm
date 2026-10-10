@@ -7,6 +7,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Security
+- **Form Submission Hardening (`backend/routes/forms.js`):**
+  - Added CORS `OPTIONS` preflight handling on `/api/forms/:permalink/submit` returning HTTP 204 No Content with `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: POST, OPTIONS`, `Access-Control-Allow-Headers: Content-Type, Accept, X-Requested-With`, and `Access-Control-Max-Age: 86400` to support embedded cross-site forms.
+  - Added permissive `Access-Control-Allow-Origin: *` headers on all responses from the public submission route across success, validation error, not-found, and server error conditions.
+  - Implemented honeypot spam bot mitigation detecting populated hidden fields (`_hp`, `_gotcha`, `website`, `honeypot`): silently drops bot submissions with HTTP 200 `{ success: true, message: "Submission received" }` without persisting form submissions, leads, contacts, or activities, and without bumping counters or triggering workflows.
+  - Added `stripHoneypot()` ensuring honeypot fields are stripped from legitimate submissions before custom fields processing.
 - **RBAC Field-Masking on Write (`backend/routes/permissions.js` & route handlers):**
   - Implemented write-side field-mask validation engine preventing unauthorized users from writing, updating, or clearing masked attributes via `POST`, `PUT`, `PATCH`, and batch endpoints.
   - Added `normalizeFieldKey` folding keys to snake_case so casing variations (`firstName`, `first_name`, `First Name`) cannot bypass field permission masks.
@@ -37,6 +42,20 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- **Integrations Backend Engine (`backend/services/integrations.js`):**
+  - Implemented `triggerDealWonIntegrations()` dispatching Slack celebration messages and structured Zapier outbound payloads upon `deal.won` transitions.
+  - Added formatted Slack incoming webhook blocks (`🎉 Deal Won: *Title* - $Value`) and structured Zapier event schema (`{ event: 'deal.won', deal: { ... } }`).
+  - Implemented per-workspace URL resolution inside `settings.integrations.{slack,zapier}.webhookUrls[workspaceId]` with optional environment fallbacks (`SLACK_WEBHOOK_URL`, `ZAPIER_WEBHOOK_URL`).
+  - Added resilient non-blocking dispatch with 3000ms `AbortController` timeouts and `Promise.allSettled` execution, ensuring webhook delivery issues never fail deal mutations.
+  - Added `DEFAULT_SETTINGS.integrations` schema in `backend/services/config.js`.
+- **Integrations Management API (`backend/routes/integrations.js`):**
+  - Mounted `GET /api/integrations` returning masked integration URLs (`origin/••••••<last6>`).
+  - Mounted admin endpoints `PUT /api/integrations/slack` and `PUT /api/integrations/zapier` with HTTPS enforcement, audit logging, and SSE notifications.
+  - Mounted `POST /api/integrations/test` for connectivity health checks.
+- **Integrations Test Suite (`backend/__tests__/integrations-backend.test.js`):**
+  - Added 27 unit and integration tests covering Slack and Zapier payload contracts, state machine transitions, stage filtering, tenant workspace isolation, non-blocking error handling, and connectivity pings with stubbed fetch transports.
+- **Form Hardening Test Suite (`backend/__tests__/form-hardening.test.js`):**
+  - Added 9 unit and integration tests verifying `OPTIONS` preflight CORS response headers, cross-origin `POST` persistence in the form's designated tenant workspace, zero-mutation bot drops across all 4 honeypot fields, and unknown form 404 safety.
 - **Pipeline Batch-Move Engine (`backend/services/dealPipeline.js` & `backend/routes/deals.js`):**
   - Implemented transactional batch stage progression (`POST /api/deals/batch-move` and alias `POST /api/deals/batch-stage`) protected by `auth`, `requireRole('admin', 'member')`, and `checkWriteFieldMask('deals')`.
   - Enforced all-or-nothing atomicity via PostgreSQL transaction (`BEGIN ... COMMIT` / `ROLLBACK`) with row-level locking (`FOR UPDATE` on locked IDs) and strict count matching to prevent partial stage transitions.
@@ -205,6 +224,9 @@ and this project adheres to Semantic Versioning.
   - Added 11 unit and integration tests covering queue fallback, immediate 201 response on upload, worker background processing, transcript persistence, SSE event delivery, failure handling, and async route modes.
 
 ### Changed
+- **Deal Stage Transition Hooks (`backend/routes/resources.js` & `backend/services/dealPipeline.js`):**
+  - Wired single-deal updates (`resources.js` generic PUT/PATCH) and batch pipeline transitions (`dealPipeline.js`) to evaluate stage deltas and trigger webhooks only on genuine transitions to `won` / `Closed Won`.
+  - Registered integration routes in `backend/server.js`.
 - **Dependencies (`package.json`):**
   - Moved `@vitejs/plugin-react` from `dependencies` to `devDependencies`. The plugin declares `vite` as a peer dependency, so listing it as a production dependency caused npm to resolve Vite — and transitively Rollup and Esbuild — into the production graph, where `npm prune --omit=dev` is required to keep them. The production image now carries 228 packages instead of 253.
 - **Test Database Setup (`backend/__tests__/setup.js`):**
