@@ -23,6 +23,7 @@ const emptyDb = {
   recordings: [],
   messages: [],
   sequences: [],
+  sequenceEnrollments: [],
   team: [],
   customFields: [],
   audit: [],

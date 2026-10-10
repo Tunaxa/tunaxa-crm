@@ -6,6 +6,25 @@ import { getSettings, isEmailConfigured } from '../services/config.js';
 import { sendEmail } from '../services/smtp.js';
 import { broadcast } from './sse.js';
 import { checkWriteFieldMask } from './permissions.js';
+import {
+  enrollContacts,
+  listEnrollments,
+  pauseEnrollment,
+  resumeEnrollment,
+  stopEnrollment,
+  SequenceEnrollmentError,
+} from '../services/sequences.js';
+
+function callerWorkspace(req) {
+  return req.user?.workspaceId || 'default';
+}
+
+function handleEnrollmentError(error, req, res, next) {
+  if (error instanceof SequenceEnrollmentError) {
+    return res.status(error.status).json({ error: error.message, code: error.code });
+  }
+  return next(error);
+}
 
 export function renderMerge(template, record) {
   return String(template ?? '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
@@ -74,10 +93,27 @@ export default function registerSequenceRoutes(app) {
     res.json({ ok: true });
   });
 
-  // Enroll contacts/leads into a sequence
-  app.post('/api/sequences/:id/enroll', auth, requireRole('admin', 'member'), async (req, res) => {
-    const { recordIds = [] } = req.body || {};
-    if (!Array.isArray(recordIds) || !recordIds.length) return res.status(400).json({ error: 'recordIds array is required' });
+  // Enroll contacts/leads into a sequence. Two enrollment models share this
+  // endpoint:
+  //   - { contactIds: [...] }  -> first-class sequenceEnrollments (new engine)
+  //   - { recordIds: [...] }   -> legacy nested seq.enrolled records
+  app.post('/api/sequences/:id/enroll', auth, requireRole('admin', 'member'), async (req, res, next) => {
+    const { recordIds = [], contactIds = [] } = req.body || {};
+    if (Array.isArray(contactIds) && contactIds.length) {
+      try {
+        const result = await enrollContacts({
+          sequenceId: req.params.id,
+          contactIds,
+          workspaceId: callerWorkspace(req),
+          userId: req.user.id || req.user.name,
+        });
+        broadcast('sequence.enrolled', { sequenceId: req.params.id, ...result });
+        return res.status(201).json(result);
+      } catch (error) {
+        return handleEnrollmentError(error, req, res, next);
+      }
+    }
+    if (!Array.isArray(recordIds) || !recordIds.length) return res.status(400).json({ error: 'recordIds or contactIds array is required' });
     const result = await mutateDb(db => {
       const seq = (db.sequences || []).find(s => s.id === req.params.id);
       if (!seq) return null;
@@ -97,6 +133,66 @@ export default function registerSequenceRoutes(app) {
     if (!result) return res.status(404).json({ error: 'Sequence not found' });
     broadcast('sequence.enrolled', { sequenceId: req.params.id, count: result.enrolled });
     res.status(201).json(result);
+  });
+
+  // List first-class enrollments for a sequence, scoped to the caller's
+  // workspace, with optional ?status= filter and offset pagination.
+  app.get('/api/sequences/:id/enrollments', auth, requireRole('admin', 'member'), async (req, res, next) => {
+    try {
+      const result = await listEnrollments({
+        sequenceId: req.params.id,
+        workspaceId: callerWorkspace(req),
+        status: req.query.status || undefined,
+        page: req.query.page,
+        pageSize: req.query.limit,
+      });
+      res.json(result);
+    } catch (error) {
+      return handleEnrollmentError(error, req, res, next);
+    }
+  });
+
+  // Manual pause/resume/stop of a first-class enrollment.
+  app.post('/api/sequences/enrollments/:enrollmentId/pause', auth, requireRole('admin', 'member'), async (req, res, next) => {
+    try {
+      const enrollment = await pauseEnrollment({
+        enrollmentId: req.params.enrollmentId,
+        workspaceId: callerWorkspace(req),
+        userId: req.user.id || req.user.name,
+      });
+      broadcast('sequence.enrollment', { enrollmentId: enrollment.id, status: enrollment.status });
+      res.json({ enrollment });
+    } catch (error) {
+      return handleEnrollmentError(error, req, res, next);
+    }
+  });
+
+  app.post('/api/sequences/enrollments/:enrollmentId/resume', auth, requireRole('admin', 'member'), async (req, res, next) => {
+    try {
+      const enrollment = await resumeEnrollment({
+        enrollmentId: req.params.enrollmentId,
+        workspaceId: callerWorkspace(req),
+        userId: req.user.id || req.user.name,
+      });
+      broadcast('sequence.enrollment', { enrollmentId: enrollment.id, status: enrollment.status });
+      res.json({ enrollment });
+    } catch (error) {
+      return handleEnrollmentError(error, req, res, next);
+    }
+  });
+
+  app.post('/api/sequences/enrollments/:enrollmentId/stop', auth, requireRole('admin', 'member'), async (req, res, next) => {
+    try {
+      const enrollment = await stopEnrollment({
+        enrollmentId: req.params.enrollmentId,
+        workspaceId: callerWorkspace(req),
+        userId: req.user.id || req.user.name,
+      });
+      broadcast('sequence.enrollment', { enrollmentId: enrollment.id, status: enrollment.status });
+      res.json({ enrollment });
+    } catch (error) {
+      return handleEnrollmentError(error, req, res, next);
+    }
   });
 
   // Pause/unenroll a record

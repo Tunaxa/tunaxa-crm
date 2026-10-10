@@ -42,6 +42,17 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- **Sequence Enrollment & Cadence Execution Engine (`backend/services/sequences.js`):**
+  - Implemented `enrollContacts()` supporting multi-step cadence enrollment, deduplication against existing active/paused enrollments, and initial step delay calculations (`nextRunAt`).
+  - Implemented `pauseEnrollmentsOnReply()`: automatically transitions all active enrollments for a contact to `replied` (`pausedReason: 'reply_received'`), clears `nextRunAt`, records incoming reply message IDs, and writes audit log entries.
+  - Added workspace-isolated enrollment lifecycle controls: `pauseEnrollment()`, `resumeEnrollment()` (with recalculation of `nextRunAt` from pending step delays), and `stopEnrollment()`.
+  - Added `runDueSteps()` dispatcher executing only active due enrollments, logging step completion metadata, and advancing cadences to `completed` after the terminal step.
+- **Sequence Enrollment API Endpoints (`backend/routes/sequences.js`):**
+  - Extended `POST /api/sequences/:id/enroll` to accept `{ contactIds }` while preserving backward compatibility for legacy callers.
+  - Mounted `GET /api/sequences/:id/enrollments` with status filtering and offset pagination.
+  - Mounted lifecycle management endpoints: `POST /api/sequences/enrollments/:enrollmentId/pause`, `resume`, and `stop` requiring `admin` or `member` roles.
+- **Sequence Enrollment Test Suite (`backend/__tests__/sequence-enrollment.test.js`):**
+  - Added 17 unit and integration tests covering enrollment scheduling, duplicate enrollment prevention, multi-sequence auto-pausing on reply, runner non-execution for paused/replied enrollments, step progression, manual controls, and end-to-end IMAP reply integration.
 - **Integrations Backend Engine (`backend/services/integrations.js`):**
   - Implemented `triggerDealWonIntegrations()` dispatching Slack celebration messages and structured Zapier outbound payloads upon `deal.won` transitions.
   - Added formatted Slack incoming webhook blocks (`🎉 Deal Won: *Title* - $Value`) and structured Zapier event schema (`{ event: 'deal.won', deal: { ... } }`).
@@ -224,6 +235,10 @@ and this project adheres to Semantic Versioning.
   - Added 11 unit and integration tests covering queue fallback, immediate 201 response on upload, worker background processing, transcript persistence, SSE event delivery, failure handling, and async route modes.
 
 ### Changed
+- **IMAP Inbound Reply Hook (`backend/services/imapSync.js`):**
+  - Hooked `pauseEnrollmentsOnReply()` into `processInboundEmail()` immediately after inbound email activity creation, wrapped in a non-blocking error boundary.
+- **Test Harness Seeding (`backend/__tests__/setup.js`):**
+  - Initialized `sequenceEnrollments: []` in default test state seeds.
 - **Deal Stage Transition Hooks (`backend/routes/resources.js` & `backend/services/dealPipeline.js`):**
   - Wired single-deal updates (`resources.js` generic PUT/PATCH) and batch pipeline transitions (`dealPipeline.js`) to evaluate stage deltas and trigger webhooks only on genuine transitions to `won` / `Closed Won`.
   - Registered integration routes in `backend/server.js`.
