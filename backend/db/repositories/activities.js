@@ -189,31 +189,58 @@ export async function findById(id, workspaceId) {
 }
 
 export async function create(data = {}) {
+  // Column list stays fixed unless the caller pins `created_at`. Inbound email
+  // sync has to timestamp the activity with the message date, not the moment
+  // the poller ran, and a separately-issued UPDATE would break the "one insert,
+  // one row" contract every other caller relies on. Absent the field the
+  // statement is byte-identical to the original one, so the default now() and
+  // the repository's own tests keep their meaning.
+  const columns = [
+    "workspace_id",
+    "type",
+    "title",
+    "subject",
+    "description",
+    "contact",
+    "company",
+    "direction",
+    "record_id",
+    "entity_type",
+    "entity_id",
+    "user_id",
+    "contact_id",
+    "deal_id",
+    "metadata",
+    "custom_fields",
+  ];
+  const values = [
+    data.workspace_id,
+    data.type,
+    data.title,
+    data.subject,
+    data.description,
+    data.contact,
+    data.company,
+    data.direction,
+    data.record_id,
+    data.entity_type,
+    data.entity_id,
+    data.user_id,
+    data.contact_id,
+    data.deal_id,
+    data.metadata ?? {},
+    data.custom_fields ?? {},
+  ];
+  if (data.created_at !== undefined && data.created_at !== null) {
+    columns.push("created_at");
+    values.push(data.created_at);
+  }
+  const placeholders = values.map((_, index) => `$${index + 1}`).join(", ");
   const result = await query(
-    `INSERT INTO activities (
-       workspace_id, type, title, subject, description, contact, company,
-       direction, record_id, entity_type, entity_id, user_id, contact_id,
-       deal_id, metadata, custom_fields
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    `INSERT INTO activities (${columns.join(", ")})
+     VALUES (${placeholders})
      RETURNING *`,
-    [
-      data.workspace_id,
-      data.type,
-      data.title,
-      data.subject,
-      data.description,
-      data.contact,
-      data.company,
-      data.direction,
-      data.record_id,
-      data.entity_type,
-      data.entity_id,
-      data.user_id,
-      data.contact_id,
-      data.deal_id,
-      data.metadata ?? {},
-      data.custom_fields ?? {},
-    ],
+    values,
   );
   return result.rows[0] || null;
 }

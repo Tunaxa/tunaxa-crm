@@ -37,6 +37,18 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- **IMAP Inbound Sync Pipeline (`backend/services/imapSync.js`):**
+  - Implemented three-stage inbound sync architecture utilizing `imapflow` and `mailparser`:
+    - **Fetch:** Connects via IMAP with an injectable `InMemoryImapClient` for deterministic test/CI runs. Polls unread messages (`{ seen: false }`) on initial runs and persists a UID cursor (`uid: 'N+1:*'`) for incremental mailbox scans. Marks matched messages as `\Seen`.
+    - **Parse:** Normalizes message headers via `simpleParser`, strips angle brackets from `messageId`, `inReplyTo`, and `references`, lowercases email addresses, and extracts sanitized HTML and plaintext content.
+    - **Match & Record:** Deduplicates messages against workspace-scoped activities by `messageId`. Matches senders against `contacts` (with fallback to `leads`). Resolves parent conversation threads using `inReplyTo` / `references` (inheriting parent `threadId` and `deal_id`) or associates with the contact's most recent open deal.
+- **Background Worker & API Endpoints (`backend/workers/emailSync.js` & `backend/routes/emailSync.js`):**
+  - Added background email sync worker with concurrency locks per account, cursor management, and graceful shutdown lifecycle hooks.
+  - Exposed manual trigger (`POST /api/email-sync/trigger`) and status inspection (`GET /api/email-sync/status`) endpoints.
+- **Database Index Migration (`backend/db/migrations/013_email_message_tracking.sql`):**
+  - Added indexes on `activities` metadata/custom_fields for message IDs and thread tracking to guarantee fast deduplication queries.
+- **IMAP Sync Test Suite (`backend/__tests__/imap-inbound-sync.test.js`):**
+  - Added 18 unit and integration tests verifying end-to-end inbound syncing, contact matching, thread resolution, deduplication, and workspace tenant boundaries.
 - **Write-Side Field Masking Test Suite (`backend/__tests__/rbac-field-mask-write.test.js`):**
   - Added 37 unit and mutation-verified integration tests verifying 403 Forbidden responses on attempted writes to masked scalar columns and nested custom fields, asserting database records remain untouched, verifying admin bypasses, and confirming merge override protections.
 - **Atomic Duplicate Merge Engine (`backend/services/merge.js` & `backend/routes/dataops.js`):**
@@ -322,6 +334,10 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- **Legacy Email Sync Baseline Failure (`backend/services/emailSync.js`):**
+  - Resolved pre-existing baseline test failure in `backend/services/emailSync.test.js`: fixed missing `subject`, `body`, and `contactId` fields and corrected activity creation ordering. All 14 tests in the suite now pass cleanly, reducing the pre-existing test failure count from 21 to 20.
+- **Activity Repository Timestamp Handling (`backend/db/repositories/activities.js`):**
+  - Added conditional support for explicit `created_at` timestamps to preserve original email delivery dates on timeline records.
 - **Stale Repository SQL Assertions (`backend/db/repositories/__tests__/`):**
   - Four repository tests (`contacts`, `companies`, `leads`, `email-lists`) asserted on the pre-merge `custom_fields = $n` overwrite form and on a structured object in the bound parameters, so they failed against the JSONB merge rewrite introduced with the atomic duplicate merge engine. Both expectations now assert the merge expression `COALESCE(custom_fields, '{}'::jsonb) || $n::jsonb` and the serialized JSON parameter that the `::jsonb` cast requires. Assertions were tightened to name the merge explicitly rather than loosened to a substring that would match either form.
 - **Email Dedup Case Sensitivity (`backend/services/dedup.js`):**
