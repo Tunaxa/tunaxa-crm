@@ -12,6 +12,7 @@ export interface SSEEventMap {
   "workflow.graph_saved": { id: string };
   "sequence.enrolled": { sequenceId: string; count: number };
   "sequence.ran": { sequenceId: string } & Record<string, unknown>;
+  "integrations.updated": { by?: string; channel?: string };
   "form.submitted": { formId: string; permalink: string; recordId: string };
   "form.created": { id: string };
   "form.updated": { id: string };

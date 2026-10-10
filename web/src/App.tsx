@@ -63,6 +63,7 @@ const CampaignsPage = lazy(() => import("./modules/marketing/CampaignsPage").the
 const EmailListsPage = lazy(() => import("./modules/marketing/EmailListsPage").then(module => ({ default: module.EmailListsPage })));
 const MarketingEmailsPage = lazy(() => import("./modules/marketing/MarketingEmailsPage").then(module => ({ default: module.MarketingEmailsPage })));
 const FormsPage = lazy(() => import("./modules/marketing/FormsPage").then(module => ({ default: module.FormsPage })));
+const IntegrationsPage = lazy(() => import("./modules/workspace/integrations/IntegrationsPage").then(module => ({ default: module.IntegrationsPage })));
 
 const logo = "/assets/tunaxa-logo.png";
 type NavItem = { path: string; label: string; icon: string };
@@ -165,6 +166,7 @@ const navGroups: NavGroup[] = [
       { path: "/team", label: "nav.team", icon: "team" },
       { path: "/fields", label: "nav.fields", icon: "fields" },
       { path: "/settings", label: "nav.settings", icon: "settings" },
+      { path: "/integrations", label: "nav.integrations", icon: "webhook" },
     ],
   },
 ];
@@ -530,6 +532,7 @@ function AppRoutes() {
     "workflow.graph_saved": refreshAll,
     "sequence.enrolled": refreshAll,
     "sequence.ran": refreshAll,
+    "integrations.updated": refreshAll,
     "form.submitted": refreshAll,
     "form.created": refreshAll,
     "form.updated": refreshAll,
@@ -951,6 +954,7 @@ function AppRoutes() {
               <Route path="/inbox" element={<InboxPage />} />
               <Route path="/sequences" element={<SequencesPage />} />
               <Route path="/webhooks" element={<WebhooksPage />} />
+              <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/campaigns" element={<CampaignsPage />} />
               <Route path="/email-lists" element={<EmailListsPage />} />
               <Route path="/landing-pages" element={<LandingPagesPage />} />
