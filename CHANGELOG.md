@@ -8,6 +8,12 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Ticket Kanban Stages & SLA Engine (`backend/services/ticket-stages.js`, `backend/services/sla.js`, `backend/db/migrations/010_ticket_kanban_sla.sql`):**
+  - Added a Kanban stage model with the canonical columns (`New`, `In Progress`, `Awaiting Client`, `Resolved`) plus a dynamic terminal `Closed` column, an explicit transition map, and validation that rejects unknown stages and disallowed moves.
+  - Added a pure SLA engine that derives first-response and resolution due times from ticket priority (`Urgent`/`High`/`Medium`/`Normal`/`Low`) or an explicit workspace override, and computes `firstResponseBreached`, `resolutionBreached` and `isBreached` against the current clock.
+  - Persisted `first_response_due_at`, `sla_due_at`, `sla_breached`, `closed_at` and a `stage_history` JSONB log via an idempotent migration. New columns are appended to the ticket repository so existing insert/update parameter positions stay stable.
+  - `POST /api/tickets` stamps due dates and an initial history entry; `PUT /api/tickets/:id` validates stage transitions, stamps `firstResponseAt`/`resolvedAt`/`closedAt`, appends history and recomputes the breach flag; `GET /api/tickets` honours `page`/`limit`/`sortBy`/`sortDir`/`?envelope=true` while preserving the legacy board envelope; added `GET /api/tickets/:id`.
+  - Added `backend/__tests__/tickets-kanban-sla.test.js` covering due-time assignment on create, stage moves over the API, invalid-transition validation, breach flags on active vs terminal stages, and list pagination.
 - **Unified List Query Contract (`backend/middleware/pagination.js`, `docs/api-query-params.md`):**
   - Added centralized normalization for `page`, `limit`, `sortBy`, and `sortDir`, shared by the generic `/api/:resource` router and dedicated list endpoints (`/api/pipeline/definitions`, `/api/forms`, `/api/workflows/:id/runs`).
   - Enforced bounds: `page >= 1` (default `1`), `limit` `1..100` (default `20`), `sortBy` sanitized against prototype pollution and invalid identifiers (default `createdAt`), `sortDir` normalized to `asc`/`desc` (default `desc`).

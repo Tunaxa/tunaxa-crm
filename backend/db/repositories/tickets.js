@@ -8,7 +8,11 @@ const SORT_COLUMNS = new Set([
   "stage",
   "priority",
   "source",
+  "first_response_due_at",
+  "sla_due_at",
+  "sla_breached",
   "resolved_at",
+  "closed_at",
 ]);
 const UPDATE_FIELDS = [
   "subject",
@@ -20,11 +24,26 @@ const UPDATE_FIELDS = [
   "contact_email",
   "comments",
   "first_response_at",
+  "first_response_due_at",
   "resolved_at",
   "resolved_by",
+  "sla_due_at",
+  "sla_breached",
+  "closed_at",
+  "stage_history",
   "status",
   "custom_fields",
 ];
+// timestamptz columns that reject the empty string a legacy client may send to
+// mean "not set". Normalize it to null in both create() and update().
+const TIMESTAMP_FIELDS = new Set([
+  "first_response_at",
+  "first_response_due_at",
+  "resolved_at",
+  "sla_due_at",
+  "closed_at",
+]);
+const JSONB_FIELDS = new Set(["comments", "stage_history", "custom_fields"]);
 
 function validatePositiveInteger(value, name) {
   if (!Number.isInteger(value) || value <= 0) {
@@ -124,12 +143,15 @@ export async function findById(id) {
 }
 
 export async function create(data = {}) {
+  const blank = (value) => (value === "" ? null : value);
   const result = await query(
     `INSERT INTO tickets (
        workspace_id, subject, description, stage, priority, source, contact,
        contact_email, comments, first_response_at, resolved_at, resolved_by,
-       status, custom_fields
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       status, custom_fields,
+       first_response_due_at, sla_due_at, sla_breached, closed_at, stage_history
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+               $15, $16, $17, $18, $19)
      RETURNING *`,
     [
       data.workspace_id,
@@ -144,11 +166,18 @@ export async function create(data = {}) {
       // The legacy handler seeded these with empty strings, which a
       // timestamptz column rejects. Normalize them to null so the column
       // stays genuinely "not yet responded/resolved".
-      data.first_response_at === "" ? null : data.first_response_at,
-      data.resolved_at === "" ? null : data.resolved_at,
+      blank(data.first_response_at),
+      blank(data.resolved_at),
       data.resolved_by,
       data.status,
       toJsonb(data.custom_fields, {}),
+      // Added with P2-BE2-02; appended after the historical columns so the
+      // parameter positions the repository tests pin stay stable.
+      blank(data.first_response_due_at),
+      blank(data.sla_due_at),
+      data.sla_breached === undefined ? false : data.sla_breached,
+      blank(data.closed_at),
+      toJsonb(data.stage_history, []),
     ],
   );
   return result.rows[0] || null;
@@ -162,15 +191,10 @@ export async function update(id, data = {}) {
   );
   if (fields.length === 0) return null;
 
-  const JSONB_FIELDS = new Set(["comments", "custom_fields"]);
   const values = fields.map((field) => {
     if (JSONB_FIELDS.has(field)) return toJsonb(data[field], null);
-    // Same empty-string guard as create(): a client that sends "" means "no
-    // timestamp", not the year zero.
-    if (
-      (field === "first_response_at" || field === "resolved_at") &&
-      data[field] === ""
-    ) {
+    // A client that sends "" means "no timestamp", not the year zero.
+    if (TIMESTAMP_FIELDS.has(field) && data[field] === "") {
       return null;
     }
     return data[field];
