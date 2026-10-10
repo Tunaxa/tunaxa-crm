@@ -7,6 +7,7 @@ import { SimpleCards } from "./components/records/SimpleCards";
 import { leadFields, contactFields, stages } from "./modules/sales/fields";
 import { campaignFields, emailListFields, marketingEmailFields } from "./modules/marketing/fields";
 import { DuplicateResolution } from "./components/DuplicateResolution";
+import { NotificationCenter } from "./modules/notifications/NotificationCenter";
 
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
 
@@ -454,7 +455,7 @@ function AuthScreen({
 }
 
 function AppRoutes() {
-  const { user, toast, logout } = useApp();
+  const { user, logout } = useApp();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -687,14 +688,7 @@ function AppRoutes() {
                 <Moon className="w-4 h-4" />
               )}
             </button>
-            <button
-              className="icon-btn notification-btn"
-              aria-label="Notifications"
-              onClick={() => toast("No new notifications")}
-              title="Notifications"
-            >
-              <Icon name="bell" />
-            </button>
+            <NotificationCenter />
             <div className="profile-wrap">
               <button
                 className="profile-trigger"
