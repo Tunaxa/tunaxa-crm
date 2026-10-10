@@ -287,12 +287,23 @@ export default function registerFormRoutes(app) {
 
       // Attribute web visits (pixel) to this record
       if (vid) {
-        await mutateDb(store => {
+        const visits = await mutateDb(store => {
           if (!store.webVisits) store.webVisits = [];
           const prior = store.webVisits.filter(v => v.vid === vid);
           prior.forEach(v => { v.recordId = legacyRecord.id; v.attributed = true; });
           store.pendingAttribution = (store.pendingAttribution || []).filter(p => p.vid !== vid);
+          return prior;
         });
+        if (visits.length) {
+          const attribution = {
+            ...record.custom_fields,
+            firstVisitAt: legacyRecord.firstVisitAt || visits[visits.length - 1].createdAt,
+            lastVisitAt: now(),
+            visitCount: Number(legacyRecord.visitCount || 0) + visits.length,
+            attributionSource: visits[0].page || legacyRecord.attributionSource || '',
+          };
+          await repoFor(recordResource).update(record.id, { custom_fields: attribution });
+        }
       }
 
       // Log the submission as an activity. Activities are a PG resource, so this
