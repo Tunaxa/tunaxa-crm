@@ -47,6 +47,15 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- **Notification Center & Management API (`backend/services/notifications.js` & `backend/routes/notifications.js`):**
+  - Added notification service supporting workspace-scoped notification creation, paginated listing with unread counts, and individual/bulk read state updates.
+  - Mounted REST endpoints: `POST /api/notifications`, `GET /api/notifications`, `PATCH /api/notifications/:id/read`, and `POST /api/notifications/read-all`.
+- **@Mention Parsing & Notification Trigger (`backend/services/mentions.js`):**
+  - Implemented regex token parsing for `@username` and `@email` handles in ticket comments and notes.
+  - Added workspace-isolated recipient resolution preventing cross-tenant user targeting.
+  - Automatically dispatches in-app `mention` notifications while deduplicating duplicate mentions and suppressing self-mentions.
+- **Notification & Mention Test Suite (`backend/__tests__/notifications-mentions.test.js`):**
+  - Added unit and integration tests verifying notification CRUD, comment mention triggers, duplicate token deduplication, self-mention filtering, and multi-tenant isolation.
 - **Email Open & Click Tracking Engine (`backend/services/tracking.js`, `backend/routes/tracking.js`):**
   - Implemented `createTrackingToken()` / `verifyTrackingToken()` signing and verifying engagement tokens with HMAC-SHA256, a 90-day TTL, and constant-time comparison; the signing secret is resolved from `APP_SECRET` → `TRACKING_SECRET` → `SESSION_SECRET` with a stable derived fallback.
   - Added `generateOpenToken()` and `generateClickToken()` helpers plus `isSafeDestinationUrl()` absolute-`http(s)` validation.
