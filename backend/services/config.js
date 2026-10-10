@@ -35,6 +35,14 @@ export const DEFAULT_SETTINGS = {
   ollamaSummaryModel: "gemma3:4b",
   publicBaseUrl: "",
   autoTranscribeRecordings: false,
+  // Per-workspace outbound webhook configuration for the integrations
+  // backend. Each channel keeps a map of workspace id -> webhook URL; the
+  // environment variables (SLACK_WEBHOOK_URL / ZAPIER_WEBHOOK_URL) remain a
+  // deployment-level fallback in services/integrations.js.
+  integrations: {
+    slack: { webhookUrls: {} },
+    zapier: { webhookUrls: {} },
+  },
 };
 
 export async function getSettings() {
