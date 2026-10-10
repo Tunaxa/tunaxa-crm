@@ -8,6 +8,13 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Schema Reflection API (`backend/routes/schema.js`, `backend/services/schema.js`):**
+  - Added `GET /api/schema/:resource` returning complete per-field metadata for an entity so a client can render forms, validations and tables purely from the API: `name`/`key`, `label`, `type` (`string`/`text`/`number`/`boolean`/`date`/`datetime`/`select`/`email`/`json`/`relation`), `required`, `readOnly`, `options` (`[{ label, value }]`), `defaultValue`, `placeholder`, `format`, `mapsTo` and `relation`.
+  - Covers `contacts`, `leads`, `companies`, `deals`, `tickets`, `quotes`, `tasks` and `activities`; unknown resources answer `404` with the supported list.
+  - Reflection is dynamic: ticket stage options come from `backend/services/ticket-stages.js`, ticket priorities from the SLA targets in `backend/services/sla.js`, deal stage and pipeline options from `db.pipelineDefinitions` (falling back to `DEFAULT_PIPELINE`), the workspace `currency` comes from settings, and per-object custom fields are merged in as `custom: true` (also exposed as a legacy `customFields` projection).
+  - The old `/api/schema/:object` handler in `backend/routes/settings.js` is superseded and removed; the dedicated router is registered before the generic `/api/:resource` routes.
+  - `firstName`/`lastName` are now accepted aliases for the `first_name`/`last_name` columns so a reflection-generated contact or lead form round-trips into the real columns instead of the custom-field bag.
+  - Added `backend/__tests__/schema-reflection.test.js` covering the per-field minimum contract across all resources, ticket stage/priority options and read-only SLA fields, contact core fields and round-trip, deal stage/currency/value, dynamic pipeline reflection, custom-field merging, authentication and the 404 path.
 - **Ticket Kanban Stages & SLA Engine (`backend/services/ticket-stages.js`, `backend/services/sla.js`, `backend/db/migrations/010_ticket_kanban_sla.sql`):**
   - Added a Kanban stage model with the canonical columns (`New`, `In Progress`, `Awaiting Client`, `Resolved`) plus a dynamic terminal `Closed` column, an explicit transition map, and validation that rejects unknown stages and disallowed moves.
   - Added a pure SLA engine that derives first-response and resolution due times from ticket priority (`Urgent`/`High`/`Medium`/`Normal`/`Low`) or an explicit workspace override, and computes `firstResponseBreached`, `resolutionBreached` and `isBreached` against the current clock.

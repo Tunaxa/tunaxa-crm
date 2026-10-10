@@ -960,9 +960,20 @@ const GENERIC_COLUMNS = {
   ]),
 };
 
+// The schema reflection API (services/schema.js) publishes the natural public
+// keys `firstName` / `lastName`, while the columns are `first_name` /
+// `last_name`. Accepting the camelCase spelling here keeps a form generated
+// purely from the reflection response round-tripping into the real columns
+// instead of landing in the custom_fields overflow bag.
+const GENERIC_ALIASES = {
+  contacts: { firstName: "first_name", lastName: "last_name" },
+  leads: { firstName: "first_name", lastName: "last_name" },
+};
+
 function genericLegacyToPg(body, resource) {
   const data = { ...(body || {}) };
   const columns = GENERIC_COLUMNS[resource];
+  const aliases = GENERIC_ALIASES[resource] || {};
   const out = {};
   const extra = {};
 
@@ -984,8 +995,9 @@ function genericLegacyToPg(body, resource) {
       }
       continue;
     }
-    if (!columns || columns.has(key)) {
-      out[key] = value;
+    const column = aliases[key] || key;
+    if (!columns || columns.has(column)) {
+      out[column] = value;
     } else {
       extra[key] = value;
     }

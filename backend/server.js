@@ -13,6 +13,7 @@ import { cleanupExpiredSessions } from "./middleware/auth.js";
 import registerAuthRoutes from "./routes/auth.js";
 import registerResourceRoutes from "./routes/resources.js";
 import registerSettingsRoutes from "./routes/settings.js";
+import registerSchemaRoutes from "./routes/schema.js";
 import registerCallRoutes from "./routes/calls.js";
 import registerRecordingRoutes from "./routes/recordings.js";
 import registerMessageRoutes from "./routes/messages.js";
@@ -211,6 +212,9 @@ registerWebhookRoutes(app);
 
 registerAuthRoutes(app);
 registerSettingsRoutes(app);
+// Schema reflection (P2-BE1-03). Registered ahead of the generic
+// `/api/:resource` handler so `/api/schema/:resource` is never shadowed.
+registerSchemaRoutes(app);
 registerCallRoutes(app);
 registerRecordingRoutes(app, upload);
 registerMessageRoutes(app);
