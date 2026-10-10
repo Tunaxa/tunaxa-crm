@@ -22,10 +22,12 @@
 //      between verify and write.
 
 import { getPool } from "../db/pg.js";
-import { mutateDb } from "../store.js";
+import { mutateDb, readDb } from "../store.js";
 import { now, id } from "../helpers.js";
-import { PG_RESOURCES } from "../db/legacy-shape.js";
+import { PG_RESOURCES, pgToLegacy } from "../db/legacy-shape.js";
+import { repoFor } from "../db/repositories/index.js";
 import { DEFAULT_PIPELINE } from "../routes/pipeline.js";
+import { isWonStage, triggerDealWonIntegrations } from "./integrations.js";
 
 /** Error carrying the HTTP status the route should answer with. */
 export class DealBatchMoveError extends Error {
@@ -292,6 +294,47 @@ async function moveDealsToStageJson({ dealIds, stage, pipelineId, workspaceId })
 }
 
 /**
+ * Fire deal.won webhooks for the rows a batch move just promoted into a won
+ * stage. Runs after the transaction has committed, per deal, and every step is
+ * wrapped so a webhook failure - or even a re-read failure - can never fail the
+ * move that triggered it.
+ */
+async function notifyWonBatch({ result, workspaceId, usePostgres }) {
+  if (!isWonStage(result.stage)) return;
+  const candidates = result.moved.filter(({ prevStage }) => !isWonStage(prevStage));
+  if (candidates.length === 0) return;
+
+  const fire = async ({ prevStage, deal }) => {
+    if (!deal) return;
+    await triggerDealWonIntegrations({
+      deal,
+      previousStage: prevStage,
+      workspaceId,
+    });
+  };
+
+  if (usePostgres) {
+    const repo = repoFor("deals");
+    await Promise.allSettled(
+      candidates.map(({ id: dealId, prevStage }) =>
+        repo
+          .findById(dealId, workspaceId)
+          .then((row) => (row ? pgToLegacy(row, "deals") : null))
+          .then((deal) => fire({ prevStage, deal })),
+      ),
+    );
+  } else {
+    const db = await readDb();
+    await Promise.allSettled(
+      candidates.map(({ id: dealId, prevStage }) => {
+        const row = (db.deals || []).find((d) => String(d.id) === String(dealId));
+        return fire({ prevStage, deal: row || null });
+      }),
+    );
+  }
+}
+
+/**
  * Atomically move `dealIds` to `stage`.
  *
  * `mode: "auto"` uses Postgres (deals is a PG resource) and the JSON store
@@ -322,5 +365,7 @@ export async function moveDealsToStage({
   };
 
   const usePostgres = mode === "pg" || (mode === "auto" && PG_RESOURCES.has("deals"));
-  return usePostgres ? moveDealsToStagePg(args) : moveDealsToStageJson(args);
+  const result = usePostgres ? await moveDealsToStagePg(args) : await moveDealsToStageJson(args);
+  await notifyWonBatch({ result, workspaceId: workspaceId ?? "default", usePostgres });
+  return result;
 }
