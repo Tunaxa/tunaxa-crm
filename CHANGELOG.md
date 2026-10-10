@@ -8,6 +8,18 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Quote Signing Automations (`backend/routes/quotes.js`):**
+  - Dispatches `quote.signed` workflow events to the workflow execution engine upon successful quote signature, passing quote details, contract ID, signer metadata, and workspace context.
+  - Added deal owner resolution to identify the sales representative associated with the quote's deal (or creator fallback) and dispatches an email notification with signing metadata, contract reference, and financial totals.
+  - Automatically records outbound notification records in `db.messages` and structured alerts in `db.notifications`.
+  - Appends an audit trail record to `db.audit` capturing `action: 'quote.signed'`, quote ID, contract ID, financial total, signer name/email, signer IP address, user agent, and ISO timestamp.
+- **Workflow Event Registration (`backend/services/workflows.js`):**
+  - Registered `quote` and `contract` resource mappings in `RESOURCE_BY_EVENT_PREFIX`.
+  - Registered `quote.signed`, `quote.created`, `quote.updated`, `contract.created`, and `contract.updated` events in workflow event metadata.
+- **Audit Route Compatibility (`backend/routes/audit.js`):**
+  - Enhanced audit log resolution to support structured actor objects (`actor.name`, `actor.email`, `actor.type`) and fallback resolution for IP/user agent fields.
+- **Signing Automation Tests (`backend/__tests__/quote-sign.test.js`):**
+  - Added 4 integration tests verifying `quote.signed` workflow execution, deal owner email notification delivery, graceful fallback for unassigned quotes, and audit trail record generation.
 - **Quote Share Token Service (`backend/services/quoteToken.js`):**
   - Implemented secure HMAC-SHA256 time-limited signing tokens (`createQuoteSignToken`) with constant-time verification (`crypto.timingSafeEqual`) to prevent timing attacks.
   - Added share link generator (`createQuoteShareLink`) formatting client signing URLs with token query parameters.

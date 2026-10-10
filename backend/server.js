@@ -19,7 +19,6 @@ import registerMessageRoutes from "./routes/messages.js";
 import registerV1ObjectRoutes from "./routes/v1objects.js";
 import registerV1AssociationRoutes from "./routes/v1associations.js";
 import registerWebhookRoutes from "./routes/webhooks.js";
-import registerContactRoutes from "./routes/contacts.js";
 import registerTemplateRoutes from "./routes/templates.js";
 import registerTrackingRoutes from "./routes/tracking.js";
 import registerAiRoutes from "./routes/ai.js";
@@ -243,6 +242,7 @@ registerModuleRoutes(app);
 registerGraphQLRoutes(app);
 registerDataOpsRoutes(app);
 registerWebhookEndpointRoutes(app);
+registerQuoteRoutes(app);
 registerResourceRoutes(app);
 
 app.use((err, req, res, next) => {

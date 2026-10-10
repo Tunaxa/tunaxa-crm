@@ -18,6 +18,8 @@ const RESOURCE_BY_EVENT_PREFIX = {
   contact: 'contacts',
   company: 'companies',
   deal: 'deals',
+  quote: 'quotes',
+  contract: 'contracts',
   task: 'tasks',
   call: 'calls',
   message: 'messages',
@@ -71,7 +73,12 @@ export const EVENT_META = [
   { value: 'leaveRequest.updated', label: 'Leave request updated', resource: 'leaveRequests' },
   { value: 'attendance.created', label: 'Attendance created', resource: 'attendance' },
   { value: 'attendance.updated', label: 'Attendance updated', resource: 'attendance' },
-  { value: 'webhook.received', label: 'Webhook received', resource: 'webhookEndpoints' }
+  { value: 'webhook.received', label: 'Webhook received', resource: 'webhookEndpoints' },
+  { value: 'quote.created', label: 'Quote created', resource: 'quotes' },
+  { value: 'quote.updated', label: 'Quote updated', resource: 'quotes' },
+  { value: 'quote.signed', label: 'Quote signed', resource: 'quotes' },
+  { value: 'contract.created', label: 'Contract created', resource: 'contracts' },
+  { value: 'contract.updated', label: 'Contract updated', resource: 'contracts' }
 ];
 
 export const ACTION_META = [
@@ -109,14 +116,16 @@ export const createdEvent = resource => ({
   leads: 'lead.created', contacts: 'contact.created', companies: 'company.created', deals: 'deal.created', tasks: 'task.created',
   products: 'product.created', orders: 'order.created', invoices: 'invoice.created', expenses: 'expense.created',
   campaigns: 'campaign.created', emailLists: 'emailList.created', landingPages: 'landingPage.created',
-  employees: 'employee.created', leaveRequests: 'leaveRequest.created', attendance: 'attendance.created'
+  employees: 'employee.created', leaveRequests: 'leaveRequest.created', attendance: 'attendance.created',
+  quotes: 'quote.created', contracts: 'contract.created'
 }[resource] || null);
 
 export const updatedEvent = resource => ({
   leads: 'lead.updated', contacts: 'contact.updated', companies: 'company.updated', deals: 'deal.updated', tasks: 'task.updated',
   products: 'product.updated', orders: 'order.updated', invoices: 'invoice.updated', expenses: 'expense.updated',
   campaigns: 'campaign.updated', emailLists: 'emailList.updated', landingPages: 'landingPage.updated',
-  employees: 'employee.updated', leaveRequests: 'leaveRequest.updated', attendance: 'attendance.updated'
+  employees: 'employee.updated', leaveRequests: 'leaveRequest.updated', attendance: 'attendance.updated',
+  quotes: 'quote.updated', contracts: 'contract.updated'
 }[resource] || null);
 
 /**
@@ -435,11 +444,45 @@ function getConditionEdges(edgesFromNode, passes) {
 
     return edgesFromNode.filter(e => !isFalseHandle(e.sourceHandle));
   } else {
-    // Condition failed: only follow edges explicitly marked false
-    return edgesFromNode.filter(e => {
-      const h = String(e.sourceHandle ?? '').trim().toLowerCase();
-      return h === 'false' || h === 'no' || h === 'fail' || h === '0';
+    return edgesFromNode.filter(e => isFalseHandle(e.sourceHandle));
+  }
+}
+
+async function createRunRecord({ workflow, event, context = {} }) {
+  try {
+    const repo = repoFor('workflowRuns');
+    if (!repo || typeof repo.create !== 'function') return null;
+    return await repo.create({
+      workflow_id: workflow.id,
+      trigger_event: event || workflow.event || 'unknown',
+      status: 'running',
+      started_at: new Date().toISOString(),
+      steps: [],
+      workspace_id: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
     });
+  } catch (err) {
+    console.error('Error creating workflow run record:', err);
+    return null;
+  }
+}
+
+async function updateRunRecord(runId, { status, steps, error_message }) {
+  if (!runId) return null;
+  try {
+    const repo = repoFor('workflowRuns');
+    if (!repo || typeof repo.update !== 'function') return null;
+    const updatePayload = {
+      status,
+      steps: Array.isArray(steps) ? steps : [],
+      error_message: error_message || null
+    };
+    if (status !== 'waiting') {
+      updatePayload.completed_at = new Date().toISOString();
+    }
+    return await repo.update(runId, updatePayload);
+  } catch (err) {
+    console.error('Error updating workflow run record:', err);
+    return null;
   }
 }
 
@@ -514,7 +557,9 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
             ? [...existingRun.steps]
             : (typeof existingRun.steps === 'string' ? JSON.parse(existingRun.steps) : []);
         }
-      } catch (_) {}
+      } catch (err) {
+        console.error('Error fetching existing workflow run:', err);
+      }
     }
   }
 
@@ -651,10 +696,56 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
           continue;
         }
 
-      if (node.type === 'action') {
-        const actionData = node.config || node.data || {};
-        const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
-        const normalizedType = normalizeActionType(actionType);
+        if (nodeType === 'wait') {
+          const delayRaw = node.config?.delay ?? node.data?.delay ?? node.config?.duration ?? node.data?.duration;
+          const delayStr = typeof delayRaw === 'object'
+            ? (delayRaw.delay || delayRaw.duration || (delayRaw.amount && delayRaw.unit ? `${delayRaw.amount} ${delayRaw.unit}` : JSON.stringify(delayRaw)))
+            : String(delayRaw ?? '');
+          const delayMs = parseDelayToMs(delayRaw);
+          const scheduledResumeAt = new Date(Date.now() + delayMs).toISOString();
+
+          stepsLog.push({
+            nodeId: node.id,
+            nodeType: 'wait',
+            nodeName: node.data?.label || node.config?.name || 'Wait',
+            status: 'waiting',
+            output: { delay: delayStr, delayMs, scheduledResumeAt },
+            error: null,
+            executedAt: new Date().toISOString()
+          });
+
+          const edgesFromNode = outgoing.get(nodeId) || [];
+          const targetNodeIds = edgesFromNode.map(e => e.target).filter(Boolean);
+
+          try {
+            await scheduleWorkflowWaitJob({
+              workflowId: workflow.id,
+              runId,
+              waitNodeId: node.id,
+              targetNodeIds,
+              delayMs,
+              record,
+              context,
+              event,
+              workspaceId: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
+            });
+            isWaiting = true;
+          } catch (err) {
+            hasErrors = true;
+            if (!finalErrorMessage) finalErrorMessage = err.message;
+          }
+
+          // Do NOT execute downstream nodes synchronously — halt traversal along this branch
+          continue;
+        }
+
+        if (nodeType === 'action') {
+          let actionError = null;
+          let actionResult = null;
+          try {
+            const actionData = node.config || node.data || {};
+            const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
+            const normalizedType = normalizeActionType(actionType);
 
             const actionConfig = {
               ...actionData,
