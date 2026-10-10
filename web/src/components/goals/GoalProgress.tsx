@@ -1,6 +1,8 @@
 type GoalValue = number | string | null | undefined;
+type GoalTone = "red" | "amber" | "green";
 
 const milestones = [50, 75, 100] as const;
+export type GoalMilestone = (typeof milestones)[number];
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
 
 export function getGoalProgress(currentValue: GoalValue, targetValue: GoalValue) {
@@ -9,7 +11,8 @@ export function getGoalProgress(currentValue: GoalValue, targetValue: GoalValue)
   const current = Number.isFinite(parsedCurrent) ? parsedCurrent : 0;
   const target = Number.isFinite(parsedTarget) ? parsedTarget : 0;
   const percent = target > 0 ? Math.max(0, (current / target) * 100) : 0;
-  const tone = percent < 50 ? "red" : percent <= 75 ? "amber" : "green";
+  const tone: GoalTone =
+    percent < 50 ? "red" : percent <= 75 ? "amber" : "green";
 
   return {
     current,
@@ -18,6 +21,27 @@ export function getGoalProgress(currentValue: GoalValue, targetValue: GoalValue)
     barPercent: Math.min(percent, 100),
     tone,
   };
+}
+
+export function getCrossedGoalMilestone(
+  previousCurrent: GoalValue,
+  previousTarget: GoalValue,
+  nextCurrent: GoalValue,
+  nextTarget: GoalValue,
+): GoalMilestone | null {
+  const previousPercent = getGoalProgress(
+    previousCurrent,
+    previousTarget,
+  ).percent;
+  const nextPercent = getGoalProgress(nextCurrent, nextTarget).percent;
+
+  return (
+    [...milestones]
+      .reverse()
+      .find(
+        (milestone) => previousPercent < milestone && nextPercent >= milestone,
+      ) ?? null
+  );
 }
 
 export function GoalProgress({

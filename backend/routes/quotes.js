@@ -4,7 +4,7 @@ import { pgToLegacy } from '../db/legacy-shape.js';
 import { readDb, mutateDb } from '../store.js';
 import { id } from '../helpers.js';
 import { renderQuotePdfStream } from '../services/quotePdf.js';
-import { createQuoteSignToken, verifyQuoteSignToken, createQuoteShareLink } from '../services/quoteToken.js';
+import { createQuoteSignToken, verifyQuoteSignToken } from '../services/quoteToken.js';
 import { triggerWorkflows } from '../services/workflows.js';
 import { getSettings } from '../services/config.js';
 import { sendEmail } from '../services/smtp.js';
@@ -47,7 +47,9 @@ export default function registerQuoteRoutes(app) {
           if (compRow) {
             quote.companyName = compRow.name || compRow.title;
           }
-        } catch (_) {}
+        } catch (err) {
+          console.error('Error fetching company details:', err);
+        }
       }
 
       // Enrich with contact details if referenced
@@ -63,7 +65,9 @@ export default function registerQuoteRoutes(app) {
               legacyContact.name;
             quote.contactEmail = quote.contactEmail || legacyContact.email;
           }
-        } catch (_) {}
+        } catch (err) {
+          console.error('Error fetching contact details:', err);
+        }
       }
 
       const filename = `quote-${quote.quoteNumber || quote.number || quote.id}.pdf`;
@@ -293,7 +297,9 @@ export default function registerQuoteRoutes(app) {
             try {
               const dealRow = await dealsRepo.findById(dealId);
               if (dealRow) deal = pgToLegacy(dealRow, 'deals');
-            } catch (_) {}
+            } catch (err) {
+              console.error('Error fetching deal details:', err);
+            }
           }
           if (!deal) {
             const db = await readDb();

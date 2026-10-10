@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { cachedList, invalidateListCache } from "./cache.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -50,7 +51,11 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll({
+export function findAll(options = {}) {
+  return cachedList("companies", options, () => findAllUncached(options));
+}
+
+async function findAllUncached({
   page = 1,
   limit = 20,
   sortBy = "created_at:desc",
@@ -120,7 +125,9 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("companies");
+  return row;
 }
 
 export async function update(id, data = {}) {
@@ -143,7 +150,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("companies");
+  return row;
 }
 
 async function remove(id) {
@@ -151,7 +160,9 @@ async function remove(id) {
     "DELETE FROM companies WHERE id = $1 RETURNING id",
     [id],
   );
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("companies");
+  return deleted;
 }
 
 export { remove as delete };

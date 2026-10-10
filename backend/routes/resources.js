@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
+import { updateRecord } from "../services/resources.js";
 import { requireRole } from "../middleware/rbac.js";
 import {
   id,
@@ -15,12 +16,9 @@ import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
 import {
   triggerWorkflows,
   createdEvent,
-  updatedEvent,
-  eventFor,
 } from "../services/workflows.js";
 import { broadcast } from "./sse.js";
 import { cacheFlush } from "../services/cache.js";
-import { recordRevision } from "../services/revisions.js";
 import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
 import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
@@ -123,15 +121,21 @@ async function pgFindAll(resource, query = {}) {
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
 
+// Fields the client may never set when updating a record: the stored values
+// always win. Stripped from the payload rather than re-pinned after the merge,
+// so there is a single mechanism to reason about.
+
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
     if (!resources.has(req.params.resource) || !req.user) return next();
+
     req.db = await readDb();
     req.fieldPerms = getFieldPermissions(
       req.db,
       req.params.resource.replace(/s$/, ""),
       req.user.role,
     );
+
     next();
   });
 
@@ -150,40 +154,92 @@ export default function registerResourceRoutes(app) {
 
     // ── Legacy JSON path: all other resources ──────────────────────────────
     const db = req.db || (await readDb());
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(
+      50,
+      Math.max(1, Number(req.query.limit) || 20),
+    );
+    const start = (page - 1) * limit;
+
     let rows = db[req.params.resource] || [];
+
     const q = String(req.query.q || "")
       .toLowerCase()
       .trim();
-    if (q)
+
+    if (q) {
       rows = rows.filter((item) =>
         JSON.stringify(item).toLowerCase().includes(q),
       );
+    }
+
     if (req.params.resource === "activities") {
       const type = String(req.query.type || "").toLowerCase();
+
       if (type) {
         const directTypes = ["email", "call", "meeting", "note"];
+
         rows = rows.filter((item) => {
           const itemType = String(item.type || "").toLowerCase();
+
           return type === "system"
             ? !directTypes.includes(itemType)
             : itemType === type;
         });
       }
+
       const recordId = String(req.query.recordId || "");
-      const contact = String(req.query.contact || "").trim().toLowerCase();
+      const contact = String(req.query.contact || "")
+        .trim()
+        .toLowerCase();
+
       if (recordId || contact) {
-        rows = rows.filter((item) =>
-          (recordId && item.recordId === recordId) ||
-          (contact && (
-            String(item.contact || "").toLowerCase() === contact ||
-            String(item.company || "").toLowerCase() === contact ||
-            String(item.title || "").toLowerCase().includes(contact)
-          )),
+        rows = rows.filter(
+          (item) =>
+            (recordId && item.recordId === recordId) ||
+            (contact &&
+              (String(item.contact || "").toLowerCase() === contact ||
+                String(item.company || "").toLowerCase() === contact ||
+                String(item.title || "")
+                  .toLowerCase()
+                  .includes(contact))),
         );
       }
     }
-    if (req.fieldPerms)
-      rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
+
+    // AXA-128: only return email messages when type=email is requested
+    if (req.params.resource === "messages") {
+      const type = String(req.query.type || "").toLowerCase();
+
+      if (type === "email") {
+        rows = rows.filter(
+          (item) =>
+            String(item.channel || "").toLowerCase() === "email",
+        );
+      }
+    }
+
+    if (req.fieldPerms) {
+      rows = rows.map((item) =>
+        applyFieldMasking(item, req.fieldPerms),
+      );
+    }
+
+    // AXA-128: pagination for messages
+    if (req.params.resource === "messages") {
+      const total = rows.length;
+      const paginatedRows = rows.slice(start, start + limit);
+
+      return res.json({
+        items: paginatedRows,
+        total,
+        page,
+        limit,
+        hasMore: start + limit < total,
+      });
+    }
+
     res.json(rows);
   });
 
@@ -217,6 +273,7 @@ export default function registerResourceRoutes(app) {
     for (const row of rows) {
       res.write(`${buildCsvRow(columns, row)}\r\n`);
     }
+
     res.end();
   });
 
@@ -239,8 +296,16 @@ export default function registerResourceRoutes(app) {
     const db = req.db || (await readDb());
     const rows = db[req.params.resource] || [];
     const item = rows.find((x) => x.id === req.params.id);
-    if (!item) return res.status(404).json({ error: "Record not found" });
-    res.json(req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item);
+
+    if (!item) {
+      return res.status(404).json({ error: "Record not found" });
+    }
+
+    res.json(
+      req.fieldPerms
+        ? applyFieldMasking(item, req.fieldPerms)
+        : item,
+    );
   });
 
   app.post(
@@ -250,6 +315,7 @@ export default function registerResourceRoutes(app) {
     validate(ResourceSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
+
       if (!resources.has(resource)) return next();
 
       // ── PG path ──────────────────────────────────────────────────────────
@@ -275,17 +341,25 @@ export default function registerResourceRoutes(app) {
       const item = await mutateDb((db) => {
         const createdAt = now();
         const data = { ...req.body };
+
         const record = {
           id: id(resource.slice(0, -1) || "item"),
-          ...coerceBuiltIns(resource, coerceCustomFields(db, resource, data)),
+          ...coerceBuiltIns(
+            resource,
+            coerceCustomFields(db, resource, data),
+          ),
           createdAt,
           updatedAt: createdAt,
         };
+
         db[resource].unshift(record);
+
         if (resource === "messages") {
           db.activities.unshift({
             id: id("activity"),
-            title: `${record.channel || "Message"} to ${record.to || "recipient"}`,
+            title: `${record.channel || "Message"} to ${
+              record.to || "recipient"
+            }`,
             type: record.channel || "Email",
             contact: record.to || "",
             notes: record.subject || record.body || "",
@@ -295,20 +369,27 @@ export default function registerResourceRoutes(app) {
             updatedAt: createdAt,
           });
         }
-        if (resource !== "audit")
-          db.audit.unshift(auditEntry({
-            action: `Created ${resource.slice(0, -1)}`,
-            actor: req.user.name,
-            createdAt,
-            req,
-            resourceId: record.id,
-          }));
+
+        if (resource !== "audit") {
+          db.audit.unshift(
+            auditEntry({
+              action: `Created ${resource.slice(0, -1)}`,
+              actor: req.user.name,
+              createdAt,
+              req,
+              resourceId: record.id,
+            }),
+          );
+        }
+
         return record;
       });
+
       const event = createdEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.created", { resource, item });
+      broadcast("record.created", { resource, item }, req.user.workspaceId || "default");
       cacheFlush(resource);
+
       res.status(201).json(item);
     },
   );
@@ -320,6 +401,7 @@ export default function registerResourceRoutes(app) {
     validate(BatchSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
+
       if (!resources.has(resource)) return next();
 
       // ── PG path ──────────────────────────────────────────────────────────
@@ -344,6 +426,7 @@ export default function registerResourceRoutes(app) {
 
       // ── Legacy JSON path ──────────────────────────────────────────────────
       const incoming = req.body;
+
       const saved = await mutateDb((db) => {
         const rows = incoming.map((data) => ({
           id: id(resource.slice(0, -1) || "item"),
@@ -354,17 +437,23 @@ export default function registerResourceRoutes(app) {
           createdAt: now(),
           updatedAt: now(),
         }));
+
         db[resource].unshift(...rows);
-        db.audit.unshift(auditEntry({
-          action: `Imported ${rows.length} ${resource}`,
-          actor: req.user.name,
-          req,
-          resourceId: rows.map((row) => row.id).join(","),
-        }));
+
+        db.audit.unshift(
+          auditEntry({
+            action: `Imported ${rows.length} ${resource}`,
+            actor: req.user.name,
+            req,
+            resourceId: rows.map((row) => row.id).join(","),
+          }),
+        );
+
         return rows;
       });
-      broadcast("records.batch", { resource, count: saved.length });
+      broadcast("records.batch", { resource, count: saved.length }, req.user.workspaceId || "default");
       cacheFlush(resource);
+
       res.status(201).json(saved);
     },
   );
@@ -434,6 +523,15 @@ export default function registerResourceRoutes(app) {
       cacheFlush(resource);
       res.json(revisionId ? { ...item, revisionId } : item);
     },
+    updateRecord,
+  );
+
+  app.patch(
+    "/api/:resource/:id",
+    auth,
+    requireRole("admin", "member"),
+    validate(ResourceSchema),
+    updateRecord,
   );
 
   app.delete(
@@ -442,6 +540,7 @@ export default function registerResourceRoutes(app) {
     requireRole("admin", "member"),
     async (req, res, next) => {
       const resource = req.params.resource;
+
       if (!resources.has(resource)) return next();
 
       // ── PG path ──────────────────────────────────────────────────────────
@@ -460,56 +559,96 @@ export default function registerResourceRoutes(app) {
 
       // ── Legacy JSON path ──────────────────────────────────────────────────
       const result = await mutateDb((db) => {
-        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        const index = db[resource].findIndex(
+          (x) => x.id === req.params.id,
+        );
+
         if (index < 0) return null;
+
         const [record] = db[resource].splice(index, 1);
         const files = [];
+
         if (resource === "calls") {
           db.activities = db.activities.filter(
             (item) => item.callId !== record.id,
           );
+
           const linked = db.recordings.filter(
             (item) => item.callId === record.id,
           );
-          files.push(...linked.map((item) => item.fileUrl).filter(Boolean));
+
+          files.push(
+            ...linked
+              .map((item) => item.fileUrl)
+              .filter(Boolean),
+          );
+
           db.recordings = db.recordings.filter(
             (item) => item.callId !== record.id,
           );
         }
+
         if (resource === "recordings") {
-          if (record.fileUrl) files.push(record.fileUrl);
+          if (record.fileUrl) {
+            files.push(record.fileUrl);
+          }
+
           if (record.callId) {
-            const call = db.calls.find((item) => item.id === record.callId);
-            if (call?.recordingId === record.id) delete call.recordingId;
+            const call = db.calls.find(
+              (item) => item.callId === record.id,
+            );
+
+            if (call?.recordingId === record.id) {
+              delete call.recordingId;
+            }
           }
         }
-        if (resource === "messages")
+
+        if (resource === "messages") {
           db.activities = db.activities.filter(
             (item) => item.messageId !== record.id,
           );
-        db.audit.unshift(auditEntry({
-          action: `Deleted ${resource.slice(0, -1)}`,
-          actor: req.user.name,
-          req,
-          resourceId: record.id,
-        }));
+        }
+
+        db.audit.unshift(
+          auditEntry({
+            action: `Deleted ${resource.slice(0, -1)}`,
+            actor: req.user.name,
+            req,
+            resourceId: record.id,
+          }),
+        );
+
         return { files };
       });
-      if (!result) return res.status(404).json({ error: "Record not found" });
+
+      if (!result) {
+        return res.status(404).json({
+          error: "Record not found",
+        });
+      }
+
       await Promise.all(
         result.files.map(async (fileUrl) => {
           const name = path.basename(String(fileUrl));
+
           if (!name) return;
+
           try {
             await fs.unlink(path.join(uploadDir, name));
           } catch (error) {
-            if (process.env.NODE_ENV !== "production")
-              console.warn("Failed to remove uploaded file", error.message);
+            if (process.env.NODE_ENV !== "production") {
+              console.warn(
+                "Failed to remove uploaded file",
+                error.message,
+              );
+            }
           }
         }),
       );
-      broadcast("record.deleted", { resource, id: req.params.id });
+      broadcast("record.deleted", { resource, id: req.params.id }, req.user.workspaceId || "default");
       cacheFlush(resource);
+
       res.json({ ok: true });
     },
   );

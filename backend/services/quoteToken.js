@@ -68,7 +68,8 @@ export function verifyQuoteSignToken(token, expectedQuoteId) {
   let payload;
   try {
     payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8'));
-  } catch (_) {
+  } catch (err) {
+    console.error('Error parsing quote signing token payload:', err);
     return { valid: false, error: 'invalid' };
   }
 

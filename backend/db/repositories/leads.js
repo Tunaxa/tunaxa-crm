@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { cachedList, invalidateListCache } from "./cache.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -70,7 +71,11 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll({
+export function findAll(options = {}) {
+  return cachedList("leads", options, () => findAllUncached(options));
+}
+
+async function findAllUncached({
   page = 1,
   limit = 20,
   sortBy = "created_at:desc",
