@@ -14,6 +14,7 @@ import { leadFields } from "./sales/fields";
 const mocks = vi.hoisted(() => ({ resource: vi.fn(), navigate: vi.fn(), role: "member" }));
 vi.mock("../lib/useResource", () => ({ useResource: mocks.resource }));
 vi.mock("../components/records/useSchema", () => ({ useSchema: () => [] }));
+vi.mock("./sales/pipelines/usePipelineDefinitions", () => ({ usePipelineDefinitions: () => ({ definitions: [], loading: false, error: "", saving: false, load: vi.fn(), save: vi.fn() }) }));
 vi.mock("../context/AppContext", () => ({ useApp: () => ({ user: { role: mocks.role }, toast: vi.fn() }) }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => mocks.navigate }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => ({ "nav.leads": "Prospects", "nav.contacts": "Contacts" })[key] || key }) }));

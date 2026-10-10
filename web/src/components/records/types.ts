@@ -7,6 +7,7 @@ export type FieldSpec = {
   label: string;
   type?: string;
   options?: string[];
+  optionLabels?: Record<string, string>;
   required?: boolean;
   placeholder?: string;
 };

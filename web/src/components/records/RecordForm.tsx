@@ -114,7 +114,7 @@ export function RecordForm({
                 <select {...register(field.key)}>
                   {field.options?.map((option) => (
                     <option key={option} value={option}>
-                      {option}
+                      {field.optionLabels?.[option] || option}
                     </option>
                   ))}
                 </select>

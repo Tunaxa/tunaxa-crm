@@ -546,6 +546,10 @@ function AppRoutes() {
     "webhook.received": refreshAll,
     "ticket.opened": refreshAll,
     "ticket.updated": refreshAll,
+    "pipeline.definition_created": refreshAll,
+    "pipeline.definition_updated": refreshAll,
+    "pipeline.definition_deleted": refreshAll,
+    "pipeline.deal_moved": refreshAll,
     "execution.processed": refreshAll,
   };
   useSSE(sseHandlers);

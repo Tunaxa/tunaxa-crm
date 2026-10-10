@@ -114,8 +114,8 @@ function convert(value: string, field: FieldSpec): unknown {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error("must be a valid date in YYYY-MM-DD format");
   }
   if (field.type === "select" && field.options?.length) {
-    const option = field.options.find(item => item.toLowerCase() === value.toLowerCase());
-    if (!option) throw new Error(`must be one of: ${field.options.join(", ")}`);
+    const option = field.options.find(item => item.toLowerCase() === value.toLowerCase() || field.optionLabels?.[item]?.toLowerCase() === value.toLowerCase());
+    if (option === undefined) throw new Error(`must be one of: ${field.options.map(item => field.optionLabels?.[item] || item).join(", ")}`);
     return option;
   }
   return value;

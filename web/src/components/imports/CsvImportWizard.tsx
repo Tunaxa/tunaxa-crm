@@ -12,23 +12,25 @@ const steps = ["Upload", "Map columns", "Preview", "Import", "Error report"];
 const statusLabels = { imported: "Imported", invalid: "Invalid", failed: "Rejected", unconfirmed: "Unconfirmed", "not-imported": "Not imported" };
 const PREVIEW_SIZE = 10;
 
-export function CsvImportButton({ resource, label, fields, onComplete }: {
+type ImportContext = { disabled?: boolean; unavailable?: boolean; contextLabel?: string; preparePayload?: (payload: Record<string, unknown>) => Record<string, unknown> };
+export function CsvImportButton({ resource, label, fields, onComplete, onOpenChange, disabled, unavailable, contextLabel, preparePayload }: {
   resource: CsvResource; label: string; fields: FieldSpec[]; onComplete: () => void | Promise<unknown>;
-}) {
+  onOpenChange?: (open: boolean) => void;
+} & ImportContext) {
   const { user } = useApp();
   const [open, setOpen] = useState(false);
   const allowed = user?.role === "admin" || user?.role === "member";
   return <>
-    <button type="button" className="btn secondary" disabled={!allowed} title={allowed ? undefined : "Import requires admin or member access"}
-      onClick={() => setOpen(true)}><Icon name="upload" /> Import CSV</button>
-    {open && <CsvImportWizard resource={resource} label={label} fields={fields} onComplete={onComplete} onClose={() => setOpen(false)} />}
+    <button type="button" className="btn secondary" disabled={!allowed || disabled} title={allowed ? undefined : "Import requires admin or member access"}
+      onClick={() => { setOpen(true); onOpenChange?.(true); }}><Icon name="upload" /> Import CSV</button>
+    {open && <CsvImportWizard resource={resource} label={label} fields={fields} unavailable={unavailable} contextLabel={contextLabel} preparePayload={preparePayload} onComplete={onComplete} onClose={() => { setOpen(false); onOpenChange?.(false); }} />}
   </>;
 }
 
-export function CsvImportWizard({ resource, label, fields, onComplete, onClose }: {
+export function CsvImportWizard({ resource, label, fields, onComplete, onClose, unavailable, contextLabel, preparePayload }: {
   resource: CsvResource; label: string; fields: FieldSpec[];
   onComplete: () => void | Promise<unknown>; onClose: () => void;
-}) {
+} & ImportContext) {
   const { user, toast } = useApp();
   const [step, setStep] = useState(0);
   const [document, setDocument] = useState<CsvDocument | null>(null);
@@ -45,7 +47,9 @@ export function CsvImportWizard({ resource, label, fields, onComplete, onClose }
   const stopRequested = useRef(false);
   const mounted = useRef(true);
   const fileVersion = useRef(0);
-  const allowed = user?.role === "admin" || user?.role === "member";
+  const allowed = !unavailable && (user?.role === "admin" || user?.role === "member");
+  const payloadTransform = useRef(preparePayload);
+  payloadTransform.current = preparePayload;
   const access = useRef(allowed);
   access.current = allowed;
   const available = importFields(resource, fields);
@@ -94,7 +98,7 @@ export function CsvImportWizard({ resource, label, fields, onComplete, onClose }
     busy.current = true; stopRequested.current = false;
     setRunning(true); setStopping(false); setStep(3); setError("");
     try {
-      const final = await runCsvImport(prepared, payload => api(`/${resource}`, json("POST", payload)),
+      const final = await runCsvImport(prepared, payload => api(`/${resource}`, json("POST", payloadTransform.current ? payloadTransform.current(payload) : payload)),
         next => { if (mounted.current) setResults(next); }, () => stopRequested.current || !access.current);
       if (mounted.current) { setResults(final); setPage(1); setStep(4); }
       window.dispatchEvent(new CustomEvent("tunaxa:resource-changed", { detail: { resource } }));
@@ -150,7 +154,8 @@ export function CsvImportWizard({ resource, label, fields, onComplete, onClose }
     </div>}>
     <div className="csv-import-wizard">
       <ol className="csv-import-steps" aria-label="Import steps">{steps.map((name, index) => <li key={name} aria-current={step === index ? "step" : undefined}><span>{index + 1}</span>{name}</li>)}</ol>
-      {!allowed && <p role="alert">Import requires admin or member access.</p>}
+      {contextLabel && <p>Import destination: <strong>{contextLabel}</strong></p>}
+      {!allowed && <p role="alert">{unavailable ? "This import destination is unavailable. Close the wizard and refresh the list." : "Import requires admin or member access."}</p>}
       {error && <p className="csv-import-error" role="alert">{error}</p>}
       {step === 0 && <>
         <p>Import creates new records. Existing records are not updated. Choose a UTF-8 CSV file, up to {MAX_CSV_ROWS} rows and 5 MB.</p>
