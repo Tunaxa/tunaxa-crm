@@ -7,6 +7,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Security
+- **Form Submission Hardening (`backend/routes/forms.js`):**
+  - Added CORS `OPTIONS` preflight handling on `/api/forms/:permalink/submit` returning HTTP 204 No Content with `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: POST, OPTIONS`, `Access-Control-Allow-Headers: Content-Type, Accept, X-Requested-With`, and `Access-Control-Max-Age: 86400` to support embedded cross-site forms.
+  - Added permissive `Access-Control-Allow-Origin: *` headers on all responses from the public submission route across success, validation error, not-found, and server error conditions.
+  - Implemented honeypot spam bot mitigation detecting populated hidden fields (`_hp`, `_gotcha`, `website`, `honeypot`): silently drops bot submissions with HTTP 200 `{ success: true, message: "Submission received" }` without persisting form submissions, leads, contacts, or activities, and without bumping counters or triggering workflows.
+  - Added `stripHoneypot()` ensuring honeypot fields are stripped from legitimate submissions before custom fields processing.
 - **RBAC Field-Masking on Write (`backend/routes/permissions.js` & route handlers):**
   - Implemented write-side field-mask validation engine preventing unauthorized users from writing, updating, or clearing masked attributes via `POST`, `PUT`, `PATCH`, and batch endpoints.
   - Added `normalizeFieldKey` folding keys to snake_case so casing variations (`firstName`, `first_name`, `First Name`) cannot bypass field permission masks.
@@ -37,6 +42,8 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- **Form Hardening Test Suite (`backend/__tests__/form-hardening.test.js`):**
+  - Added 9 unit and integration tests verifying `OPTIONS` preflight CORS response headers, cross-origin `POST` persistence in the form's designated tenant workspace, zero-mutation bot drops across all 4 honeypot fields, and unknown form 404 safety.
 - **Pipeline Batch-Move Engine (`backend/services/dealPipeline.js` & `backend/routes/deals.js`):**
   - Implemented transactional batch stage progression (`POST /api/deals/batch-move` and alias `POST /api/deals/batch-stage`) protected by `auth`, `requireRole('admin', 'member')`, and `checkWriteFieldMask('deals')`.
   - Enforced all-or-nothing atomicity via PostgreSQL transaction (`BEGIN ... COMMIT` / `ROLLBACK`) with row-level locking (`FOR UPDATE` on locked IDs) and strict count matching to prevent partial stage transitions.
