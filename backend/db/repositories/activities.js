@@ -1,12 +1,5 @@
 import { query } from "../pg.js";
-import {
-  cacheFlush,
-  cacheGet,
-  cacheSet,
-  hashParams,
-} from "../../services/cache.js";
-
-const RESOURCE = "activities";
+import { cachedList, invalidateListCache } from "./cache.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -83,11 +76,11 @@ function searchCondition(param) {
     .join(" OR ");
 }
 
-export async function findAll(options = {}) {
-  const cacheKey = `${RESOURCE}:list:${hashParams(options)}`;
-  const cached = await cacheGet(cacheKey);
-  if (cached) return cached;
-  const {
+export function findAll(options = {}) {
+  return cachedList("activities", options, () => findAllUncached(options));
+}
+
+async function findAllUncached({
   page = 1,
   limit = 20,
   sortBy = "created_at:desc",
@@ -95,7 +88,7 @@ export async function findAll(options = {}) {
   type = "",
   contact = "",
   recordId = "",
-  } = options;
+} = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -169,15 +162,13 @@ export async function findAll(options = {}) {
     dataParams,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const result = {
+  return {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-  await cacheSet(cacheKey, result, 60);
-  return result;
 }
 
 export async function findById(id) {
@@ -212,8 +203,9 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("activities");
+  return row;
 }
 
 export async function update(id, data = {}) {
@@ -236,8 +228,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("activities");
+  return row;
 }
 
 async function remove(id) {
@@ -245,8 +238,9 @@ async function remove(id) {
     "DELETE FROM activities WHERE id = $1 RETURNING id",
     [id],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("activities");
+  return deleted;
 }
 
 export { remove as delete };

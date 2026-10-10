@@ -283,7 +283,6 @@ describe("activities repository", () => {
       direction: "inbound",
       description: "Received an email",
       entity_id: "deal-2",
-      body: "Received an email",
       workspace_id: "ignored",
       unknown: "ignored",
     });

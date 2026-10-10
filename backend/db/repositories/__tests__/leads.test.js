@@ -6,7 +6,7 @@ vi.mock("../../pg.js", () => ({ query: pg.query }));
 
 import * as leads from "../leads.js";
 
-const { create, findAll, findById, update } = leads;
+const { create, findAll, findById, findByEmail, update } = leads;
 const deleteLead = leads.delete;
 
 function setFindAllResult(total, data = []) {
@@ -108,6 +108,47 @@ describe("leads repository", () => {
 
     pg.query.mockResolvedValueOnce({ rows: [] });
     await expect(findById("missing")).resolves.toBeNull();
+  });
+
+  it("scopes findById to a workspace when one is supplied", async () => {
+    // routes/forms.js resolves a recordId that arrived in an anonymous request
+    // body. Without this filter a visitor holding another tenant's UUID would
+    // get that lead read back and then overwritten by their submission.
+    const record = { id: "lead-1", workspace_id: "ws_acme" };
+    pg.query.mockResolvedValueOnce({ rows: [record] });
+    await expect(findById("lead-1", "ws_acme")).resolves.toBe(record);
+    expect(pg.query).toHaveBeenLastCalledWith(
+      "SELECT * FROM leads WHERE id = $1 AND workspace_id = $2",
+      ["lead-1", "ws_acme"],
+    );
+  });
+
+  it("finds a lead by exact email, newest match first", async () => {
+    const record = { id: "lead-2", email: "ada@example.com" };
+    pg.query.mockResolvedValueOnce({ rows: [record] });
+    await expect(findByEmail("  ADA@Example.com ")).resolves.toBe(record);
+    const [sql, params] = pg.query.mock.calls[0];
+    // Exact equality, not ILIKE: a substring match would let "a@b.co" overwrite
+    // "xa@b.com".
+    expect(sql).toContain("LOWER(COALESCE(email, '')) = LOWER($1)");
+    expect(sql).not.toContain("ILIKE");
+    expect(sql).toContain("ORDER BY created_at DESC LIMIT 1");
+    expect(sql).not.toContain("workspace_id");
+    expect(params).toEqual(["ADA@Example.com"]);
+  });
+
+  it("scopes the email lookup to a workspace when one is supplied", async () => {
+    const record = { id: "lead-3", workspace_id: "ws_globex" };
+    pg.query.mockResolvedValueOnce({ rows: [record] });
+    await expect(findByEmail("ada@example.com", "ws_globex")).resolves.toBe(record);
+    const [sql, params] = pg.query.mock.calls[0];
+    expect(sql).toContain("AND workspace_id = $2");
+    expect(params).toEqual(["ada@example.com", "ws_globex"]);
+  });
+
+  it("returns null from findByEmail without querying for a blank address", async () => {
+    await expect(findByEmail("   ")).resolves.toBeNull();
+    expect(pg.query).not.toHaveBeenCalled();
   });
 
   it("creates a lead with parameterized fields", async () => {

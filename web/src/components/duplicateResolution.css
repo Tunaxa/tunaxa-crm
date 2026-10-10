@@ -1,0 +1,9 @@
+.duplicate-table-scroll { overflow-x: auto; }
+.duplicate-resolution table { width: 100%; border-collapse: collapse; }
+.duplicate-resolution th, .duplicate-resolution td { padding: 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border, #64748b); overflow-wrap: anywhere; max-width: 300px; }
+.duplicate-resolution th small { display: block; font-weight: normal; }
+.duplicate-value-choice { display: flex; gap: 8px; align-items: start; cursor: pointer; }
+.duplicate-value-choice input { flex-shrink: 0; }
+.duplicate-value-choice:has(input:checked) { font-weight: 600; }
+.duplicate-resolution input:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+@media (max-width: 700px) { .duplicate-resolution table { min-width: 650px; } }

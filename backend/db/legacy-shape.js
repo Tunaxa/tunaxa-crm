@@ -27,6 +27,14 @@ export const PG_RESOURCES = new Set([
   "orders",
   "invoices",
   "expenses",
+  "campaigns",
+  "emailLists",
+  "email_lists",
+  "forms",
+  "tickets",
+  "surveys",
+  "surveyResponses",
+  "survey_responses",
 ]);
 
 /**
@@ -46,7 +54,10 @@ export const PG_RESOURCES = new Set([
  * `toPg` / `toLegacy` are the renames between the legacy camelCase key and the
  * column name. `hidden` columns are stored but never exposed in a response.
  */
-const RESOURCE_MAPPINGS = {
+// Exported so a test can assert that every mapped column still exists in the
+// table (and the other way round) after a migration. That drift is otherwise
+// invisible until a request happens to touch the offending column.
+export const RESOURCE_MAPPINGS = {
   contacts: {
     columns: ["workspace_id", "company_id", "first_name", "last_name", "email", "phone", "title", "owner_id", "custom_fields", "created_at", "updated_at"],
     toPg: { companyId: "company_id", ownerId: "owner_id" },
@@ -268,7 +279,14 @@ const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: ["name", "subject", "quoteNumber", "number", "customerEmail", "email"],
+    titleFallbacks: [
+      "name",
+      "subject",
+      "quoteNumber",
+      "number",
+      "customerEmail",
+      "email",
+    ],
   },
   contracts: {
     columns: [
@@ -315,7 +333,14 @@ const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: ["name", "subject", "contractNumber", "number", "customerEmail", "email"],
+    titleFallbacks: [
+      "name",
+      "subject",
+      "contractNumber",
+      "number",
+      "customerEmail",
+      "email",
+    ],
   },
   orders: {
     columns: [
@@ -443,6 +468,219 @@ const RESOURCE_MAPPINGS = {
     extraLegacy: { title: "name" },
     titleFallbacks: ["name", "vendor", "category"],
   },
+  // ── Migration 007: marketing and service entities ────────────────────────
+  //
+  // The legacy label column is `name` for these tables, not `title`, so each
+  // mapping below sets `titleColumn` to point the NOT NULL fallback at the
+  // column the table actually has.
+  campaigns: {
+    columns: [
+      "workspace_id",
+      "name",
+      "channel",
+      "status",
+      "description",
+      "budget",
+      "spend",
+      "target",
+      "reached",
+      "leads",
+      "start_date",
+      "end_date",
+      "metrics",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      // App.tsx campaignFields keys the channel field `channel`, with the
+      // values Email/SMS/Social/Multi-channel.
+      type: "channel",
+      startDate: "start_date",
+      endDate: "end_date",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      channel: "channel",
+      start_date: "startDate",
+      end_date: "endDate",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "name",
+    titleFallbacks: ["title", "channel", "description"],
+  },
+  email_lists: {
+    columns: [
+      "workspace_id",
+      "name",
+      "description",
+      "status",
+      "subscribers",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      // A count, not an address list: helpers.js coerces with Number() and the
+      // UI renders a number input.
+      subscriberCount: "subscribers",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      subscribers: "subscribers",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "name",
+    titleFallbacks: ["title", "description"],
+  },
+  forms: {
+    columns: [
+      "workspace_id",
+      "name",
+      "title",
+      "description",
+      "permalink",
+      "submit_to",
+      "progressive",
+      "redirect_url",
+      "enabled",
+      "fields",
+      "settings",
+      "submission_count",
+      "created_by",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      submitTo: "submit_to",
+      redirectUrl: "redirect_url",
+      submissionCount: "submission_count",
+      createdBy: "created_by",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      submit_to: "submitTo",
+      redirect_url: "redirectUrl",
+      submission_count: "submissionCount",
+      created_by: "createdBy",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "name",
+    titleFallbacks: ["title", "permalink"],
+  },
+  tickets: {
+    columns: [
+      "workspace_id",
+      "subject",
+      "description",
+      "stage",
+      "priority",
+      "source",
+      "contact",
+      "contact_email",
+      "comments",
+      "first_response_at",
+      "resolved_at",
+      "resolved_by",
+      "status",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      // slaStatus() in routes/tickets.js branches on `stage`, so the column is
+      // named `stage` even though the UI labels it a status.
+      status: "stage",
+      contactEmail: "contact_email",
+      firstResponseAt: "first_response_at",
+      resolvedAt: "resolved_at",
+      resolvedBy: "resolved_by",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      stage: "stage",
+      contact_email: "contactEmail",
+      first_response_at: "firstResponseAt",
+      resolved_at: "resolvedAt",
+      resolved_by: "resolvedBy",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "subject",
+    titleFallbacks: ["title", "name", "description"],
+  },
+  surveys: {
+    columns: [
+      "workspace_id",
+      "name",
+      "title",
+      "description",
+      "type",
+      "question",
+      "audience",
+      "target_score",
+      "status",
+      "questions",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      targetScore: "target_score",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      target_score: "targetScore",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "name",
+    titleFallbacks: ["title", "question", "audience"],
+  },
+  survey_responses: {
+    columns: [
+      "workspace_id",
+      "survey",
+      "survey_id",
+      "respondent",
+      "respondent_email",
+      "score",
+      "comment",
+      "responses",
+      "submitted_at",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      // `survey` holds a survey *name* in the legacy store, not an id.
+      respondentEmail: "respondent_email",
+      submittedAt: "submitted_at",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      respondent_email: "respondentEmail",
+      submitted_at: "submittedAt",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+  },
 };
 
 /**
@@ -451,10 +689,36 @@ const RESOURCE_MAPPINGS = {
  * deals answer with `title` *and* `name`, so the reverse direction has to be
  * spelled out rather than derived.
  */
+
+/**
+ * Mapping keys are snake_case, but callers hand us whatever spelling is in the
+ * URL: the router receives `emailLists` and `surveyResponses` from the
+ * frontend, while migrations and the backfill script use the table names
+ * `email_lists` and `survey_responses`. A miss here is silent and damaging - it
+ * falls back to the generic mapping, which drops `name` on the way in and
+ * leaves `name`/`firstName` untranslated on the way out, so the caller gets a
+ * NOT NULL violation or a snake_case payload instead of a clear miss. Resolve
+ * the snake_case spelling before giving up.
+ */
 function mappingFor(resource) {
-  const mapping = (resource && RESOURCE_MAPPINGS[resource]) || null;
-  if (mapping && !mapping.columnSet) mapping.columnSet = new Set(mapping.columns);
-  return mapping;
+  if (typeof resource !== "string" || !resource) return null;
+  const normalized = resource
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+  const direct = Object.prototype.hasOwnProperty.call(
+    RESOURCE_MAPPINGS,
+    resource,
+  )
+    ? RESOURCE_MAPPINGS[resource]
+    : null;
+  const mapping =
+    direct ||
+    (Object.prototype.hasOwnProperty.call(RESOURCE_MAPPINGS, normalized)
+      ? RESOURCE_MAPPINGS[normalized]
+      : null);
+  return mapping
+    ? { ...mapping, columnSet: mapping.columnSet || new Set(mapping.columns) }
+    : null;
 }
 
 /** Convert a PG timestamp value to the ISO string the legacy contract expects. */
@@ -475,6 +739,13 @@ const TEMPORAL_COLUMNS = new Set([
   "start_date",
   "end_date",
   "paid_at",
+  // Added with migration 007. routes/tickets.js seeded firstResponseAt and
+  // resolvedAt with empty strings, and a legacy client may send "" for
+  // submitted_at too; without these the empty string reaches a timestamptz
+  // column and the server rejects it with 22007 invalid datetime format.
+  "first_response_at",
+  "resolved_at",
+  "submitted_at",
 ]);
 
 /** Coerce a legacy date value to something the timestamptz column accepts. */
@@ -484,13 +755,23 @@ function normalizeTemporalValue(value) {
   return value;
 }
 
+/** Set an enumerable own property without invoking the legacy __proto__ setter. */
+function setOwn(object, key, value) {
+  Object.defineProperty(object, key, {
+    value,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+}
+
 /**
  * Convert a PG row (snake_case, Dates) → legacy API shape (camelCase strings).
  * `name` is reconstructed from first_name / last_name when available.
  *
  * `resource` is optional. The four core entities need the column knowledge in
- * RESOURCE_MAPPINGS; contacts and leads predate the mapping and rely on the
- * generic snake_case passthrough below.
+ * RESOURCE_MAPPINGS, including contacts and leads whose custom properties
+ * must survive a round trip through the existing custom_fields column.
  */
 export function pgToLegacy(row, resource) {
   if (!row) return null;
@@ -500,7 +781,9 @@ export function pgToLegacy(row, resource) {
   const out = {};
   for (const [key, value] of Object.entries(row)) {
     if (mapping.hidden.includes(key)) continue;
-    const legacyKey = mapping.toLegacy[key] || key;
+    const legacyKey = Object.prototype.hasOwnProperty.call(mapping.toLegacy, key)
+      ? mapping.toLegacy[key]
+      : key;
     if (value == null && (key === "created_at" || key === "updated_at")) {
       continue;
     }
@@ -508,7 +791,7 @@ export function pgToLegacy(row, resource) {
     // covers created_at/updated_at and every other timestamp column
     // (due_date, expected_close_date, ...) that res.json would otherwise have
     // to serialize for us.
-    out[legacyKey] = value instanceof Date ? toIsoString(value) : value;
+    setOwn(out, legacyKey, value instanceof Date ? toIsoString(value) : value);
   }
 
   // Overflow bag last, so a real column always wins over a bag entry that
@@ -516,7 +799,7 @@ export function pgToLegacy(row, resource) {
   const extra = row.custom_fields;
   if (extra && typeof extra === "object" && !Array.isArray(extra)) {
     for (const [key, value] of Object.entries(extra)) {
-      if (!(key in out)) out[key] = value;
+      if (!Object.prototype.hasOwnProperty.call(out, key)) setOwn(out, key, value);
     }
   }
 
@@ -591,9 +874,15 @@ export function legacyToPg(body, resource) {
       if (column === "items") {
         // `lineItems` and `items` both land here; anything that is not already
         // an array is wrapped, because jsonb[] rejects a bare object.
-        out[column] = Array.isArray(value) ? value : value == null || value === "" ? [] : [value];
+        out[column] = Array.isArray(value)
+          ? value
+          : value == null || value === ""
+            ? []
+            : [value];
       } else {
-        out[column] = TEMPORAL_COLUMNS.has(column) ? normalizeTemporalValue(value) : value;
+        out[column] = TEMPORAL_COLUMNS.has(column)
+          ? normalizeTemporalValue(value)
+          : value;
       }
     } else {
       extra[key] = value;
@@ -620,13 +909,19 @@ export function legacyToPg(body, resource) {
 function applyTitleFallback(mapping, out, body) {
   const fallbacks = mapping.titleFallbacks;
   if (!fallbacks) return;
-  if (out.title !== undefined && out.title !== null && out.title !== "") return;
+  // The required label column differs per table: `title` for quotes,
+  // contracts and expenses, `name` for campaigns, email_lists, forms and
+  // surveys, `subject` for tickets. Defaulting to `title` keeps the existing
+  // three mappings working unchanged.
+  const column = mapping.titleColumn || "title";
+  if (out[column] !== undefined && out[column] !== null && out[column] !== "")
+    return;
 
   for (const key of fallbacks) {
     const value = body?.[key];
     const text = value == null ? "" : String(value).trim();
     if (text) {
-      out.title = text;
+      out[column] = text;
       return;
     }
   }
@@ -635,7 +930,9 @@ function applyTitleFallback(mapping, out, body) {
 function genericLegacyToPg(body) {
   const out = { ...body };
   if ("name" in out) {
-    const parts = String(out.name || "").trim().split(/\s+/);
+    const parts = String(out.name || "")
+      .trim()
+      .split(/\s+/);
     out.first_name = parts[0] || "";
     out.last_name = parts.slice(1).join(" ") || undefined;
     delete out.name;

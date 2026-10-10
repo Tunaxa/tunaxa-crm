@@ -3,20 +3,32 @@ import { describe, expect, it } from "vitest";
 import { PG_RESOURCES, legacyToPg, pgToLegacy } from "../legacy-shape.js";
 
 describe("PG_RESOURCES", () => {
-  it("covers the four core resources and the six revenue resources", () => {
+  it("covers the core, revenue and 007 marketing/service resources", () => {
+    // snake_case aliases are listed alongside the camelCase names the API uses
+    // so the backfill script and migration tooling can look resources up by table
+    // name. Both spellings have to be present or one of those callers silently
+    // falls through to the JSON store.
     expect([...PG_RESOURCES].sort()).toEqual([
       "activities",
+      "campaigns",
       "companies",
       "contacts",
       "contracts",
       "deals",
+      "emailLists",
+      "email_lists",
       "expenses",
+      "forms",
       "invoices",
       "leads",
       "orders",
       "products",
       "quotes",
+      "surveyResponses",
+      "survey_responses",
+      "surveys",
       "tasks",
+      "tickets",
     ]);
   });
 });

@@ -1,13 +1,6 @@
 import { query } from "../pg.js";
+import { cachedList, invalidateListCache } from "./cache.js";
 
-import {
-  cacheFlush,
-  cacheGet,
-  cacheSet,
-  hashParams,
-} from "../../services/cache.js";
-
-const RESOURCE = "tasks";
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
@@ -60,19 +53,18 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll(options = {}) {
-  const cacheKey = `${RESOURCE}:list:${hashParams(options)}`;
-  const cached = await cacheGet(cacheKey);
-  if (cached) return cached;
+export function findAll(options = {}) {
+  return cachedList("tasks", options, () => findAllUncached(options));
+}
 
-  const {
-    page = 1,
-    limit = 20,
-    sortBy = "created_at:desc",
-    q = "",
-    status = "",
-    completed,
-  } = options;
+async function findAllUncached({
+  page = 1,
+  limit = 20,
+  sortBy = "created_at:desc",
+  q = "",
+  status = "",
+  completed,
+} = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -118,15 +110,13 @@ export async function findAll(options = {}) {
     params2,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const result = {
+  return {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-  await cacheSet(cacheKey, result, 60);
-  return result;
 }
 
 export async function findById(id) {
@@ -157,8 +147,9 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("tasks");
+  return row;
 }
 
 export async function update(id, data = {}) {
@@ -181,8 +172,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("tasks");
+  return row;
 }
 
 async function remove(id) {
@@ -190,8 +182,9 @@ async function remove(id) {
     "DELETE FROM tasks WHERE id = $1 RETURNING id",
     [id],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("tasks");
+  return deleted;
 }
 
 export { remove as delete };

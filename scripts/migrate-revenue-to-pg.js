@@ -243,6 +243,10 @@ function updateSet(config) {
     set.push(`${column} = EXCLUDED.${column}`);
   }
   if (config.items) set.push("items = EXCLUDED.items");
+  // created_at is deliberately absent: a re-run must not restamp a record's
+  // original creation time. updated_at is absent too - the
+  // update_updated_at_column() BEFORE UPDATE trigger sets it on every write, so
+  // assigning it here would be immediately overwritten anyway.
   return set.join(", ");
 }
 
