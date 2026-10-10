@@ -41,6 +41,7 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run lint
+      - run: npm run migrate
       - run: npm test
 
       - name: Comment on PR if failed

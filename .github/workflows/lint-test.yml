@@ -33,5 +33,6 @@ jobs:
           node-version: 24
       - run: npm ci
       - run: npm run lint
+      - run: npm run migrate
       - run: npm test
 
