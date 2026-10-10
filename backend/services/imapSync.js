@@ -22,6 +22,7 @@ import { simpleParser } from 'mailparser';
 import { query } from '../db/pg.js';
 import { repoFor } from '../db/repositories/index.js';
 import * as contactsRepo from '../db/repositories/contacts.js';
+import { pauseEnrollmentsOnReply } from './sequences.js';
 import * as leadsRepo from '../db/repositories/leads.js';
 import { normalizeEmail } from '../helpers.js';
 
@@ -295,6 +296,20 @@ export async function processInboundEmail(parsedEmail, workspaceId, options = {}
     metadata: buildMetadata(parsedEmail, { threadId, messageId, options }),
     created_at: sentAt.toISOString(),
   });
+
+  if (contact) {
+    try {
+      await pauseEnrollmentsOnReply({
+        contactId: contact.id,
+        workspaceId: workspace,
+        messageId,
+      });
+    } catch (error) {
+      // Sequence auto-pause is best-effort: a reply must never fail email
+      // persistence or the sync cursor advance.
+      console.error(`[sequence] pause-on-reply failed for ${contact.id}:`, error?.message || error);
+    }
+  }
 
   return {
     status: 'created',
