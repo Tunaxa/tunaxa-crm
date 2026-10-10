@@ -1,10 +1,26 @@
 import { readDb, mutateDb } from '../store.js';
+import { findRecord } from '../db/legacy-records.js';
 import { id, now } from '../helpers.js';
 import { runAction, deliverMessages } from './actions.js';
 import { DEFAULT_SETTINGS } from './config.js';
 
 const MAX_QUEUE = 2000;
 let running = false;
+
+/**
+ * Resolve the record a queued action refers to.
+ *
+ * A plain `db[resource]` lookup only works for resources still backed by the JSON
+ * store. Leads, contacts, tasks, companies, deals, activities and the twelve
+ * marketing/service resources now live in Postgres (migrations 004-007), so for
+ * those the JSON array is empty and the lookup reports a perfectly valid record
+ * as missing: the queue then rejects the action with 400, or drains it as
+ * "Referenced record no longer exists".
+ *
+ * PG-backed resources are read through their repository and converted with
+ * pgToLegacy so the action templates still see the legacy field names they were
+ * written against. Anything else still comes from the JSON store.
+ */
 
 // Schedules a delayed workflow action. Call inside a mutateDb snapshot so the
 // item is persisted atomically with any other changes.
@@ -61,10 +77,12 @@ export async function processExecutionQueue() {
           live.status = 'processing';
           live.attempts = (live.attempts || 0) + 1;
         });
+        // Resolved before the mutateDb below: the repository read cannot run
+        // inside the store snapshot, and the JSON fallback would re-enter the
+        // store the callback already holds.
+        const snapshot = await readDb();
+        const record = (await findRecord(item.recordId, [item.resource], snapshot))?.record;
         await mutateDb(async db => {
-          const record = item.resource && db[item.resource]
-            ? (db[item.resource].find(x => x.id === item.recordId) || null)
-            : null;
           if (item.recordId && !record) {
             const live = db.executionQueue.find(x => x.id === item.id);
             if (live) {

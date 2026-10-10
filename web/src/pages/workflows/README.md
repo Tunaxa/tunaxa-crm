@@ -26,10 +26,9 @@ graphs show a load error; no silent blank fallback is saved over stored data.
 Empty arrays remain empty, including for workflows with legacy actions.
 
 AXA-125 loads History on demand from `GET /api/workflows/:id/runs?page=1&limit=20`.
-The contract was inspected in `origin/feat/workflow-execution-history`, not copied
-or merged. That backend branch is not in current dev, so deployment of its API
-and workflow_runs storage is still required. Missing endpoints show unavailable,
-not an empty history. Access matches the API's admin/member restriction.
+Current dev includes workflow_runs storage and its PostgreSQL repository.
+The workflow route registers the history endpoint with workspace scoping and
+pagination validation. Missing endpoints show unavailable, not an empty history. Access matches the API's admin/member restriction.
 
 Response: `{ data, total, page, limit, totalPages }`. Each run includes `id`,
 `workflow_id`, `trigger_event`, `status`, `started_at`, `completed_at`,

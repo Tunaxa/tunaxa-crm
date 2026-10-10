@@ -6,17 +6,17 @@ export default function registerAuditRoutes(app) {
   app.get('/api/audit', auth, async (req, res) => {
     const db = await readDb();
     let audit = db.audit || [];
-    if (req.query.actor) audit = audit.filter(a => a.actor === req.query.actor);
-    if (req.query.action) audit = audit.filter(a => a.action.includes(req.query.action));
-    if (req.query.from) audit = audit.filter(a => a.createdAt >= req.query.from);
-    if (req.query.to) audit = audit.filter(a => a.createdAt <= req.query.to);
+    if (req.query.actor) audit = audit.filter(a => typeof a.actor === 'string' ? a.actor === req.query.actor : (a.actor?.name === req.query.actor || a.actor?.email === req.query.actor));
+    if (req.query.action) audit = audit.filter(a => a.action && a.action.includes(req.query.action));
+    if (req.query.from) audit = audit.filter(a => (a.createdAt || a.timestamp) >= req.query.from);
+    if (req.query.to) audit = audit.filter(a => (a.createdAt || a.timestamp) <= req.query.to);
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const offset = parseInt(req.query.offset) || 0;
     const items = audit.slice(offset, offset + limit).map((entry) => ({
       ...entry,
-      ip: entry.ip || "",
-      userAgent: entry.userAgent || "",
-      resourceId: entry.resourceId || "",
+      ip: entry.ip || (typeof entry.actor === 'object' ? entry.actor?.ip : '') || "",
+      userAgent: entry.userAgent || (typeof entry.actor === 'object' ? entry.actor?.userAgent : '') || "",
+      resourceId: entry.resourceId || entry.entityId || "",
     }));
     res.json({ items, total: audit.length });
   });
@@ -27,8 +27,9 @@ export default function registerAuditRoutes(app) {
     const byActor = {};
     const byAction = {};
     for (const entry of audit) {
-      byActor[entry.actor] = (byActor[entry.actor] || 0) + 1;
-      const actionType = entry.action.split(' ')[0] || 'other';
+      const actorKey = typeof entry.actor === 'object' && entry.actor ? (entry.actor.name || entry.actor.email || 'external_signer') : (entry.actor || 'unknown');
+      byActor[actorKey] = (byActor[actorKey] || 0) + 1;
+      const actionType = (entry.action || '').split(' ')[0] || 'other';
       byAction[actionType] = (byAction[actionType] || 0) + 1;
     }
     res.json({ total: audit.length, byActor, byAction });

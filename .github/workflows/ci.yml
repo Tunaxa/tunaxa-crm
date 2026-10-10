@@ -6,11 +6,34 @@ on:
   push:
     branches: [main, dev]
 
+permissions:
+  contents: read
+
 jobs:
   ci:
-    uses: Tunaxa/.github/.github/workflows/reusable-lint-test.yml@main
+    uses: ./.github/workflows/lint-test.yml
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: tunaxa
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tunaxa"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGDATABASE: tunaxa
+      PGUSER: postgres
+      PGPASSWORD: ci-test-password
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,6 +41,7 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run lint
+      - run: npm run migrate
       - run: npm test
 
       - name: Comment on PR if failed
@@ -25,11 +49,15 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
+            try {
+              await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
               body: `@${context.payload.pull_request.user.login} ❌ CI (lint/test) failed.
             Please review the logs and fix the issues:
             ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
-            })
+              });
+            } catch (error) {
+              core.warning(`Could not post CI failure comment: ${error.message}`);
+            }

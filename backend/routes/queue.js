@@ -1,4 +1,5 @@
 import { readDb, mutateDb } from '../store.js';
+import { findRecord } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { processExecutionQueue, retryExecution } from '../services/queue.js';
@@ -43,9 +44,13 @@ export default function registerExecutionRoutes(app) {
   app.post('/api/executions', auth, requireRole('admin', 'member'), async (req, res) => {
     const { flowId, resource, recordId, action, dueAt } = req.body || {};
     if (!resource || !action || !action.type) return res.status(400).json({ error: 'resource and action are required' });
+    // Resolved through the repository for PG-backed resources; a JSON-store
+    // lookup would call every lead, contact or ticket "missing" now that those
+    // tables own the data.
+    const snapshot = await readDb();
+    const record = (await findRecord(recordId, [resource], snapshot))?.record;
+    if (recordId && !record) return res.status(400).json({ error: 'Record not found' });
     const result = await mutateDb(db => {
-      const record = (db[resource] || []).find(x => x.id === recordId) || null;
-      if (recordId && !record) return { error: 'Record not found' };
       const flow = (db.workflows || []).find(f => f.id === flowId);
       const item = {
         id: id('exec'),

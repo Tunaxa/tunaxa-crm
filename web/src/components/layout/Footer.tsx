@@ -15,7 +15,6 @@ interface FooterProps {
 export const Footer: React.FC<FooterProps> = ({
   onNavigateToHome,
   onNavigateToPricing,
-  onNavigateToDemo,
   onNavigateToLogin,
   onNavigateToSetup,
   className = "",

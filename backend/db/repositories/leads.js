@@ -1,13 +1,6 @@
 import { query } from "../pg.js";
+import { cachedList, invalidateListCache } from "./cache.js";
 
-import {
-  cacheFlush,
-  cacheGet,
-  cacheSet,
-  hashParams,
-} from "../../services/cache.js";
-
-const RESOURCE = "leads";
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
@@ -61,17 +54,16 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll(params = {}) {
-  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
-  const cached = await cacheGet(cacheKey);
-  if (cached) return cached;
+export function findAll(options = {}) {
+  return cachedList("leads", options, () => findAllUncached(options));
+}
 
-  const {
-    page = 1,
-    limit = 20,
-    sortBy = "created_at:desc",
-    q = "",
-  } = params;
+async function findAllUncached({
+  page = 1,
+  limit = 20,
+  sortBy = "created_at:desc",
+  q = "",
+} = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -109,12 +101,55 @@ export async function findAll(params = {}) {
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-  await cacheSet(cacheKey, result, 60);
-  return result;
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM leads WHERE id = $1", [id]);
+/**
+ * `workspaceId` is optional so the authenticated CRUD routes keep working
+ * unchanged, but any lookup driven by an *anonymous* caller must pass it: a
+ * public form submit supplies a bare `recordId`, and without the filter a
+ * visitor who guessed a UUID from another tenant could have that lead
+ * overwritten by their submission.
+ */
+export async function findById(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM leads WHERE id = $1 AND workspace_id = $2"
+      : "SELECT * FROM leads WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Exact, case-insensitive email lookup.
+ *
+ * findAll({ q }) is not usable here: `q` is a substring ILIKE, so looking up
+ * "a@b.co" would also match "xa@b.com" and let a form submission overwrite the
+ * wrong person. routes/forms.js needs identity, not a search.
+ *
+ * The email index is not unique, so several leads can share an address.
+ * ORDER BY created_at DESC reproduces the old behaviour of `.find()` over a
+ * newest-first array: the most recent match wins.
+ *
+ * `workspaceId` scopes the match to one tenant. routes/forms.js passes the
+ * submitting form's workspace so a form cannot update a same-email lead that
+ * belongs to a different workspace.
+ *
+ * LOWER() on both sides means the plain btree index on email cannot be used for
+ * this lookup. That is deliberate: storing addresses case-folded instead would
+ * silently change what the equality means for existing rows.
+ */
+export async function findByEmail(email, workspaceId) {
+  const value = String(email || "").trim();
+  if (!value) return null;
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM leads WHERE LOWER(COALESCE(email, '')) = LOWER($1) AND workspace_id = $2 ORDER BY created_at DESC LIMIT 1"
+      : "SELECT * FROM leads WHERE LOWER(COALESCE(email, '')) = LOWER($1) ORDER BY created_at DESC LIMIT 1",
+    scoped ? [value, workspaceId] : [value],
+  );
   return result.rows[0] || null;
 }
 
@@ -139,8 +174,9 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("leads");
+  return row;
 }
 
 export async function update(id, data = {}) {
@@ -163,8 +199,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("leads");
+  return row;
 }
 
 async function remove(id) {
@@ -172,8 +209,9 @@ async function remove(id) {
     "DELETE FROM leads WHERE id = $1 RETURNING id",
     [id],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("leads");
+  return deleted;
 }
 
 export { remove as delete };

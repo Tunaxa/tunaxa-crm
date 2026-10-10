@@ -1,21 +1,9 @@
 import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { beforeAll } from "vitest";
 import { setDbPath } from "../store.js";
 import { query } from "../db/pg.js";
-
-const execFileAsync = promisify(execFile);
-
-beforeAll(async () => {
-  await execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "migrate"], {
-    cwd: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.."),
-    env: process.env,
-  });
-});
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const testDbDir = path.join(root, "__tests__");
@@ -103,8 +91,9 @@ export async function resetTestDb() {
   await fs.writeFile(testDbFile, JSON.stringify(emptyDb, null, 2));
   setDbPath(testDbFile);
   // Resources served from Postgres (see migrations/004_contacts_leads.sql,
-  // 005_core_entities.sql and 006_revenue_tables.sql) instead of test-db.json
-  // need their own reset.
+  // 005_core_entities.sql, 006_revenue_tables.sql and
+  // 007_marketing_service_tables.sql) instead of test-db.json need their own
+  // reset.
   // Best-effort on purpose: the JSON-backed resources must keep working when no
   // database is running, and a missing table is just as expected as a missing
   // server.
@@ -114,7 +103,7 @@ export async function resetTestDb() {
     if (pgReachable === false) return;
   }
   try {
-    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses CASCADE;");
+    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses, workflow_runs CASCADE;");
     pgReachable = true;
   } catch (error) {
     // ECONNREFUSED when no server is listening, 42P01 before 004/005 are applied.

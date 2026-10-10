@@ -1,13 +1,6 @@
 import { query } from "../pg.js";
+import { cachedList, invalidateListCache } from "./cache.js";
 
-import {
-  cacheFlush,
-  cacheGet,
-  cacheSet,
-  hashParams,
-} from "../../services/cache.js";
-
-const RESOURCE = "companies";
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
@@ -58,17 +51,16 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll(params = {}) {
-  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
-  const cached = await cacheGet(cacheKey);
-  if (cached) return cached;
+export function findAll(options = {}) {
+  return cachedList("companies", options, () => findAllUncached(options));
+}
 
-  const {
-    page = 1,
-    limit = 20,
-    sortBy = "created_at:desc",
-    q = "",
-  } = params;
+async function findAllUncached({
+  page = 1,
+  limit = 20,
+  sortBy = "created_at:desc",
+  q = "",
+} = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -106,8 +98,6 @@ export async function findAll(params = {}) {
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-  await cacheSet(cacheKey, result, 60);
-  return result;
 }
 
 export async function findById(id) {
@@ -135,7 +125,9 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("companies");
+  return row;
 }
 
 export async function update(id, data = {}) {
@@ -158,8 +150,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("companies");
+  return row;
 }
 
 async function remove(id) {
@@ -167,8 +160,9 @@ async function remove(id) {
     "DELETE FROM companies WHERE id = $1 RETURNING id",
     [id],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("companies");
+  return deleted;
 }
 
 export { remove as delete };

@@ -1,12 +1,5 @@
 import { query } from "../pg.js";
-import {
-  cacheFlush,
-  cacheGet,
-  cacheSet,
-  hashParams,
-} from "../../services/cache.js";
-
-const RESOURCE = "activities";
+import { cachedList, invalidateListCache } from "./cache.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -83,7 +76,11 @@ function searchCondition(param) {
     .join(" OR ");
 }
 
-export async function findAll({
+export function findAll(options = {}) {
+  return cachedList("activities", options, () => findAllUncached(options));
+}
+
+async function findAllUncached({
   page = 1,
   limit = 20,
   sortBy = "created_at:desc",
@@ -156,10 +153,6 @@ export async function findAll({
     [...params],
   );
   const dataParams = [...params, normalizedLimit, offset];
-    searchTerm ? [searchTerm] : [],
-  );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
   const dataResult = await query(
     `SELECT *
      FROM activities
@@ -176,8 +169,6 @@ export async function findAll({
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-  await cacheSet(cacheKey, result, 60);
-  return result;
 }
 
 export async function findById(id) {
@@ -212,7 +203,9 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("activities");
+  return row;
 }
 
 export async function update(id, data = {}) {
@@ -235,8 +228,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("activities");
+  return row;
 }
 
 async function remove(id) {
@@ -244,8 +238,9 @@ async function remove(id) {
     "DELETE FROM activities WHERE id = $1 RETURNING id",
     [id],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("activities");
+  return deleted;
 }
 
 export { remove as delete };

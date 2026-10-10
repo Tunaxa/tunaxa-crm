@@ -2,6 +2,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
+import { updateRecord } from "../services/resources.js";
 import { requireRole } from "../middleware/rbac.js";
 import {
   id,
@@ -15,12 +16,9 @@ import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
 import {
   triggerWorkflows,
   createdEvent,
-  updatedEvent,
-  eventFor,
 } from "../services/workflows.js";
 import { broadcast } from "./sse.js";
 import { cacheFlush } from "../services/cache.js";
-import { recordRevision } from "../services/revisions.js";
 import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
 import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
@@ -46,7 +44,32 @@ function buildCsvRow(columns, row) {
 // path applied these in JS after loading the whole file; forwarding them to the
 // repository keeps the same results while pushing the work into SQL. Repos
 // ignore the keys they do not implement.
-const PG_FILTER_KEYS = ["q", "type", "contact", "recordId", "stage", "status"];
+//
+// `category` has to be listed here or it never reaches SQL: products and
+// expenses both implement a category filter, and because findAll() destructures
+// its argument, an unlisted key is dropped silently rather than rejected.
+//
+// The 007 entities add filters on their own vocabulary: campaigns by channel,
+// forms by enabled/submitTo, tickets by priority/source, surveys by audience,
+// and survey responses by survey name and respondent email. `stage` and
+// `status` are already covered by the revenue cutover.
+const PG_FILTER_KEYS = [
+  "q",
+  "type",
+  "contact",
+  "recordId",
+  "stage",
+  "status",
+  "category",
+  "channel",
+  "enabled",
+  "submitTo",
+  "priority",
+  "source",
+  "audience",
+  "survey",
+  "respondentEmail",
+];
 
 // Hard stop on page-through loops. A repository that reports a total it cannot
 // deliver would otherwise spin until the request times out.
@@ -101,7 +124,6 @@ const uploadDir = path.join(root, "..", "uploads");
 // Fields the client may never set when updating a record: the stored values
 // always win. Stripped from the payload rather than re-pinned after the merge,
 // so there is a single mechanism to reason about.
-const IMMUTABLE_FIELDS = ["id", "createdAt"];
 
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
@@ -225,27 +247,6 @@ export default function registerResourceRoutes(app) {
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
-    const db = req.db || (await readDb());
-
-    const rows = (db[req.params.resource] || []).map((item) =>
-      req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
-    );
-
-    const columns = [
-      ...new Set(rows.flatMap((row) => Object.keys(row))),
-    ];
-
-    const cell = (value) => {
-      const text =
-        value == null
-          ? ""
-          : typeof value === "object"
-            ? JSON.stringify(value)
-            : String(value);
-
-      return `"${text.replace(/"/g, '""')}"`;
-    };
-
     let rows;
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
@@ -326,6 +327,9 @@ export default function registerResourceRoutes(app) {
           coerceBuiltIns(resource, pgData);
           const row = await repo.create(pgData);
           const item = pgToLegacy(row, resource);
+          await mutateDb(db => {
+            db.audit.unshift(auditEntry({ action: `Created ${resource.slice(0, -1)}`, actor: req.user.name, req, resourceId: item.id }));
+          });
           const event = createdEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
           broadcast("record.created", { resource, item });
@@ -462,109 +466,6 @@ export default function registerResourceRoutes(app) {
     auth,
     requireRole("admin", "member"),
     validate(ResourceSchema),
-    async (req, res, next) => {
-      const resource = req.params.resource;
-      if (!resources.has(resource)) return next();
-
-  // PUT and PATCH are the same operation in this store. The payload is merged
-  // over the stored record rather than replacing it, so a client that sends only
-  // the fields it changed (inline editing) leaves every other field untouched.
-  const updateRecord = async (req, res, next) => {
-    const resource = req.params.resource;
-
-    if (!resources.has(resource)) return next();
-
-    let previous = null;
-    let revisionId = null;
-      // ── PG path ──────────────────────────────────────────────────────────
-      if (PG_RESOURCES.has(resource)) {
-        const repo = repoFor(resource);
-        try {
-          const pgData = legacyToPg({ ...req.body }, resource);
-          coerceBuiltIns(resource, pgData);
-          const row = await repo.update(req.params.id, pgData);
-          if (!row) return res.status(404).json({ error: "Record not found" });
-          const item = pgToLegacy(row, resource);
-          const event = updatedEvent(resource);
-          if (event) triggerWorkflows(resource, event, item);
-          broadcast("record.updated", { resource, item });
-          cacheFlush(resource);
-          return res.json(item);
-        } catch (err) {
-          return next(err);
-        }
-      }
-
-      // ── Legacy JSON path ──────────────────────────────────────────────────
-      let previous = null;
-      let revisionId = null;
-
-    const item = await mutateDb((db) => {
-      const index = db[resource].findIndex(
-        (x) => x.id === req.params.id,
-      );
-
-      if (index < 0) return null;
-
-      previous = { ...db[resource][index] };
-
-      const data = { ...req.body };
-
-      for (const field of IMMUTABLE_FIELDS) delete data[field];
-
-      db[resource][index] = {
-        ...db[resource][index],
-        ...coerceBuiltIns(
-          resource,
-          coerceCustomFields(db, resource, data),
-        ),
-        updatedAt: now(),
-      };
-
-      revisionId = recordRevision(
-        db,
-        resource,
-        previous,
-        db[resource][index],
-        req.user,
-      );
-
-      db.audit.unshift(
-        auditEntry({
-          action: `Updated ${resource.slice(0, -1)}`,
-          actor: req.user.name,
-          req,
-          resourceId: req.params.id,
-        }),
-      );
-
-      return db[resource][index];
-    });
-
-    if (!item) {
-      return res.status(404).json({
-        error: "Record not found",
-      });
-    }
-
-    const event =
-      eventFor(resource, previous, item) || updatedEvent(resource);
-    if (event) triggerWorkflows(resource, event, item);
-    broadcast("record.updated", { resource, item, revisionId }, req.user.workspaceId || "default");
-    cacheFlush(resource);
-
-    res.json(
-      revisionId
-        ? { ...item, revisionId }
-        : item,
-    );
-  };
-
-  app.put(
-    "/api/:resource/:id",
-    auth,
-    requireRole("admin", "member"),
-    validate(ResourceSchema),
     updateRecord,
   );
 
@@ -591,6 +492,9 @@ export default function registerResourceRoutes(app) {
         try {
           const deleted = await repo.delete(req.params.id);
           if (!deleted) return res.status(404).json({ error: "Record not found" });
+          await mutateDb(db => {
+            db.audit.unshift(auditEntry({ action: `Deleted ${resource.slice(0, -1)}`, actor: req.user.name, req, resourceId: req.params.id }));
+          });
           broadcast("record.deleted", { resource, id: req.params.id });
           cacheFlush(resource);
           return res.json({ ok: true });
