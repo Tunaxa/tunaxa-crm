@@ -1,3 +1,4 @@
+import { CsvImportButton } from "../../components/imports/CsvImportWizard";
 import { useResource } from "../../lib/useResource";
 import { type Row, type FieldSpec } from "../../components/records/types";
 import { useNavigate } from "react-router-dom";
@@ -42,6 +43,7 @@ export function PipelinePage() {
         title="Pipeline"
         description="Drag deals between stages and keep your pipeline moving."
       >
+        <CsvImportButton resource="deals" label="Deals" fields={allFields} onComplete={load} />
         <button className="btn primary" onClick={() => setEdit(null)}>
           <Icon name="plus" /> Add deal
         </button>

@@ -1,5 +1,6 @@
+import { CsvImportButton } from "../../components/imports/CsvImportWizard";
 import { type FieldSpec, type Row, type BadgeTone } from "../../components/records/types";
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { type FilterGroup, FilterBuilder } from "../../components/FilterBuilder";
 import { useResource } from "../../lib/useResource";
 import { useApp } from "../../context/AppContext";
@@ -7,7 +8,6 @@ import { useNavigate } from "react-router-dom";
 import { getPageSize, savePageSize } from "../../components/records/preferences";
 import { useSchema } from "../../components/records/useSchema";
 import { useBulkSelection, SelectPage, BulkActions } from "../../components/BulkActions";
-import { api, json } from "../../lib/api";
 import { downloadResourceCsv } from "../../components/records/downloadResourceCsv";
 import { showMoney } from "../../components/records/formatters";
 import { money, PageHeader, Avatar, Badge, Empty } from "../../components/ui";
@@ -21,7 +21,7 @@ export function PeoplePage({
   icon,
   fields,
 }: {
-  resource: string;
+  resource: "leads" | "contacts";
   title: string;
   description: string;
   icon: string;
@@ -36,7 +36,6 @@ export function PeoplePage({
   const [pageSize, setPageSize] = useState(getPageSize());
   const [page, setPage] = useState(1);
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const inputRef = useRef<HTMLInputElement>(null);
   const custom = useSchema(resource);
   const allFields = [
     ...fields,
@@ -72,32 +71,6 @@ function changePageSize(value: number) {
 }
   const bulk = useBulkSelection(JSON.stringify([resource, query, filters]), rows.map((row) => row.id));
   const canBulk = user?.role === "admin" || user?.role === "member";
-  async function importCsv(file: File) {
-    try {
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      if (lines.length < 2) return toast("CSV has no rows", "error");
-      const headers = lines[0]
-        .split(",")
-        .map((x) => x.trim().replace(/^"|"$/g, ""));
-      const records = lines.slice(1).map((line) => {
-        const values = line
-          .split(",")
-          .map((x) => x.trim().replace(/^"|"$/g, ""));
-        return Object.fromEntries(
-          headers.map((key, index) => [key, values[index] || ""]),
-        );
-      });
-      await api(`/${resource}/batch`, json("POST", records));
-      await load();
-      toast(`${records.length} rows imported`);
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  }
-
   async function exportCsv() {
     try {
       await downloadResourceCsv(resource);
@@ -119,19 +92,7 @@ function changePageSize(value: number) {
   return (
     <div className="page">
       <PageHeader title={title} description={description}>
-        <input
-          ref={inputRef}
-          hidden
-          type="file"
-          accept=".csv,text/csv"
-          onChange={(e) => e.target.files?.[0] && importCsv(e.target.files[0])}
-        />
-        <button
-          className="btn secondary"
-          onClick={() => inputRef.current?.click()}
-        >
-          <Icon name="upload" /> Import
-        </button>
+        <CsvImportButton resource={resource} label={title} fields={allFields} onComplete={load} />
         <button className="btn secondary" onClick={exportCsv}>
           <Icon name="download" /> Export CSV
         </button>

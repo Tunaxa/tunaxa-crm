@@ -1,3 +1,4 @@
+import { CsvImportButton } from "../../components/imports/CsvImportWizard";
 import { type FieldSpec, type Row } from "../../components/records/types";
 import { useState } from "react";
 import { type FilterGroup, FilterBuilder } from "../../components/FilterBuilder";
@@ -50,6 +51,7 @@ export function CompaniesPage() {
         title="Companies"
         description="Accounts, organizations and relationship ownership."
       >
+        <CsvImportButton resource="companies" label="Companies" fields={allFields} onComplete={load} />
         <button
           className="btn secondary"
           disabled={!items.length}
