@@ -1,0 +1,19 @@
+.csv-import-wizard { display: grid; gap: 18px; }
+.csv-import-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; width: 100%; }
+.csv-import-wizard p { overflow-wrap: anywhere; }
+.csv-import-steps { display: flex; flex-wrap: wrap; gap: 14px; padding: 0; margin: 0; list-style: none; }
+.csv-import-steps li { display: flex; align-items: center; gap: 7px; color: var(--muted); }
+.csv-import-steps li[aria-current="step"] { color: var(--ink-primary); font-weight: 700; }
+.csv-import-steps span { border: 1px solid var(--border); border-radius: 50%; padding: 3px 8px; }
+.csv-import-mapping { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.csv-import-table { overflow: auto; max-height: 460px; }
+.csv-import-table table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.csv-import-table th, .csv-import-table td { text-align: left; padding: 12px; border-bottom: 1px solid var(--border); min-width: 100px; max-width: 280px; overflow-wrap: anywhere; }
+.csv-import-table th small { display: block; color: var(--muted); margin-top: 4px; }
+.csv-import-error { color: var(--red); overflow-wrap: anywhere; }
+.csv-import-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.csv-import-summary { display: flex; flex-wrap: wrap; gap: 20px; }
+.csv-import-summary dt { color: var(--muted); }
+.csv-import-summary dd { margin: 6px 0 0; font-size: 22px; font-weight: 700; }
+.csv-import-wizard progress { width: 100%; accent-color: var(--accent); }
+@media (max-width: 600px) { .csv-import-mapping { grid-template-columns: 1fr; } .csv-import-steps { font-size: 12px; gap: 10px; } }
