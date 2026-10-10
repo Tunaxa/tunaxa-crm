@@ -5,10 +5,10 @@ on:
     branches: [main, dev]
   push:
     branches: [main, dev]
-    
+
 permissions:
   contents: read
-  
+
 jobs:
   ci:
     uses: ./.github/workflows/lint-test.yml
@@ -41,6 +41,7 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run lint
+      - run: npm run migrate
       - run: npm test
 
       - name: Comment on PR if failed

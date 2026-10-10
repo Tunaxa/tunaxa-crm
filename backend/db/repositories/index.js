@@ -57,5 +57,5 @@ export const repositories = {
 
 /** Repository module for `resource`, or null when it is not stored in PG. */
 export function repoFor(resource) {
-  return repositories[resource] || null;
+  return Object.hasOwn(repositories, resource) ? repositories[resource] : null;
 }
