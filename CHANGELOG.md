@@ -8,6 +8,12 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Persistent User Preferences (`backend/routes/userPreferences.js`, `backend/services/userPreferences.js`, `backend/db/migrations/011_user_preferences.sql`):**
+  - Added `GET`, `PUT` and `PATCH /api/user/preferences` so a signed-in user's UI preferences follow them across browsers and devices instead of living only in `localStorage`. The contract is `theme` (`light`/`dark`/`system`, default `system`), `density` (`compact`/`comfortable`/`spacious`, default `comfortable`) and `columnVisibility` (resource name → visible column array or boolean flag).
+  - Preferences are persisted on the authenticated user record in the JSON store — the same source of truth `middleware/auth.js` reads for `req.user` — so they survive a server restart and stay consistent with `/api/auth/me`. Defaults are applied server-side on read.
+  - Validation rejects unknown keys, out-of-contract enums, malformed `columnVisibility` values and prototype-pollution keys (`__proto__`/`constructor`/`prototype`) with `400`, and caps the payload size (`413`) and column-map dimensions to stop a single user bloating storage. `PUT` and `PATCH` are both idempotent upserts that deep-merge `columnVisibility`, so a theme change never erases the column map; unrelated stored keys (the legacy `sidebarCollapsed`/`pageSize`) are preserved.
+  - Added an idempotent `011_user_preferences.sql` migration defining the equivalent `user_preferences` table (`user_id`, `theme`, `density`, `column_visibility`, `updated_at`) for the Postgres deployment path.
+  - Added `backend/__tests__/user-preferences.test.js` covering defaults, persistence, deep merge, per-user isolation, enum/malformed/oversized/prototype-pollution validation and authentication.
 - **Schema Reflection API (`backend/routes/schema.js`, `backend/services/schema.js`):**
   - Added `GET /api/schema/:resource` returning complete per-field metadata for an entity so a client can render forms, validations and tables purely from the API: `name`/`key`, `label`, `type` (`string`/`text`/`number`/`boolean`/`date`/`datetime`/`select`/`email`/`json`/`relation`), `required`, `readOnly`, `options` (`[{ label, value }]`), `defaultValue`, `placeholder`, `format`, `mapsTo` and `relation`.
   - Covers `contacts`, `leads`, `companies`, `deals`, `tickets`, `quotes`, `tasks` and `activities`; unknown resources answer `404` with the supported list.
