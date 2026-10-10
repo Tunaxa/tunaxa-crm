@@ -1,0 +1,16 @@
+.sequence-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
+.sequence-card { padding: 20px; min-width: 0; }
+.sequence-card h2 { font-size: 18px; margin: 14px 0; overflow-wrap: anywhere; }
+.sequence-card ol { padding-left: 20px; }
+.sequence-card li { margin: 10px 0; overflow-wrap: anywhere; }
+.sequence-card li small { display: block; color: var(--ink-muted); }
+.sequence-card footer, .sequence-step-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.sequence-editor, .sequence-enrollment { display: grid; gap: 18px; }
+.sequence-step-editor { display: grid; gap: 18px; list-style: none; margin: 0; padding: 0; }
+.sequence-step-editor > li { border: 1px solid var(--border); padding: 18px; }
+.sequence-step-editor h3 { margin: 0 0 16px; }
+.sequence-delay { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.sequence-editor [role="alert"], .sequence-enrollment [role="alert"] { color: #b91c1c; }
+.dark .sequence-editor [role="alert"], .dark .sequence-enrollment [role="alert"] { color: #fca5a5; }
+.sequence-enrollment ul { padding-left: 20px; }
+@media (max-width: 600px) { .sequence-delay { grid-template-columns: 1fr; } }

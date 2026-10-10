@@ -10,7 +10,8 @@ export interface SSEEventMap {
   "workflow.updated": { id: string };
   "workflow.deleted": { id: string };
   "workflow.graph_saved": { id: string };
-  "sequence.enrolled": { sequenceId: string; count: number };
+  "sequence.enrolled": { sequenceId: string; count?: number; enrolled?: number; skipped?: number };
+  "sequence.enrollment": { enrollmentId: string; status: string };
   "sequence.ran": { sequenceId: string } & Record<string, unknown>;
   "form.submitted": { formId: string; permalink: string; recordId: string };
   "form.created": { id: string };
