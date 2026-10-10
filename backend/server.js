@@ -51,6 +51,7 @@ import registerGraphQLRoutes from "./routes/graphql.js";
 import registerDataOpsRoutes from "./routes/dataops.js";
 import registerWebhookEndpointRoutes from "./routes/webhookendpoints.js";
 import registerQuoteRoutes from "./routes/quotes.js";
+import registerContactRoutes from "./routes/contacts.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { processExecutionQueue } from "./services/queue.js";
 import { startEmailSync, stopEmailSync } from "./services/emailSync.js";
@@ -243,6 +244,7 @@ registerGraphQLRoutes(app);
 registerDataOpsRoutes(app);
 registerWebhookEndpointRoutes(app);
 registerQuoteRoutes(app);
+registerContactRoutes(app);
 registerResourceRoutes(app);
 
 app.use((err, req, res, next) => {
