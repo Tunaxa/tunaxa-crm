@@ -25,6 +25,23 @@ const UPDATE_FIELDS = [
   "custom_fields",
 ];
 
+function enrichLead(row) {
+  if (!row) return row;
+  const cf =
+    typeof row.custom_fields === "object" && row.custom_fields !== null
+      ? row.custom_fields
+      : typeof row.custom_fields === "string"
+      ? JSON.parse(row.custom_fields || "{}")
+      : {};
+  if (row.score === undefined && cf.score !== undefined) {
+    row.score = cf.score;
+  }
+  if (row.last_scored_at === undefined && cf.last_scored_at !== undefined) {
+    row.last_scored_at = cf.last_scored_at;
+  }
+  return row;
+}
+
 function validatePositiveInteger(value, name) {
   if (!Number.isInteger(value) || value <= 0) {
     throw new RangeError(`${name} must be a positive integer`);
@@ -95,7 +112,7 @@ async function findAllUncached({
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
   return {
-    data: dataResult.rows,
+    data: dataResult.rows.map(enrichLead),
     total,
     page: normalizedPage,
     limit: normalizedLimit,
@@ -118,7 +135,7 @@ export async function findById(id, workspaceId) {
       : "SELECT * FROM leads WHERE id = $1",
     scoped ? [id, workspaceId] : [id],
   );
-  return result.rows[0] || null;
+  return enrichLead(result.rows[0]) || null;
 }
 
 /**
@@ -150,10 +167,30 @@ export async function findByEmail(email, workspaceId) {
       : "SELECT * FROM leads WHERE LOWER(COALESCE(email, '')) = LOWER($1) ORDER BY created_at DESC LIMIT 1",
     scoped ? [value, workspaceId] : [value],
   );
-  return result.rows[0] || null;
+  return enrichLead(result.rows[0]) || null;
 }
 
 export async function create(data = {}) {
+  const createData = { ...data };
+  if (
+    createData.score !== undefined ||
+    createData.last_scored_at !== undefined ||
+    createData.lead_score !== undefined ||
+    createData.score_factors !== undefined
+  ) {
+    const existingCf =
+      typeof createData.custom_fields === "object" && createData.custom_fields !== null
+        ? createData.custom_fields
+        : {};
+    createData.custom_fields = {
+      ...existingCf,
+      ...(createData.score !== undefined ? { score: createData.score } : {}),
+      ...(createData.lead_score !== undefined ? { lead_score: createData.lead_score } : {}),
+      ...(createData.score_factors !== undefined ? { score_factors: createData.score_factors } : {}),
+      ...(createData.last_scored_at !== undefined ? { last_scored_at: createData.last_scored_at } : {}),
+    };
+  }
+
   const result = await query(
     `INSERT INTO leads (
        workspace_id, first_name, last_name, email, phone, company_name,
@@ -161,33 +198,51 @@ export async function create(data = {}) {
      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
     [
-      data.workspace_id,
-      data.first_name,
-      data.last_name,
-      data.email,
-      data.phone,
-      data.company_name,
-      data.status,
-      data.source,
-      data.value,
-      data.owner_id,
-      data.custom_fields ?? {},
+      createData.workspace_id,
+      createData.first_name,
+      createData.last_name,
+      createData.email,
+      createData.phone,
+      createData.company_name,
+      createData.status,
+      createData.source,
+      createData.value,
+      createData.owner_id,
+      createData.custom_fields ?? {},
     ],
   );
-  const row = result.rows[0] || null;
-  if (row) await invalidateListCache("leads");
-  return row;
+  return enrichLead(result.rows[0]) || null;
 }
 
 export async function update(id, data = {}) {
+  const updateData = { ...data };
+  if (
+    updateData.score !== undefined ||
+    updateData.last_scored_at !== undefined ||
+    updateData.lead_score !== undefined ||
+    updateData.score_factors !== undefined
+  ) {
+    const existingCf =
+      typeof updateData.custom_fields === "object" && updateData.custom_fields !== null
+        ? updateData.custom_fields
+        : {};
+    updateData.custom_fields = {
+      ...existingCf,
+      ...(updateData.score !== undefined ? { score: updateData.score } : {}),
+      ...(updateData.lead_score !== undefined ? { lead_score: updateData.lead_score } : {}),
+      ...(updateData.score_factors !== undefined ? { score_factors: updateData.score_factors } : {}),
+      ...(updateData.last_scored_at !== undefined ? { last_scored_at: updateData.last_scored_at } : {}),
+    };
+  }
+
   const fields = UPDATE_FIELDS.filter(
     (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
+      Object.prototype.hasOwnProperty.call(updateData, field) &&
+      updateData[field] !== undefined,
   );
   if (fields.length === 0) return null;
 
-  const values = fields.map((field) => data[field]);
+  const values = fields.map((field) => updateData[field]);
   const assignments = fields.map(
     (field, index) => `${field} = $${index + 1}`,
   );
@@ -199,9 +254,7 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
-  const row = result.rows[0] || null;
-  if (row) await invalidateListCache("leads");
-  return row;
+  return enrichLead(result.rows[0]) || null;
 }
 
 async function remove(id) {
@@ -209,9 +262,7 @@ async function remove(id) {
     "DELETE FROM leads WHERE id = $1 RETURNING id",
     [id],
   );
-  const deleted = result.rowCount > 0;
-  if (deleted) await invalidateListCache("leads");
-  return deleted;
+  return result.rowCount > 0;
 }
 
 export { remove as delete };

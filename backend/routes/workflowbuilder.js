@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
 import { dryRunFlow, EVENT_META, ACTION_META, NODE_META } from '../services/workflows.js';
 import { broadcast } from './sse.js';
+import { repoFor } from '../db/repositories/index.js';
 
 function clean(flow) {
   const cleaned = {
@@ -106,6 +107,24 @@ export default function registerWorkflowBuilderRoutes(app) {
   app.post('/api/workflowbuilder', auth, requireRole('admin', 'member'), (req, res) => (
     createWorkflow(req, res, { requireGraph: true })
   ));
+
+  app.get('/api/workflows/:id/runs', auth, requireRole('admin', 'member'), async (req, res) => {
+    const db = await readDb();
+    const flow = (db.workflows || []).find(f => f.id === req.params.id);
+    if (!flow) return res.status(404).json({ error: 'Workflow not found' });
+
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 50;
+    const workspaceId = req.user?.workspaceId || req.user?.workspace_id;
+
+    const repo = repoFor('workflowRuns');
+    if (!repo) {
+      return res.json({ data: [], total: 0, page, limit, totalPages: 0 });
+    }
+
+    const runs = await repo.findByWorkflowId(req.params.id, { page, limit, workspaceId });
+    res.json(runs);
+  });
 
   app.get('/api/workflows/:id', auth, (req, res) => getWorkflow(req, res));
 

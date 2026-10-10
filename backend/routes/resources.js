@@ -463,6 +463,66 @@ export default function registerResourceRoutes(app) {
     auth,
     requireRole("admin", "member"),
     validate(ResourceSchema),
+    async (req, res, next) => {
+      const resource = req.params.resource;
+      if (!resources.has(resource)) return next();
+
+      // ── PG path ──────────────────────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = repoFor(resource);
+        try {
+          const pgData = legacyToPg({ ...req.body }, resource);
+          coerceBuiltIns(resource, pgData);
+          const row = await repo.update(req.params.id, pgData);
+          if (!row) return res.status(404).json({ error: "Record not found" });
+          const item = pgToLegacy(row, resource);
+          const event = updatedEvent(resource);
+          if (event) triggerWorkflows(resource, event, item);
+          broadcast("record.updated", { resource, item });
+          cacheFlush(resource);
+          return res.json(item);
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
+      let previous = null;
+      let revisionId = null;
+      const item = await mutateDb((db) => {
+        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        if (index < 0) return null;
+        previous = { ...db[resource][index] };
+        const data = { ...req.body };
+        db[resource][index] = {
+          ...db[resource][index],
+          ...coerceBuiltIns(resource, coerceCustomFields(db, resource, data)),
+          id: db[resource][index].id,
+          updatedAt: now(),
+        };
+        revisionId = recordRevision(
+          db,
+          resource,
+          previous,
+          db[resource][index],
+          req.user,
+        );
+        db.audit.unshift(auditEntry({
+          action: `Updated ${resource.slice(0, -1)}`,
+          actor: req.user.name,
+          req,
+          resourceId: req.params.id,
+        }));
+        return db[resource][index];
+      });
+      if (!item) return res.status(404).json({ error: "Record not found" });
+      const event =
+        eventFor(resource, previous, item) || updatedEvent(resource);
+      if (event) triggerWorkflows(resource, event, item);
+      broadcast("record.updated", { resource, item, revisionId });
+      cacheFlush(resource);
+      res.json(revisionId ? { ...item, revisionId } : item);
+    },
     updateRecord,
   );
 

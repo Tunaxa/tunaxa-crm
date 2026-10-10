@@ -267,14 +267,7 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: [
-      "name",
-      "subject",
-      "quoteNumber",
-      "number",
-      "customerEmail",
-      "email",
-    ],
+    titleFallbacks: ["name", "subject", "quoteNumber", "number", "customerEmail", "email"],
   },
   contracts: {
     columns: [
@@ -321,14 +314,7 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: [
-      "name",
-      "subject",
-      "contractNumber",
-      "number",
-      "customerEmail",
-      "email",
-    ],
+    titleFallbacks: ["name", "subject", "contractNumber", "number", "customerEmail", "email"],
   },
   orders: {
     columns: [

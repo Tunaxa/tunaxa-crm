@@ -55,6 +55,7 @@ import {
   evaluateOperator,
   getFieldValue,
   executeNodeGraph,
+  executeLegacyWorkflow,
   triggerWorkflows,
   dryRunFlow,
 } from '../workflows.js';
