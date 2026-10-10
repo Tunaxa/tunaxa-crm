@@ -9,6 +9,6 @@ docs/*
 backend/uploads/
 backend/backups/
 backend/data/db.json
-backend/__tests__/test-db.json
+backend/__tests__/test-db*.json
 .opencode/
 .vscode/

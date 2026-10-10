@@ -2211,8 +2211,8 @@ function changePageSize(value: number) {
 function useSchema(object: string): FieldSpec[] {
   const [custom, setCustom] = useState<FieldSpec[]>([]);
   useEffect(() => {
-    api<{ fields: FieldSpec[] }>(`/schema/${object}`)
-      .then((schema) => setCustom(schema.fields))
+    api<{ customFields?: FieldSpec[] }>(`/schema/${object}`)
+      .then((schema) => setCustom(schema.customFields || []))
       .catch(() => {});
   }, [object]);
   return custom;

@@ -6,7 +6,6 @@ import { getSettings, DEFAULT_SETTINGS } from "../services/config.js";
 import { resetTransporter as resetEmailTransporter } from "../services/email.js";
 import { resetTransporter as resetSmtpTransporter } from "../services/smtp.js";
 import { validate, SettingsSchema } from "../services/validate.js";
-import { BUILT_IN_FIELDS, customFieldSpecs } from "../helpers.js";
 import { EVENT_META, ACTION_META } from "../services/workflows.js";
 import { checkOllamaStatus } from "../services/ai.js";
 import { isAiConfigured, isTwilioConfigured } from "../services/config.js";
@@ -157,17 +156,6 @@ export default function registerSettingsRoutes(app) {
   app.get("/api/workflows/meta", auth, (req, res) =>
     res.json({ events: EVENT_META, actions: ACTION_META }),
   );
-
-  app.get("/api/schema/:object", auth, async (req, res) => {
-    const object = String(req.params.object || "").toLowerCase();
-    if (!(object in BUILT_IN_FIELDS))
-      return res.status(404).json({ error: "Unknown object" });
-    const db = await readDb();
-    res.json({
-      object,
-      fields: [...BUILT_IN_FIELDS[object], ...customFieldSpecs(db, object)],
-    });
-  });
 
   app.get("/api/twilio/status", auth, async (req, res) => {
     const settings = await getSettings();
