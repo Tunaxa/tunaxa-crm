@@ -13,6 +13,43 @@ export { parseDelayToMs };
 const id = prefix => `${prefix}_${crypto.randomUUID()}`;
 const now = () => new Date().toISOString();
 
+// Workflow run history is persisted in Postgres. These helpers are best-effort:
+// a missing repo or a failed insert must never break the workflow itself.
+async function createRunRecord({ workflow, event, context = {} }) {
+  try {
+    const repo = repoFor('workflowRuns');
+    if (!repo || typeof repo.create !== 'function') return null;
+    return await repo.create({
+      workflow_id: workflow.id,
+      trigger_event: event || workflow.event || 'unknown',
+      status: 'running',
+      started_at: new Date().toISOString(),
+      steps: [],
+      workspace_id: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function updateRunRecord(runId, { status, steps, error_message }) {
+  if (!runId) return null;
+  try {
+    const repo = repoFor('workflowRuns');
+    if (!repo || typeof repo.update !== 'function') return null;
+    return await repo.update(runId, {
+      status,
+      // A run that is still waiting has not completed; only a terminal status
+      // gets a completion timestamp.
+      completed_at: (status === 'success' || status === 'failed') ? new Date().toISOString() : null,
+      steps: Array.isArray(steps) ? steps : [],
+      error_message: error_message || null
+    });
+  } catch {
+    return null;
+  }
+}
+
 const RESOURCE_BY_EVENT_PREFIX = {
   lead: 'leads',
   contact: 'contacts',
@@ -448,44 +485,6 @@ function getConditionEdges(edgesFromNode, passes) {
   }
 }
 
-async function createRunRecord({ workflow, event, context = {} }) {
-  try {
-    const repo = repoFor('workflowRuns');
-    if (!repo || typeof repo.create !== 'function') return null;
-    return await repo.create({
-      workflow_id: workflow.id,
-      trigger_event: event || workflow.event || 'unknown',
-      status: 'running',
-      started_at: new Date().toISOString(),
-      steps: [],
-      workspace_id: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
-    });
-  } catch (err) {
-    console.error('Error creating workflow run record:', err);
-    return null;
-  }
-}
-
-async function updateRunRecord(runId, { status, steps, error_message }) {
-  if (!runId) return null;
-  try {
-    const repo = repoFor('workflowRuns');
-    if (!repo || typeof repo.update !== 'function') return null;
-    const updatePayload = {
-      status,
-      steps: Array.isArray(steps) ? steps : [],
-      error_message: error_message || null
-    };
-    if (status !== 'waiting') {
-      updatePayload.completed_at = new Date().toISOString();
-    }
-    return await repo.update(runId, updatePayload);
-  } catch (err) {
-    console.error('Error updating workflow run record:', err);
-    return null;
-  }
-}
-
 /**
  * Traverses and executes a visual node graph (Trigger -> Condition -> Action/Delay)
  * in topological/breadth-first order with branch skipping and cycle protection.
@@ -557,8 +556,8 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
             ? [...existingRun.steps]
             : (typeof existingRun.steps === 'string' ? JSON.parse(existingRun.steps) : []);
         }
-      } catch (err) {
-        console.error('Error fetching existing workflow run:', err);
+      } catch {
+        // A transient/missing run record must not abort the resume.
       }
     }
   }
@@ -697,32 +696,20 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
         }
 
         if (nodeType === 'wait') {
+          let waitError = null;
+          let scheduledResumeAt = null;
           const delayRaw = node.config?.delay ?? node.data?.delay ?? node.config?.duration ?? node.data?.duration;
           const delayStr = typeof delayRaw === 'object'
-            ? (delayRaw.delay || delayRaw.duration || (delayRaw.amount && delayRaw.unit ? `${delayRaw.amount} ${delayRaw.unit}` : JSON.stringify(delayRaw)))
+            ? (delayRaw.delay || delayRaw.duration || (delayRaw.amount && delayRaw.unit ? `${delayRaw.amount} ${delayRaw.unit}` : ''))
             : String(delayRaw ?? '');
           const delayMs = parseDelayToMs(delayRaw);
-          const scheduledResumeAt = new Date(Date.now() + delayMs).toISOString();
-
-          stepsLog.push({
-            nodeId: node.id,
-            nodeType: 'wait',
-            nodeName: node.data?.label || node.config?.name || 'Wait',
-            status: 'waiting',
-            output: { delay: delayStr, delayMs, scheduledResumeAt },
-            error: null,
-            executedAt: new Date().toISOString()
-          });
-
-          const edgesFromNode = outgoing.get(nodeId) || [];
-          const targetNodeIds = edgesFromNode.map(e => e.target).filter(Boolean);
 
           try {
             await scheduleWorkflowWaitJob({
               workflowId: workflow.id,
               runId,
               waitNodeId: node.id,
-              targetNodeIds,
+              targetNodeIds: (outgoing.get(nodeId) || []).map(edge => edge.target).filter(Boolean),
               delayMs,
               record,
               context,
@@ -730,23 +717,35 @@ export async function executeNodeGraph(workflow, event, record, context = {}) {
               workspaceId: workflow.workspace_id || workflow.workspaceId || context.workspaceId || context.workspace_id || 'default'
             });
             isWaiting = true;
+            scheduledResumeAt = new Date(Date.now() + delayMs).toISOString();
           } catch (err) {
+            waitError = err;
             hasErrors = true;
             if (!finalErrorMessage) finalErrorMessage = err.message;
           }
+
+          stepsLog.push({
+            nodeId: node.id,
+            nodeType: 'wait',
+            nodeName: node.data?.label || node.config?.name || 'Wait',
+            status: waitError ? 'failed' : 'waiting',
+            output: waitError ? null : { scheduled: true, delay: delayStr, delayMs, scheduledResumeAt },
+            error: waitError?.message || null,
+            executedAt: new Date().toISOString()
+          });
 
           // Do NOT execute downstream nodes synchronously — halt traversal along this branch
           continue;
         }
 
-        if (nodeType === 'action') {
-          let actionError = null;
-          let actionResult = null;
-          try {
-            const actionData = node.config || node.data || {};
-            const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
-            const normalizedType = normalizeActionType(actionType);
+      if (node.type === 'action') {
+        const actionData = node.config || node.data || {};
+        const actionType = actionData.type || node.action || (typeof actionData.action === 'string' ? actionData.action : actionData.action?.type);
+        const normalizedType = normalizeActionType(actionType);
 
+        let actionError = null;
+        let actionResult = null;
+        try {
             const actionConfig = {
               ...actionData,
               ...(typeof actionData.action === 'object' ? actionData.action : {}),

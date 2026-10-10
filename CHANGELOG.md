@@ -8,6 +8,10 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 
+- **Multiple Pipelines (`backend/routes/pipeline-definitions.js`):**
+  - Added REST CRUD for pipeline definitions (`GET`/`POST /api/pipeline/definitions`, `PUT`/`DELETE /api/pipeline/definitions/:id`), backed by the JSON store with per-workspace isolation.
+  - Deals can now be linked to any pipeline via `pipelineId` (`pipeline_id` column). When a deal omits `pipelineId`, it falls back to the primary/first pipeline.
+  - Added `backend/__tests__/multiple-pipelines.test.js` covering pipeline definition CRUD, two pipelines coexisting with different stages, and creating a deal linked to a custom pipeline.
 - **Quote Signing Automations (`backend/routes/quotes.js`):**
   - Dispatches `quote.signed` workflow events to the workflow execution engine upon successful quote signature, passing quote details, contract ID, signer metadata, and workspace context.
   - Added deal owner resolution to identify the sales representative associated with the quote's deal (or creator fallback) and dispatches an email notification with signing metadata, contract reference, and financial totals.

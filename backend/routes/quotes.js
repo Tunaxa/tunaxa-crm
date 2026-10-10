@@ -47,9 +47,7 @@ export default function registerQuoteRoutes(app) {
           if (compRow) {
             quote.companyName = compRow.name || compRow.title;
           }
-        } catch (err) {
-          console.error('Error fetching company details:', err);
-        }
+        } catch { /* optional relation enrichment; ignore lookup failures */ }
       }
 
       // Enrich with contact details if referenced
@@ -65,9 +63,7 @@ export default function registerQuoteRoutes(app) {
               legacyContact.name;
             quote.contactEmail = quote.contactEmail || legacyContact.email;
           }
-        } catch (err) {
-          console.error('Error fetching contact details:', err);
-        }
+        } catch { /* optional relation enrichment; ignore lookup failures */ }
       }
 
       const filename = `quote-${quote.quoteNumber || quote.number || quote.id}.pdf`;

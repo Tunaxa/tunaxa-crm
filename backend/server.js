@@ -19,6 +19,7 @@ import registerMessageRoutes from "./routes/messages.js";
 import registerV1ObjectRoutes from "./routes/v1objects.js";
 import registerV1AssociationRoutes from "./routes/v1associations.js";
 import registerWebhookRoutes from "./routes/webhooks.js";
+import registerContactRoutes from "./routes/contacts.js";
 import registerTemplateRoutes from "./routes/templates.js";
 import registerTrackingRoutes from "./routes/tracking.js";
 import registerAiRoutes from "./routes/ai.js";
@@ -33,6 +34,7 @@ import registerListRoutes from "./routes/lists.js";
 import registerLifecycleRoutes from "./routes/lifecycle.js";
 import registerLeadScoringRoutes from "./routes/leadscoring.js";
 import registerPipelineRoutes from "./routes/pipeline.js";
+import registerPipelineDefinitionRoutes from "./routes/pipeline-definitions.js";
 import registerSequenceRoutes from "./routes/sequences.js";
 import registerTicketRoutes from "./routes/tickets.js";
 import registerSchedulerRoutes from "./routes/scheduler.js";
@@ -226,6 +228,7 @@ registerListRoutes(app);
 registerLifecycleRoutes(app);
 registerLeadScoringRoutes(app);
 registerPipelineRoutes(app);
+registerPipelineDefinitionRoutes(app);
 registerSequenceRoutes(app);
 registerTicketRoutes(app);
 registerSchedulerRoutes(app);
@@ -242,6 +245,11 @@ registerModuleRoutes(app);
 registerGraphQLRoutes(app);
 registerDataOpsRoutes(app);
 registerWebhookEndpointRoutes(app);
+// These were imported but never wired up, so their endpoints 404'd. Registered
+// before the generic /api/:resource routes so the more specific
+// /api/contacts/:id/associations and /api/quotes/:id/{pdf,share-link,sign}
+// handlers win.
+registerContactRoutes(app);
 registerQuoteRoutes(app);
 registerResourceRoutes(app);
 

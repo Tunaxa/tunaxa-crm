@@ -62,7 +62,7 @@ describe('Quote E-Signature Token Service (quoteToken.js)', () => {
 
   it('rejects tampered tokens with invalid signatures', () => {
     const token = createQuoteSignToken('quote_tamper_test');
-    const [sigPart] = token.split('.');
+    const [, sigPart] = token.split('.');
 
     // Tamper the payload part
     const tamperedPayload = Buffer.from(
