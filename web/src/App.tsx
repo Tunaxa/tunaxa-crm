@@ -63,6 +63,7 @@ const CampaignsPage = lazy(() => import("./modules/marketing/CampaignsPage").the
 const EmailListsPage = lazy(() => import("./modules/marketing/EmailListsPage").then(module => ({ default: module.EmailListsPage })));
 const MarketingEmailsPage = lazy(() => import("./modules/marketing/MarketingEmailsPage").then(module => ({ default: module.MarketingEmailsPage })));
 const FormsPage = lazy(() => import("./modules/marketing/FormsPage").then(module => ({ default: module.FormsPage })));
+const TicketsPage = lazy(() => import("./modules/service/TicketsPage").then(module => ({ default: module.TicketsPage })));
 
 const logo = "/assets/tunaxa-logo.png";
 type NavItem = { path: string; label: string; icon: string };
@@ -114,6 +115,7 @@ const navGroups: NavGroup[] = [
   {
     label: "nav.service",
     items: [
+      { path: "/tickets", label: "nav.tickets", icon: "ticket" },
       { path: "/surveys", label: "nav.surveys", icon: "survey" },
       {
         path: "/survey-responses",
@@ -1050,6 +1052,7 @@ function AppRoutes() {
               />
               <Route path="/duplicates" element={<DuplicatesPage />} />
               <Route path="/portal" element={<PortalPage />} />
+              <Route path="/tickets" element={<TicketsPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/audit" element={<AuditPage />} />
               <Route path="/team" element={<TeamPage />} />
