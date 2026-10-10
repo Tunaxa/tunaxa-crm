@@ -1,0 +1,15 @@
+.pipeline-picker { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin-bottom: 20px; }
+.pipeline-picker .field { min-width: 220px; margin: 0; }
+.pipeline-picker > span { padding-bottom: 10px; }
+.pipeline-notice { border: 1px solid var(--border); padding: 16px; margin-bottom: 18px; }
+.pipeline-stage-probability { padding: 0 14px; font-size: 12px; color: var(--ink-muted); }
+.pipeline-card-stage select { width: 100%; background: var(--surface); color: var(--ink-primary); border: 1px solid var(--border); padding: 7px; }
+.pipeline-unmapped > p { padding: 14px; font-size: 13px; }
+.pipeline-editor { display: grid; gap: 18px; }
+.pipeline-editor > p[role="alert"] { color: #b91c1c; }
+.dark .pipeline-editor > p[role="alert"] { color: #fca5a5; }
+.pipeline-stage-editor { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.pipeline-stage-editor > li { display: grid; grid-template-columns: minmax(0, 1fr) 150px; gap: 12px; border: 1px solid var(--border); padding: 16px; }
+.pipeline-stage-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.pipeline-stage-editor small { grid-column: 1 / -1; }
+@media (max-width: 600px) { .pipeline-stage-editor > li { grid-template-columns: 1fr; } .pipeline-picker .field { width: 100%; } }
