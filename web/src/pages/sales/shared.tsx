@@ -1,4 +1,5 @@
 import { BulkActions, SelectPage, useBulkSelection } from "../../components/BulkActions";
+import { ColumnPicker, useColumnPreferences } from "../../components/ColumnPicker";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
@@ -231,6 +232,15 @@ export function PeoplePage({
     { key: "avatar", label: "Photo", type: "photo" },
     ...allFields,
   ];
+  const pickerColumns = [
+    { key: "name", label: "Name", required: true },
+    { key: "company", label: "Company" },
+    { key: "email", label: "Email" },
+    { key: "phone", label: "Phone" },
+    { key: resource === "leads" ? "status" : "owner", label: resource === "leads" ? "Status" : "Owner" },
+  ];
+  const columnPreferences = useColumnPreferences(resource, user?.id || "anonymous", pickerColumns);
+  const shown = (key: string) => columnPreferences.visibleKeys.includes(key);
   const rows = items.filter(
     (row) =>
       !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
@@ -312,6 +322,7 @@ export function PeoplePage({
               placeholder={`Search ${title.toLowerCase()}`}
             />
           </div>
+          <ColumnPicker columns={pickerColumns} hidden={columnPreferences.hidden} onChange={columnPreferences.change} saveError={columnPreferences.saveError} />
           <span className="table-count">{items.length} total</span>
         </div>
         {loading ? (
@@ -322,10 +333,10 @@ export function PeoplePage({
               <tr>
                 {canBulk && <th><SelectPage ids={rows.map((row) => row.id)} selected={bulk.selected} onChange={bulk.setSelected} disabled={bulk.busy} /></th>}
                 <th>Name</th>
-                <th>Company</th>
-                <th>Email</th>
-                <th>Phone</th>
-                <th>{resource === "leads" ? "Status" : "Owner"}</th>
+                {shown("company") && <th>Company</th>}
+                {shown("email") && <th>Email</th>}
+                {shown("phone") && <th>Phone</th>}
+                {shown(resource === "leads" ? "status" : "owner") && <th>{resource === "leads" ? "Status" : "Owner"}</th>}
                 <th />
               </tr>
             </thead>
@@ -345,10 +356,10 @@ export function PeoplePage({
                       </div>
                     </button>
                   </td>
-                  <td>{row.company || "—"}</td>
-                  <td>{row.email || "—"}</td>
-                  <td>{row.phone || "—"}</td>
-                  <td>
+                  {shown("company") && <td>{row.company || "—"}</td>}
+                  {shown("email") && <td>{row.email || "—"}</td>}
+                  {shown("phone") && <td>{row.phone || "—"}</td>}
+                  {shown(resource === "leads" ? "status" : "owner") && <td>
                     {resource === "leads" ? (
                       <Badge
                         tone={
@@ -364,7 +375,7 @@ export function PeoplePage({
                     ) : (
                       row.owner || "—"
                     )}
-                  </td>
+                  </td>}
                   <td>
                     <div className="row-actions">
                       <button

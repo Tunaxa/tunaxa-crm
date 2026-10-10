@@ -1,0 +1,9 @@
+.column-picker { position: relative; }
+.column-picker-panel { position: fixed; z-index: 1000; box-sizing: border-box; overflow-y: auto; width: min(280px, 85vw); padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface, #fff); color: var(--text); box-shadow: 0 12px 32px rgb(0 0 0 / 16%); }
+.column-picker-options { display: grid; gap: 10px; max-height: 300px; overflow-y: auto; margin: 14px 0; }
+.column-picker-options label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.column-picker-options input { width: 16px; height: 16px; margin: 0; accent-color: var(--primary, #2563eb); }
+.column-picker-options small { display: block; color: var(--muted); font-size: 11px; }
+.column-picker-actions { display: flex; justify-content: space-between; gap: 8px; }
+.column-picker-panel p { font-size: 12px; line-height: 1.5; }
+.column-picker :focus-visible, .column-picker-panel :focus-visible { outline: 2px solid var(--primary, #2563eb); outline-offset: 3px; }

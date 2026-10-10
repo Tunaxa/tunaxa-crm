@@ -1,3 +1,4 @@
+import { ColumnPicker, useColumnPreferences } from "./components/ColumnPicker";
 import { DuplicateResolution } from "./components/DuplicateResolution";
 import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
@@ -1835,7 +1836,7 @@ function CrudTablePage({
 }) {
   const { items, loading, load, create, update, remove } =
     useResource<Row>(resource);
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
 const [pageSize, setPageSize] = useState(getPageSize());
@@ -1843,6 +1844,11 @@ const [page, setPage] = useState(1);
 const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const cols = columns || fields;
+  const columnPreferences = useColumnPreferences(resource, user?.id || "anonymous", [
+    ...cols.map((column, index) => ({ ...column, required: index === 0 })),
+    ...(extraColumn ? [{ key: "__extra", label: extraColumn.title }] : []),
+  ]);
+  const visibleCols = cols.filter(column => columnPreferences.visibleKeys.includes(column.key));
   const mCols = new Set(moneyColumn || cols.map((c) => c.key));
   const singular = title.slice(0, -1).toLowerCase();
   const nameOf = (row: Row) =>
@@ -1990,6 +1996,10 @@ function changePageSize(value: number) {
             />
           </div>
 
+          <ColumnPicker columns={[
+            ...cols.map((column, index) => ({ ...column, required: index === 0 })),
+            ...(extraColumn ? [{ key: "__extra", label: extraColumn.title }] : []),
+          ]} hidden={columnPreferences.hidden} onChange={columnPreferences.change} saveError={columnPreferences.saveError} />
           <span className="table-count">
             {filteredRows.length} total
           </span>
@@ -2018,11 +2028,11 @@ function changePageSize(value: number) {
                 <tr>
                   <th>{cols[0]?.label || "Name"}</th>
 
-                  {cols.slice(1).map((c) => (
+                  {visibleCols.slice(1).map((c) => (
                     <th key={c.key}>{c.label}</th>
                   ))}
 
-                  {extraColumn ? (
+                  {extraColumn && columnPreferences.visibleKeys.includes("__extra") ? (
                     <th>{extraColumn.title}</th>
                   ) : null}
 
@@ -2033,7 +2043,7 @@ function changePageSize(value: number) {
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id}>
-                    {cols.map((c, i) =>
+                    {visibleCols.map((c, i) =>
                       i === 0 ? (
                         <td key={c.key}>
                           <button
@@ -2069,7 +2079,7 @@ function changePageSize(value: number) {
                       ),
                     )}
 
-                    {extraColumn ? (
+                    {extraColumn && columnPreferences.visibleKeys.includes("__extra") ? (
                       <td>{extraColumn.render(row)}</td>
                     ) : null}
 
@@ -2264,6 +2274,9 @@ function PeoplePage({
   ];
 
   const cols = allFields;
+  const pickerColumns = cols.map((column, index) => ({ ...column, required: index === 0 }));
+  const columnPreferences = useColumnPreferences(resource, user?.id || "anonymous", pickerColumns);
+  const visibleCols = cols.filter(column => columnPreferences.visibleKeys.includes(column.key));
   const mCols = new Set(cols.map((field) => field.key));
   const singular = title.slice(0, -1).toLowerCase();
   const nameOf = (row: Row) => String(row.name || row.title || "Untitled");
@@ -2372,6 +2385,7 @@ function changePageSize(value: number) {
               placeholder={`Search ${title.toLowerCase()}`}
             />
           </div>
+<ColumnPicker columns={pickerColumns} hidden={columnPreferences.hidden} onChange={columnPreferences.change} saveError={columnPreferences.saveError} />
 <span className="table-count">
   {filteredRows.length} total
 </span>
@@ -2395,7 +2409,7 @@ function changePageSize(value: number) {
               <tr>
                 {canBulk && <th><SelectPage ids={rows.map((row) => row.id)} selected={bulk.selected} onChange={bulk.setSelected} disabled={bulk.busy} /></th>}
                 <th>{cols[0]?.label || "Name"}</th>
-                {cols.slice(1).map((c) => (
+                {visibleCols.slice(1).map((c) => (
                   <th key={c.key}>{c.label}</th>
                 ))}
                 <th />
@@ -2405,7 +2419,7 @@ function changePageSize(value: number) {
               {rows.map((row) => (
                 <tr key={row.id}>
                   {canBulk && <td><input className="bulk-select" type="checkbox" aria-label={`Select ${row.name || row.title || row.id}`} checked={bulk.selected.includes(row.id)} disabled={bulk.busy || (!bulk.selected.includes(row.id) && bulk.selected.length >= 100)} onChange={() => bulk.toggle(row.id)} /></td>}
-                  {cols.map((c, i) =>
+                  {visibleCols.map((c, i) =>
                     i === 0 ? (
                       <td key={c.key}>
                         <button
