@@ -7,6 +7,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Security
+- **Email Open/Click Tracking Hardening (`backend/routes/tracking.js`, `backend/services/tracking.js`):**
+  - Replaced the legacy `:messageId` tracking stub with an HMAC-SHA256-signed, self-expiring token engine (`<base64url(payload)>.<base64url(signature)>`, 90-day TTL). Payloads carry `contactId`, `dealId`, `workspaceId`, `messageId`, and the click `targetUrl`; signatures are verified with constant-time `timingSafeEqual`, so a forged or altered token cannot be used to record engagement against another contact or tenant.
+  - Closed an arbitrary open-redirect: the previous `GET /api/tracking/click/:messageId?url=...` redirected to any caller-supplied string. The destination now travels inside the signed token and is revalidated with `isSafeDestinationUrl()` (absolute `http:`/`https:` only), rejecting `javascript:`, `data:`, `file:`, protocol-relative (`//`), and relative targets with `400 { error: "Invalid or unsafe destination URL" }` before any redirect.
+  - Made the open pixel fail open: a missing, malformed, or tampered token still returns the transparent 1x1 GIF with `Cache-Control: no-store` so a mail client never surfaces a broken image, but no activity is written.
+  - Both routes are unauthenticated by design (fetched by third-party mail clients); they derive the workspace from the signed token and only persist an activity when the referenced contact exists inside that workspace.
 - **Form Submission Hardening (`backend/routes/forms.js`):**
   - Added CORS `OPTIONS` preflight handling on `/api/forms/:permalink/submit` returning HTTP 204 No Content with `Access-Control-Allow-Origin: *`, `Access-Control-Allow-Methods: POST, OPTIONS`, `Access-Control-Allow-Headers: Content-Type, Accept, X-Requested-With`, and `Access-Control-Max-Age: 86400` to support embedded cross-site forms.
   - Added permissive `Access-Control-Allow-Origin: *` headers on all responses from the public submission route across success, validation error, not-found, and server error conditions.
@@ -42,6 +47,14 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- **Email Open & Click Tracking Engine (`backend/services/tracking.js`, `backend/routes/tracking.js`):**
+  - Implemented `createTrackingToken()` / `verifyTrackingToken()` signing and verifying engagement tokens with HMAC-SHA256, a 90-day TTL, and constant-time comparison; the signing secret is resolved from `APP_SECRET` → `TRACKING_SECRET` → `SESSION_SECRET` with a stable derived fallback.
+  - Added `generateOpenToken()` and `generateClickToken()` helpers plus `isSafeDestinationUrl()` absolute-`http(s)` validation.
+  - Added `injectTrackingPixel()` (appends the invisible 1x1 GIF before `</body>` or at the end of the document) and `wrapTrackingLinks()` (rewrites absolute `http(s)` anchors through the click redirect while leaving `mailto:`, `tel:`, `sms:`, in-page `#` anchors, unsubscribe links, and non-`http(s)` schemes untouched).
+  - Mounted `GET /api/tracking/open/:token` (serves the GIF with `no-store`/`no-cache`/`Pragma: no-cache`/`Expires: 0` headers and records an `email_open` activity, throttled to one event per message every 5 seconds to absorb mail-client and scanner prefetches) and `GET /api/tracking/click/:token` (records an `email_click` activity and issues a `302` to the validated destination).
+  - Wired outbound email in `backend/routes/messages.js` to the new engine: the send path now resolves the recipient contact, signs per-message open/click tokens, injects the pixel, and wraps links, replacing the superseded `:messageId` URL builder.
+- **Email Tracking Test Suite (`backend/__tests__/email-tracking.test.js`):**
+  - Added 13 tests spanning token round-trip/tamper/expiry/malformed handling, the `isSafeDestinationUrl` protocol matrix, pixel-injection and link-wrapping helpers, and end-to-end HTTP coverage of the GIF/redirect responses, `email_open`/`email_click` timeline entries, rapid-open throttling, open-redirect rejection (`javascript:`, `data:`, `file:`, protocol-relative), graceful tampered-token handling, and cross-tenant workspace scoping.
 - **Sequence Enrollment & Cadence Execution Engine (`backend/services/sequences.js`):**
   - Implemented `enrollContacts()` supporting multi-step cadence enrollment, deduplication against existing active/paused enrollments, and initial step delay calculations (`nextRunAt`).
   - Implemented `pauseEnrollmentsOnReply()`: automatically transitions all active enrollments for a contact to `replied` (`pausedReason: 'reply_received'`), clears `nextRunAt`, records incoming reply message IDs, and writes audit log entries.

@@ -8,15 +8,35 @@ import { sendSms } from '../services/twilio.js';
 import { triggerWorkflows } from '../services/workflows.js';
 import { validate, MessageSchema } from '../services/validate.js';
 import { createRateLimiter } from '../services/rateLimit.js';
+import { repoFor } from '../db/repositories/index.js';
+import {
+  generateOpenToken,
+  generateClickToken,
+  injectTrackingPixel,
+  wrapTrackingLinks,
+} from '../services/tracking.js';
 
 const providerLimiter = createRateLimiter({ windowMs: 60_000, max: 30, prefix: 'provider' });
 
-function injectTracking(body, messageId, publicBaseUrl) {
-  const baseUrl = publicBaseUrl || 'http://127.0.0.1:3001';
-  const pixel = `<img src="${baseUrl}/api/tracking/open/${messageId}" width="1" height="1" style="display:none" alt="" />`;
-  let html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#33475b">${body.replace(/\n/g, '<br>')}</div>${pixel}`;
-  html = html.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${baseUrl}/api/tracking/click/${messageId}?url=${encodeURIComponent(url)}">${url}</a>`);
-  return html;
+function autoLink(text) {
+  return String(text).replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${url}">${url}</a>`);
+}
+
+// Build the tracked HTML body. Identity is resolved from the recipient email so
+// open/click events land on the right contact's timeline; when no contact is
+// found the token still carries the workspace/message and tracking degrades to
+// message-level only rather than failing the send.
+async function buildTrackedHtml(body, message, workspaceId, publicBaseUrl) {
+  let contact = null;
+  try {
+    contact = await repoFor('contacts').findByEmail(message.to, workspaceId);
+  } catch {
+    contact = null;
+  }
+  const identity = { contactId: contact?.id || null, workspaceId, messageId: message.id };
+  const inner = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#33475b">${autoLink(String(body).replace(/\n/g, '<br>'))}</div>`;
+  const withPixel = injectTrackingPixel(inner, generateOpenToken(identity), publicBaseUrl);
+  return wrapTrackingLinks(withPixel, (url) => generateClickToken({ ...identity, targetUrl: url }), publicBaseUrl);
 }
 
 export default function registerMessageRoutes(app) {
@@ -69,8 +89,11 @@ export default function registerMessageRoutes(app) {
         : { delivered: false, status: 'Saved', error: 'Twilio is not configured in Settings' };
     } else {
       const track = settings.emailTracking !== false && settings.publicBaseUrl;
+      const html = track
+        ? await buildTrackedHtml(message.body, message, req.user?.workspaceId || 'default', settings.publicBaseUrl)
+        : undefined;
       result = isEmailConfigured(settings)
-        ? await sendEmail(settings, { to: message.to, subject: message.subject, text: message.body, html: track ? injectTracking(message.body, message.id, settings.publicBaseUrl) : undefined })
+        ? await sendEmail(settings, { to: message.to, subject: message.subject, text: message.body, html })
         : { delivered: false, status: 'Saved', error: 'SMTP is not configured in Settings' };
     }
 
