@@ -6,6 +6,7 @@ import { broadcast } from './sse.js';
 import { checkWriteFieldMask } from './permissions.js';
 import { repoFor } from '../db/repositories/index.js';
 import { pgToLegacy, legacyToPg } from '../db/legacy-shape.js';
+import { processMentions } from '../services/mentions.js';
 
 const TICKET_STAGES = ['New', 'In Progress', 'Awaiting Client', 'Resolved'];
 const DEFAULT_SLA = { firstResponseHours: 4, resolutionHours: 48 };
@@ -182,7 +183,7 @@ export default function registerTicketRoutes(app) {
     }
   });
 
-  app.post('/api/tickets/:id/comment', auth, requireRole('admin', 'member'), async (req, res) => {
+  const addTicketComment = async (req, res) => {
     const { body } = req.body || {};
     const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     if (!body) return res.status(400).json({ error: 'Comment body is required' });
@@ -196,11 +197,28 @@ export default function registerTicketRoutes(app) {
         createdAt: now()
       }, workspaceId);
       if (!row) return res.status(404).json({ error: 'Ticket not found' });
-      res.status(201).json(pgToLegacy(row, 'tickets'));
+      const ticket = pgToLegacy(row, 'tickets');
+
+      // Dispatch @mention notifications. processMentions swallows its own
+      // failures, so a notification problem can never fail the comment write.
+      await processMentions({
+        text: body,
+        authorUser: req.user,
+        workspaceId,
+        resourceType: 'ticket',
+        resourceId: ticket.id,
+        resourceTitle: ticket.subject
+      });
+
+      res.status(201).json(ticket);
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
-  });
+  };
+
+  app.post('/api/tickets/:id/comment', auth, requireRole('admin', 'member'), addTicketComment);
+  // Plural alias so either spelling of the comment collection works.
+  app.post('/api/tickets/:id/comments', auth, requireRole('admin', 'member'), addTicketComment);
 
   app.delete('/api/tickets/:id', auth, requireRole('admin', 'member'), async (req, res) => {
     const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
