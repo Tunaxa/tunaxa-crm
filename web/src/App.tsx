@@ -7301,7 +7301,6 @@ function SettingsPage() {
         <section className="surface settings-card">Loading…</section>
       </div>
     );
-    
  async function save(data: Record<string, any>) {
   try {
     const saved = await api<Record<string, any>>(
