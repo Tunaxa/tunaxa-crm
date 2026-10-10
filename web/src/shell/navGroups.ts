@@ -44,6 +44,7 @@ export const navGroups: NavGroup[] = [
   {
     label: "nav.service",
     items: [
+      { path: "/tickets", label: "nav.tickets", icon: "ticket" },
       { path: "/surveys", label: "nav.surveys", icon: "survey" },
       { path: "/survey-responses", label: "nav.surveyResponses", icon: "response" },
       { path: "/portal", label: "nav.portal", icon: "portal" },

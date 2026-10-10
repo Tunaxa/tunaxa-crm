@@ -1,6 +1,8 @@
 import type { SVGProps, ReactNode } from "react";
 
 const paths: Record<string, ReactNode> = {
+  refresh: <><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 6a8 8 0 0 1 13 3M18 18a8 8 0 0 1-13-3" /></>,
+  ticket: <><path d="M3 6h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4z" /><path d="M15 6v3m0 3v2m0 3v1" /></>,
   dashboard: (
     <>
       <rect x="3" y="3" width="7" height="7" rx="1.5" />

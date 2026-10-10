@@ -1,0 +1,37 @@
+.ticket-summary { display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 18px; }
+.ticket-summary b { font-size: 22px; margin-right: 5px; }
+.ticket-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin-bottom: 16px; }
+.ticket-filters .field:first-child { flex: 1; min-width: 220px; }
+.ticket-filters .field { margin: 0; }
+.ticket-overdue-filter { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; }
+.ticket-help, .ticket-contact, .ticket-empty-column { color: var(--ink-muted); font-size: 13px; }
+.ticket-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 1fr); gap: 16px; overflow-x: auto; padding: 4px 2px 18px; align-items: start; }
+.ticket-column { background: var(--surface-2); border: 1px solid var(--border); min-height: 260px; }
+.ticket-column > header { display: flex; align-items: center; justify-content: space-between; padding: 15px; border-bottom: 1px solid var(--border); }
+.ticket-column h2 { margin: 0; font-size: 14px; }
+.ticket-column-cards { display: grid; gap: 12px; padding: 12px; }
+.ticket-drop-target { outline: 2px solid var(--brand); outline-offset: -2px; }
+.ticket-card { background: var(--surface); padding: 14px; border: 1px solid var(--border); display: grid; gap: 12px; overflow-wrap: anywhere; }
+.ticket-card[draggable="true"] { cursor: grab; }
+.ticket-card-overdue { border-left: 4px solid #b91c1c; }
+.ticket-card-saving { opacity: .7; }
+.ticket-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ticket-card h3, .ticket-card p { margin: 0; }
+.ticket-title { background: none; border: 0; padding: 0; color: var(--ink-primary); text-align: left; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; overflow-wrap: anywhere; }
+.ticket-title:hover { text-decoration: underline; }
+.ticket-title:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
+.ticket-sla { display: grid; gap: 3px; font-size: 12px; }
+.ticket-sla > span { color: var(--ink-muted); }
+.ticket-sla-overdue strong, .ticket-sla-missed strong, .ticket-overdue-badge { color: #b91c1c; }
+.ticket-overdue-badge { font-size: 12px; font-weight: 700; }
+.ticket-sla-met strong { color: #047857; }
+.dark .ticket-sla-overdue strong, .dark .ticket-sla-missed strong, .dark .ticket-overdue-badge { color: #fca5a5; }
+.dark .ticket-sla-met strong { color: #6ee7b7; }
+.ticket-stage-picker select { width: 100%; border: 1px solid var(--border); padding: 8px; background: var(--surface); color: var(--ink-primary); }
+.ticket-load-error { border: 1px solid #b91c1c; padding: 16px; margin-bottom: 16px; }
+.ticket-details { display: grid; gap: 18px; }
+.ticket-details dl { display: grid; gap: 14px; margin: 0; }
+.ticket-details dt { color: var(--ink-muted); font-size: 12px; }
+.ticket-details dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.ticket-description { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+@media (max-width: 600px) { .ticket-board { grid-auto-columns: minmax(250px, 82vw); } .ticket-filters .field { width: 100%; } }
