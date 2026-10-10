@@ -5,6 +5,7 @@ import { id, now } from '../helpers.js';
 import { dryRunFlow, EVENT_META, ACTION_META, NODE_META } from '../services/workflows.js';
 import { broadcast } from './sse.js';
 import { repoFor } from '../db/repositories/index.js';
+import { normalizeListQuery } from '../middleware/pagination.js';
 
 function clean(flow) {
   const cleaned = {
@@ -75,8 +76,7 @@ async function getWorkflowRuns(req, res) {
   const flow = (db.workflows || []).find(f => f.id === req.params.id);
   if (!flow) return res.status(404).json({ error: 'Workflow not found' });
 
-  const page = parseInt(req.query.page, 10) || 1;
-  const limit = parseInt(req.query.limit, 10) || 50;
+  const { page, limit } = normalizeListQuery(req.query, { defaultLimit: 50 });
   const workspaceId = req.user?.workspaceId || req.user?.workspace_id;
 
   const repo = repoFor('workflowRuns');

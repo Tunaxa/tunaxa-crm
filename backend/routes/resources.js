@@ -25,6 +25,13 @@ import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
 import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
 import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
+import {
+  normalizeListQuery,
+  toRepositorySort,
+  buildPaginationEnvelope,
+  sortRecords,
+  wantsEnvelope,
+} from "../middleware/pagination.js";
 
 /**
  * Build the CSV representation of a single row, quoting every cell.
@@ -98,26 +105,44 @@ function readPgFilters(query) {
  * `page`/`limit` gets exactly that, which is what makes `export.csv` and the
  * duplicate detector see the complete set.
  */
-async function pgFindAll(resource, query = {}) {
+async function pgFindAll(resource, query = {}, pagination) {
   const repo = repoFor(resource);
   const filters = readPgFilters(query);
-  if (query.sortBy) filters.sortBy = query.sortBy;
+  const { page, limit, sortBy, sortDir } =
+    pagination || normalizeListQuery(query);
+  filters.sortBy = toRepositorySort(sortBy, sortDir);
 
   const hasPaging = query.page !== undefined || query.limit !== undefined;
   if (hasPaging) {
-    filters.page = Number(query.page) || 1;
-    filters.limit = Number(query.limit) || 20;
-    const result = await repo.findAll(filters);
+    const result = await repo.findAll({ ...filters, page, limit });
     return result.data.map((row) => pgToLegacy(row, resource));
   }
 
   const rows = [];
-  for (let page = 1; page <= MAX_PG_PAGES; page++) {
-    const result = await repo.findAll({ ...filters, page, limit: 100 });
+  for (let currentPage = 1; currentPage <= MAX_PG_PAGES; currentPage++) {
+    const result = await repo.findAll({
+      ...filters,
+      page: currentPage,
+      limit: 100,
+    });
     rows.push(...result.data.map((row) => pgToLegacy(row, resource)));
     if (result.data.length === 0 || rows.length >= result.total) break;
   }
   return rows;
+}
+
+/**
+ * Fetch a single normalized page plus its metadata. Unlike `pgFindAll` this
+ * keeps the repository's `{ data, total, page, limit, totalPages }` envelope so
+ * the caller can build the public paged response.
+ */
+async function pgFindPage(resource, query = {}, pagination) {
+  const repo = repoFor(resource);
+  const filters = readPgFilters(query);
+  const { page, limit, sortBy, sortDir } =
+    pagination || normalizeListQuery(query);
+  filters.sortBy = toRepositorySort(sortBy, sortDir);
+  return repo.findAll({ ...filters, page, limit });
 }
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -147,6 +172,13 @@ export default function registerResourceRoutes(app) {
     // ── PG path: every resource in PG_RESOURCES ────────────────────────────
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
+        if (wantsEnvelope(req.query)) {
+          const result = await pgFindPage(req.params.resource, req.query);
+          const rows = result.data.map((row) =>
+            pgToLegacy(row, req.params.resource),
+          );
+          return res.json(buildPaginationEnvelope(rows, result.total, result));
+        }
         const rows = await pgFindAll(req.params.resource, req.query);
         return res.json(rows);
       } catch (err) {
@@ -157,11 +189,10 @@ export default function registerResourceRoutes(app) {
     // ── Legacy JSON path: all other resources ──────────────────────────────
     const db = req.db || (await readDb());
 
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(
-      50,
-      Math.max(1, Number(req.query.limit) || 20),
-    );
+    // Same contract as the PG path: clamp page/limit into range and normalize
+    // the sort controls once, then reuse them for the messages envelope and the
+    // opt-in `?envelope=true` response.
+    const { page, limit, sortBy, sortDir } = normalizeListQuery(req.query);
     const start = (page - 1) * limit;
 
     let rows = db[req.params.resource] || [];
@@ -228,13 +259,19 @@ export default function registerResourceRoutes(app) {
       );
     }
 
+    // Sorting is opt-in for the JSON store: honour sortBy/sortDir only when the
+    // caller actually supplied one, so a bare list keeps its stored order.
+    if (req.query.sortBy !== undefined || req.query.sortDir !== undefined) {
+      rows = sortRecords(rows, sortBy, sortDir);
+    }
+
+    const paged =
+      req.query.page !== undefined || req.query.limit !== undefined;
+
     // AXA-128: pagination for messages is opt-in. A bare GET keeps returning the
-    // flat array callers and tests rely on; pass ?page/?limit (or ?total=1) to
-    // get the { items, total, ... } envelope the paged UI consumes.
-    if (
-      req.params.resource === "messages" &&
-      (req.query.page !== undefined || req.query.limit !== undefined)
-    ) {
+    // flat array callers and tests rely on; pass ?page/?limit to get the
+    // { items, total, ... } envelope the paged UI consumes.
+    if (req.params.resource === "messages" && paged) {
       const total = rows.length;
       const paginatedRows = rows.slice(start, start + limit);
 
@@ -243,8 +280,20 @@ export default function registerResourceRoutes(app) {
         total,
         page,
         limit,
+        totalPages: total <= 0 ? 0 : Math.ceil(total / limit),
         hasMore: start + limit < total,
       });
+    }
+
+    // Uniform opt-in envelope for the JSON-backed resources. A bare GET keeps
+    // returning the flat array legacy clients expect (docs/api-query-params.md).
+    if (wantsEnvelope(req.query)) {
+      return res.json(
+        buildPaginationEnvelope(rows.slice(start, start + limit), rows.length, {
+          page,
+          limit,
+        }),
+      );
     }
 
     res.json(rows);

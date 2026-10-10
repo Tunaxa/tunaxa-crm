@@ -9,6 +9,10 @@ import { createRateLimiter } from '../services/rateLimit.js';
 import { broadcast } from './sse.js';
 import { repoFor } from '../db/repositories/index.js';
 import { pgToLegacy, legacyToPg } from '../db/legacy-shape.js';
+import {
+  normalizeListQuery,
+  toRepositorySort,
+} from '../middleware/pagination.js';
 
 const publicLimiter = createRateLimiter({ windowMs: 60_000, max: 120, prefix: 'forms' });
 
@@ -369,17 +373,22 @@ export default function registerFormRoutes(app) {
   app.get('/api/forms', auth, async (req, res) => {
     try {
       const repo = repoFor('forms');
+      const { page, limit, sortBy, sortDir } = normalizeListQuery(req.query);
       const filters = {};
       if (req.query.q) filters.q = req.query.q;
       if (req.query.enabled !== undefined && req.query.enabled !== '') {
         filters.enabled = req.query.enabled === 'true';
       }
-      if (req.query.page !== undefined) filters.page = Number(req.query.page) || 1;
-      if (req.query.limit !== undefined) filters.limit = Number(req.query.limit) || 20;
+      filters.page = page;
+      filters.limit = limit;
+      filters.sortBy = toRepositorySort(sortBy, sortDir);
       const result = await repo.findAll(filters);
       res.json({
         data: result.data.map(row => pgToLegacy(row, 'forms')),
-        total: result.total
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages
       });
     } catch (error) {
       res.status(500).json({ error: error.message });
