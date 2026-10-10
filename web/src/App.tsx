@@ -63,6 +63,7 @@ const CampaignsPage = lazy(() => import("./modules/marketing/CampaignsPage").the
 const EmailListsPage = lazy(() => import("./modules/marketing/EmailListsPage").then(module => ({ default: module.EmailListsPage })));
 const MarketingEmailsPage = lazy(() => import("./modules/marketing/MarketingEmailsPage").then(module => ({ default: module.MarketingEmailsPage })));
 const FormsPage = lazy(() => import("./modules/marketing/FormsPage").then(module => ({ default: module.FormsPage })));
+const SequencesPage = lazy(() => import("./modules/marketing/sequences/SequencesPage").then(module => ({ default: module.SequencesPage })));
 
 const logo = "/assets/tunaxa-logo.png";
 type NavItem = { path: string; label: string; icon: string };
@@ -529,6 +530,7 @@ function AppRoutes() {
     "workflow.deleted": refreshAll,
     "workflow.graph_saved": refreshAll,
     "sequence.enrolled": refreshAll,
+    "sequence.enrollment": refreshAll,
     "sequence.ran": refreshAll,
     "form.submitted": refreshAll,
     "form.created": refreshAll,
@@ -3585,59 +3587,6 @@ function InboxPage() {
   );
 }
 
-function SequencesPage() {
-  const { items, create, update, remove } = useResource<Row>("sequences");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const fields: FieldSpec[] = [
-    { key: "name", label: "Sequence name" },
-    { key: "audience", label: "Audience / segment" },
-    { key: "steps", label: "Steps description", type: "textarea" },
-  ];
-  return (
-    <SimpleCards
-      title="Sequences"
-      description="Reusable multi-step outreach plans."
-      icon="sequence"
-      items={items}
-      onAdd={() => setEdit(null)}
-      onEdit={setEdit}
-      onDelete={remove}
-      render={(item) => (
-        <>
-          <div className="deal-top">
-            <Badge tone={item.enabled ? "green" : "neutral"}>
-              {item.enabled ? "Active" : "Paused"}
-            </Badge>
-            <Toggle
-              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "sequence"}`}
-              value={Boolean(item.enabled)}
-              onChange={(enabled) => update(item.id, { enabled })}
-            />
-          </div>
-          <h3>{item.name || "Untitled sequence"}</h3>
-          <p>{item.audience || "No audience selected"}</p>
-          <small>{item.steps || "No steps added"}</small>
-        </>
-      )}
-      modal={
-        edit !== undefined ? (
-          <RecordForm
-            title={`${edit ? "Edit" : "New"} sequence`}
-            fields={fields}
-            initial={edit || {}}
-            onClose={() => setEdit(undefined)}
-            onSave={async (data) => {
-              edit
-                ? await update(edit.id, data)
-                : await create({ ...data, enabled: false });
-              setEdit(undefined);
-            }}
-          />
-        ) : null
-      }
-    />
-  );
-}
 function LandingPagesPage() {
   return (
     <CrudTablePage

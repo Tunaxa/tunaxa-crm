@@ -10,6 +10,7 @@ import { contractSummaryValue, ContractDetails } from "../contracts/ContractDeta
 import { money, Avatar, Badge, Empty } from "../ui";
 import { GenerateInvoiceButton } from "../quotes/GenerateInvoiceButton";
 import { AssociatedRecords } from "../AssociatedRecords";
+import { ContactSequenceEnrollment } from "../../modules/marketing/sequences/ContactSequenceEnrollment";
 
 export const detailTabList = ["Overview", "Activity", "Notes", "Emails", "Calls", "History"] as const;
 
@@ -317,6 +318,7 @@ export function RecordDetailPage({
   </p>
 </div>
           <div className="detail-actions">
+            {resource === "contacts" && <ContactSequenceEnrollment key={record.id} contact={record} />}
             {resource === "quotes" ? (
               <GenerateInvoiceButton key={record.id} quote={record} />
             ) : null}
