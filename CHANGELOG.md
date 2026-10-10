@@ -37,6 +37,14 @@ and this project adheres to Semantic Versioning.
   - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
 ### Added
+- **Pipeline Batch-Move Engine (`backend/services/dealPipeline.js` & `backend/routes/deals.js`):**
+  - Implemented transactional batch stage progression (`POST /api/deals/batch-move` and alias `POST /api/deals/batch-stage`) protected by `auth`, `requireRole('admin', 'member')`, and `checkWriteFieldMask('deals')`.
+  - Enforced all-or-nothing atomicity via PostgreSQL transaction (`BEGIN ... COMMIT` / `ROLLBACK`) with row-level locking (`FOR UPDATE` on locked IDs) and strict count matching to prevent partial stage transitions.
+  - Automatically rolls back the entire batch if any deal ID does not exist, belongs to another tenant workspace, or encounters a failure during stage transition or activity insertion.
+  - Generates per-deal `stage_change` timeline activity records (`type: 'stage_change'`) within the same atomic transaction recording previous and updated stages along with batch execution metadata.
+  - Added JSON-store fallback executing mutations within a single `mutateDb` atomic callback snapshot.
+- **Pipeline Batch-Move Test Suite (`backend/__tests__/pipeline-batch-move.test.js`):**
+  - Added 12 unit and integration tests verifying successful multi-deal transitions, all-or-nothing rollback on missing deal IDs, cross-tenant 404 rejection and data preservation, simulated mid-transaction activity failure rollback, duplicate ID deduplication, RBAC write-masking 403 enforcement, and input validations.
 - **IMAP Inbound Sync Pipeline (`backend/services/imapSync.js`):**
   - Implemented three-stage inbound sync architecture utilizing `imapflow` and `mailparser`:
     - **Fetch:** Connects via IMAP with an injectable `InMemoryImapClient` for deterministic test/CI runs. Polls unread messages (`{ seen: false }`) on initial runs and persists a UID cursor (`uid: 'N+1:*'`) for incremental mailbox scans. Marks matched messages as `\Seen`.
