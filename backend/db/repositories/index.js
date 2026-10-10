@@ -18,6 +18,13 @@ import * as contracts from "./contracts.js";
 import * as orders from "./orders.js";
 import * as invoices from "./invoices.js";
 import * as expenses from "./expenses.js";
+import * as campaigns from "./campaigns.js";
+import * as emailLists from "./email-lists.js";
+import * as forms from "./forms.js";
+import * as tickets from "./tickets.js";
+import * as surveys from "./surveys.js";
+import * as surveyResponses from "./survey-responses.js";
+import * as workflowRuns from "./workflow-runs.js";
 
 export const repositories = {
   contacts,
@@ -32,9 +39,23 @@ export const repositories = {
   orders,
   invoices,
   expenses,
+  campaigns,
+  emailLists,
+  forms,
+  tickets,
+  surveys,
+  surveyResponses,
+  workflowRuns,
+  // The URL segment is what selects a repository, and the frontend asks for
+  // `emailLists` / `surveyResponses` (helpers.js lists them camelCase too), so
+  // those are the canonical keys above. The snake_case spellings are aliases
+  // for the backfill script and migration tooling, which work in table names.
+  email_lists: emailLists,
+  survey_responses: surveyResponses,
+  workflow_runs: workflowRuns,
 };
 
 /** Repository module for `resource`, or null when it is not stored in PG. */
 export function repoFor(resource) {
-  return Object.hasOwn(repositories, resource) ? repositories[resource] : null;
+  return repositories[resource] || null;
 }

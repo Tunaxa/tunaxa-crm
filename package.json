@@ -17,6 +17,7 @@
     "test:watch": "vitest --fileParallelism=false"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
     "@sentry/node": "^10.71.0",
     "@sentry/react": "^10.71.0",
     "@vitejs/plugin-react": "^4.3.4",

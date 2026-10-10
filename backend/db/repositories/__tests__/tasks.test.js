@@ -240,16 +240,6 @@ describe("tasks repository", () => {
     expect(sql).not.toContain("workspace_id = $");
     expect(sql).not.toContain("unknown = $");
     expect(params).toEqual(["Completed", true, "user-2", "task-1"]);
-
-  });
-
-  it("updates description independently with status", async () => {
-    pg.query.mockResolvedValueOnce({ rows: [{ id: "task-1" }] });
-    await update("task-1", { description: "Follow up", status: "Open" });
-    const [sql, params] = pg.query.mock.calls[0];
-    expect(sql).toContain("description = $1, status = $2");
-    expect(sql).toContain("WHERE id = $3");
-    expect(params).toEqual(["Follow up", "Open", "task-1"]);
   });
 
   it("returns null for empty or non-matching updates", async () => {

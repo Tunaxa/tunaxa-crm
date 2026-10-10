@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
 import { dryRunFlow, EVENT_META, ACTION_META, NODE_META } from '../services/workflows.js';
 import { broadcast } from './sse.js';
+import { findByWorkflowId } from '../db/repositories/workflow-runs.js';
 
 function clean(flow) {
   const cleaned = {
@@ -64,9 +65,9 @@ async function createWorkflow(req, res, { requireGraph = false } = {}) {
 
 async function getWorkflow(req, res) {
   const db = await readDb();
-  const flow = (db.workflows || []).find(f => f.id === req.params.id);
+  const flow = (db.workflows || []).find(item => item.id === req.params.id);
   if (!flow) return res.status(404).json({ error: 'Workflow not found' });
-  res.json(clean(flow));
+  return res.json(clean(flow));
 }
 
 async function updateWorkflow(req, res) {
@@ -92,6 +93,21 @@ async function updateWorkflow(req, res) {
 }
 
 export default function registerWorkflowBuilderRoutes(app) {
+  app.get('/api/workflows/:id/runs', auth, async (req, res, next) => {
+    try {
+      const db = await readDb();
+      const flow = (db.workflows || []).find(item => item.id === req.params.id);
+      if (!flow) return res.status(404).json({ error: 'Workflow not found' });
+      const page = Number(req.query.page ?? 1);
+      const limit = Number(req.query.limit ?? 50);
+      if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1) {
+        return res.status(400).json({ error: 'page and limit must be positive integers' });
+      }
+      res.json(await findByWorkflowId(flow.id, { page, limit, workspaceId: req.user.workspaceId || 'default' }));
+    } catch (error) {
+      next(error);
+    }
+  });
   app.get('/api/workflows/meta', auth, async (req, res) => {
     res.json({ events: EVENT_META, actions: ACTION_META, nodes: NODE_META });
   });

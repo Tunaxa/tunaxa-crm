@@ -1,13 +1,6 @@
 import { query } from "../pg.js";
+import { cachedList, invalidateListCache } from "./cache.js";
 
-import {
-  cacheFlush,
-  cacheGet,
-  cacheSet,
-  hashParams,
-} from "../../services/cache.js";
-
-const RESOURCE = "contacts";
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
@@ -57,17 +50,16 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll(params = {}) {
-  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
-  const cached = await cacheGet(cacheKey);
-  if (cached) return cached;
+export function findAll(options = {}) {
+  return cachedList("contacts", options, () => findAllUncached(options));
+}
 
-  const {
-    page = 1,
-    limit = 20,
-    sortBy = "created_at:desc",
-    q = "",
-  } = params;
+async function findAllUncached({
+  page = 1,
+  limit = 20,
+  sortBy = "created_at:desc",
+  q = "",
+} = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -98,19 +90,41 @@ export async function findAll(params = {}) {
       : [normalizedLimit, offset],
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const result = {
+  return {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-  await cacheSet(cacheKey, result, 60);
-  return result;
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM contacts WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM contacts WHERE id = $1 AND workspace_id = $2"
+      : "SELECT * FROM contacts WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Exact, case-insensitive email lookup. See the identical helper in leads.js
+ * for why findAll({ q }) cannot be used and why the newest match wins. Pass
+ * `workspaceId` for lookups driven by an anonymous form submission.
+ */
+export async function findByEmail(email, workspaceId) {
+  const value = String(email || "").trim();
+  if (!value) return null;
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM contacts WHERE LOWER(COALESCE(email, '')) = LOWER($1) AND workspace_id = $2 ORDER BY created_at DESC LIMIT 1"
+      : "SELECT * FROM contacts WHERE LOWER(COALESCE(email, '')) = LOWER($1) ORDER BY created_at DESC LIMIT 1",
+    scoped ? [value, workspaceId] : [value],
+  );
   return result.rows[0] || null;
 }
 
@@ -133,8 +147,9 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("contacts");
+  return row;
 }
 
 export async function update(id, data = {}) {
@@ -157,8 +172,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("contacts");
+  return row;
 }
 
 async function remove(id) {
@@ -166,8 +182,9 @@ async function remove(id) {
     "DELETE FROM contacts WHERE id = $1 RETURNING id",
     [id],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("contacts");
+  return deleted;
 }
 
 export { remove as delete };

@@ -19,7 +19,6 @@ import registerMessageRoutes from "./routes/messages.js";
 import registerV1ObjectRoutes from "./routes/v1objects.js";
 import registerV1AssociationRoutes from "./routes/v1associations.js";
 import registerWebhookRoutes from "./routes/webhooks.js";
-import registerContactRoutes from "./routes/contacts.js";
 import registerTemplateRoutes from "./routes/templates.js";
 import registerTrackingRoutes from "./routes/tracking.js";
 import registerAiRoutes from "./routes/ai.js";
@@ -51,6 +50,8 @@ import registerModuleRoutes from "./routes/modules.js";
 import registerGraphQLRoutes from "./routes/graphql.js";
 import registerDataOpsRoutes from "./routes/dataops.js";
 import registerWebhookEndpointRoutes from "./routes/webhookendpoints.js";
+import registerQuoteRoutes from "./routes/quotes.js";
+import registerContactRoutes from "./routes/contacts.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { processExecutionQueue } from "./services/queue.js";
 import { startEmailSync, stopEmailSync } from "./services/emailSync.js";
@@ -242,8 +243,7 @@ registerModuleRoutes(app);
 registerGraphQLRoutes(app);
 registerDataOpsRoutes(app);
 registerWebhookEndpointRoutes(app);
-// Registered before the generic resource routes so /api/contacts/:id/associations
-// is matched here rather than by the /api/:resource/:id handler.
+registerQuoteRoutes(app);
 registerContactRoutes(app);
 registerResourceRoutes(app);
 
