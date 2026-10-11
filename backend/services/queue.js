@@ -1,5 +1,4 @@
 import { readDb, mutateDb } from '../store.js';
-import { findRecord } from '../db/legacy-records.js';
 import { id, now } from '../helpers.js';
 import { runAction, deliverMessages } from './actions.js';
 import { DEFAULT_SETTINGS } from './config.js';

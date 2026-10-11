@@ -1,5 +1,5 @@
 import { query } from "../pg.js";
-import { cachedList, invalidateListCache } from "./cache.js";
+import { cachedList } from "./cache.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",

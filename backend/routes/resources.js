@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { updateRecord } from "../services/resources.js";
+import { updatedEvent, eventFor, recordRevision } from "../services/workflows.js";
 import { requireRole } from "../middleware/rbac.js";
 import {
   id,
