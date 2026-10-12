@@ -44,6 +44,24 @@ describe('Generic CRUD - leads', () => {
     expect(res.body[0].name).toBe('Acme Corp');
   });
 
+  it('GET /api/leads paginates and sorts', async () => {
+    const res = await request(app)
+      .get('/api/leads?page=1&limit=1&sortBy=name&sortDir=asc')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+  });
+
+  it('GET /api/leads/export.csv streams a CSV', async () => {
+    const res = await request(app)
+      .get('/api/leads/export.csv')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.text).toContain('name');
+    expect(res.text).toContain('Acme Corp');
+  });
+
   it('GET /api/leads/export.csv downloads all leads as CSV', async () => {
     const res = await request(app)
       .get('/api/leads/export.csv')

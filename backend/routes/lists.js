@@ -1,4 +1,5 @@
 import { readDb, mutateDb } from "../store.js";
+import { loadRecords } from "../db/legacy-records.js";
 import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import { id, now } from "../helpers.js";
@@ -157,14 +158,14 @@ export default function registerListRoutes(app) {
     if (!list) return res.status(404).json({ error: "List not found" });
 
     if (list.type === "static") {
-      const records = (db[list.resource] || []).filter((r) =>
+      const records = (await loadRecords(list.resource, db)).filter((r) =>
         (list.memberIds || []).includes(r.id),
       );
       return res.json({ data: records, total: records.length, type: "static" });
     }
 
     // Smart list — evaluate query against all records of the resource
-    const records = (db[list.resource] || []).filter((r) =>
+    const records = (await loadRecords(list.resource, db)).filter((r) =>
       recordMatches(r, list),
     );
     res.json({ data: records, total: records.length, type: "smart" });
@@ -176,10 +177,10 @@ export default function registerListRoutes(app) {
     auth,
     requireRole("admin", "member"),
     async (req, res) => {
-      const list = await mutateDb((db) => {
+      const list = await mutateDb(async (db) => {
         const found = (db.lists || []).find((l) => l.id === req.params.id);
         if (!found) return null;
-        const records = db[found.resource] || [];
+        const records = await loadRecords(found.resource, db);
         const matched = records.filter((r) => recordMatches(r, found));
         if (found.type === "smart") found.memberIds = matched.map((r) => r.id);
         found.lastEvaluatedAt = now();
@@ -208,7 +209,7 @@ export default function registerListRoutes(app) {
           .status(400)
           .json({ error: `resource must be one of: ${RESOURCES.join(", ")}` });
       const db = await readDb();
-      const records = (db[resource] || []).filter((r) =>
+      const records = (await loadRecords(resource, db)).filter((r) =>
         recordMatches(r, { conditions, logic }),
       );
       res.json({ data: records, total: records.length });

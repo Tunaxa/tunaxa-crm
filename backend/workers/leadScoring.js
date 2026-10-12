@@ -276,7 +276,9 @@ export async function scoreAllLeads({
       leadsToProcess = (db.leads || []).filter(
         (l) => !workspaceId || (l.workspace_id || l.workspaceId || 'default') === workspaceId,
       );
-    } catch (_) {}
+    } catch (err) {
+      console.error('[lead-scoring] Error reading leads from store:', err.message);
+    }
   }
 
   let scoredCount = 0;
@@ -296,7 +298,9 @@ export async function scoreAllLeads({
           limit: 100,
         });
         activities = actRes?.data || actRes?.items || [];
-      } catch (_) {}
+      } catch (err) {
+        console.error('[lead-scoring] Error reading activities from repository:', err.message);
+      }
     }
 
     try {
@@ -311,7 +315,9 @@ export async function scoreAllLeads({
       for (const act of localActs) {
         if (!seenIds.has(act.id)) activities.push(act);
       }
-    } catch (_) {}
+    } catch (err) {
+      console.error('[lead-scoring] Error reading activities from store:', err.message);
+    }
 
     // 2. Calculate score
     const { score, factors } = calculateLeadScore({ lead, activities });
@@ -347,7 +353,9 @@ export async function scoreAllLeads({
           updatedLead.score = score;
           updatedLead.last_scored_at = nowIso;
         }
-      } catch (_) {}
+      } catch (err) {
+        console.error('[lead-scoring] Error updating lead in repository:', err.message);
+      }
     }
 
     if (!updatedLead) {

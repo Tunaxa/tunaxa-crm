@@ -1,5 +1,5 @@
 import React from 'react';
-import ReactPDF, { Document, Page, Text, View, StyleSheet, renderToStream, renderToBuffer } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, renderToStream, renderToBuffer } from '@react-pdf/renderer';
 
 const h = React.createElement;
 

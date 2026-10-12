@@ -115,7 +115,7 @@ export default function registerOnboardingRoutes(app) {
       broadcast("onboarding.step_completed", {
         step,
         currentStep: updated.currentStep,
-      });
+      }, req.user.workspaceId || "default");
       res.json(updated);
     },
   );
