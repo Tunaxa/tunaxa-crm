@@ -1,5 +1,5 @@
 import { query } from "../pg.js";
-import { cachedList, invalidateListCache } from "./cache.js";
+import { cachedList } from "./cache.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -270,9 +270,7 @@ async function remove(id) {
     "DELETE FROM leads WHERE id = $1 RETURNING id",
     [id],
   );
-  const deleted = result.rowCount > 0;
-  if (deleted) await invalidateListCache("leads");
-  return deleted;
+  return result.rowCount > 0;
 }
 
 export { remove as delete };
