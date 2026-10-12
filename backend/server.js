@@ -15,6 +15,7 @@ import registerResourceRoutes from "./routes/resources.js";
 import registerSettingsRoutes from "./routes/settings.js";
 import registerSchemaRoutes from "./routes/schema.js";
 import registerUserPreferencesRoutes from "./routes/userPreferences.js";
+import registerInvitationRoutes from "./routes/invitations.js";
 import registerCallRoutes from "./routes/calls.js";
 import registerRecordingRoutes from "./routes/recordings.js";
 import registerMessageRoutes from "./routes/messages.js";
@@ -219,6 +220,10 @@ registerSchemaRoutes(app);
 // Persistent per-user preferences (P2-BE1-04). Registered ahead of the generic
 // `/api/:resource` handler for the same reason as the schema router above.
 registerUserPreferencesRoutes(app);
+// Team invitations (P2-BE1-05). Registered ahead of the generic
+// `/api/:resource` router so `/api/team/invites` is not answered as the
+// two-segment `/api/team/:id` resource route.
+registerInvitationRoutes(app);
 registerCallRoutes(app);
 registerRecordingRoutes(app, upload);
 registerMessageRoutes(app);
