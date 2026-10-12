@@ -1,142 +1,201 @@
+// CSV import router (P2-BE2-04).
+//
+//   POST /api/import/:resource          multipart file OR JSON { csv, mapping, dryRun }
+//   GET  /api/import/errors/:reportId   download the generated error CSV
+//   POST /api/import/error-report       download by { reportId } (POST-friendly alias)
+//   GET  /api/import/preview            header + first rows of an uploaded CSV
+//
+// The heavy lifting lives in `services/csvImport.js`, which is pure: a dry run
+// never calls the persistence callback, so "zero writes during a dry run" is a
+// property of the code path rather than an assumption. Error reports are held
+// in an in-memory registry (also no writes) so `errorReportId` stays fetchable
+// without touching the JSON store.
+//
+// Registered before the generic `/api/:resource` handlers in server.js. The
+// literal `error-report` route is declared before `/:resource` so Express does
+// not interpret it as a resource name.
+
 import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { mutateDb } from "../store.js";
+import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
-import { id, now } from "../helpers.js";
+import { auditEntry, coerceBuiltIns } from "../helpers.js";
 import { createRateLimiter } from "../services/rateLimit.js";
 import { broadcast } from "./sse.js";
+import { cacheFlush } from "../services/cache.js";
+import { buildResourceSchema } from "../services/schema.js";
+import { repoFor } from "../db/repositories/index.js";
+import { legacyToPg } from "../db/legacy-shape.js";
+import {
+  IMPORT_RESOURCES,
+  ImportError,
+  parseCsv,
+  runImport,
+  createErrorReportStore,
+} from "../services/csvImport.js";
 
-const root = path.dirname(fileURLToPath(import.meta.url));
-void root;
+// Bulk imports are deliberately rate limited, but 5 per 5 minutes blocked
+// experimentation. Dry runs are read-only and cheap; the ceiling is set high
+// enough for interactive mapping/preview without removing the guard.
 const limiter = createRateLimiter({
   windowMs: 300_000,
-  max: 5,
+  max: 60,
   prefix: "import",
 });
 
-function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return { headers: [], rows: [] };
-  const headers = lines[0]
-    .split(",")
-    .map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const values = lines[i]
-      .split(",")
-      .map((v) => v.trim().replace(/^"|"$/g, ""));
-    if (values.length === headers.length) {
-      const row = {};
-      headers.forEach((h, idx) => {
-        row[h] = values[idx];
-      });
-      rows.push(row);
-    }
-  }
-  return { headers, rows };
-}
+const errorReports = createErrorReportStore();
 
-function mapFields(row, resource) {
-  const fieldMap = {
-    leads: {
-      name: ["name", "lead name", "full name"],
-      email: ["email", "e-mail"],
-      phone: ["phone", "telephone", "mobile"],
-      company: ["company", "organization"],
-      source: ["source", "lead source"],
-      status: ["status", "lead status"],
-    },
-    contacts: {
-      name: ["name", "full name", "contact name"],
-      email: ["email", "e-mail"],
-      phone: ["phone", "telephone", "mobile"],
-      company: ["company", "organization"],
-    },
-    companies: {
-      name: ["name", "company", "organization"],
-      industry: ["industry", "sector"],
-      country: ["country", "location"],
-    },
-    deals: {
-      title: ["title", "deal name", "name"],
-      value: ["value", "amount", "deal value"],
-      stage: ["stage", "pipeline stage"],
-      company: ["company"],
-    },
-  };
-  const map = fieldMap[resource] || {};
-  const mapped = {};
-  for (const [field, aliases] of Object.entries(map)) {
-    for (const alias of aliases) {
-      if (row[alias] !== undefined && row[alias] !== "") {
-        mapped[field] = row[alias];
-        break;
-      }
-    }
-  }
-  return mapped;
+const asBoolean = (value) =>
+  value === true || value === "true" || value === "1";
+
+function sendErrorReport(res, report) {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="import-errors.csv"',
+  );
+  return res.send(report.csv);
 }
 
 export default function registerImportRoutes(app, upload) {
+  app.post("/api/import/error-report", auth, (req, res) => {
+    const reportId = req.body && req.body.reportId;
+    const report = reportId ? errorReports.get(reportId) : null;
+    if (!report) {
+      return res
+        .status(404)
+        .json({ error: "Error report not found or expired" });
+    }
+    return sendErrorReport(res, report);
+  });
+
+  app.get("/api/import/errors/:reportId", auth, (req, res) => {
+    const report = errorReports.get(req.params.reportId);
+    if (!report) {
+      return res
+        .status(404)
+        .json({ error: "Error report not found or expired" });
+    }
+    return sendErrorReport(res, report);
+  });
+
   app.post(
     "/api/import/:resource",
     auth,
     requireRole("admin", "member"),
     limiter,
     upload.single("file"),
-    async (req, res) => {
-      if (!req.file)
-        return res.status(400).json({ error: "CSV file is required" });
+    async (req, res, next) => {
       const resource = req.params.resource;
-      const validResources = ["leads", "contacts", "companies", "deals"];
-      if (!validResources.includes(resource))
-        return res
-          .status(400)
-          .json({
-            error: `Resource must be one of: ${validResources.join(", ")}`,
-          });
+      if (!IMPORT_RESOURCES.includes(resource)) {
+        return res.status(400).json({
+          error: `Resource must be one of: ${IMPORT_RESOURCES.join(", ")}`,
+        });
+      }
 
+      const body = req.body || {};
       try {
-        const content = await fs.readFile(req.file.path, "utf-8");
-        await fs.unlink(req.file.path).catch(() => {});
-        const { headers, rows } = parseCSV(content);
-        if (rows.length === 0)
-          return res.status(400).json({ error: "No data rows found in CSV" });
-        if (rows.length > 1000)
+        let csv;
+        if (req.file) {
+          csv = await fs.readFile(req.file.path, "utf-8");
+          await fs.unlink(req.file.path).catch(() => {});
+        } else if (typeof body.csv === "string") {
+          csv = body.csv;
+        } else {
+          return res.status(400).json({
+            error: "CSV content is required (send `csv` or upload a file)",
+          });
+        }
+
+        let mapping = body.mapping;
+        if (typeof mapping === "string") {
+          if (mapping.trim() === "") {
+            mapping = undefined;
+          } else {
+            try {
+              mapping = JSON.parse(mapping);
+            } catch {
+              return res
+                .status(400)
+                .json({ error: "`mapping` must be valid JSON" });
+            }
+          }
+        }
+
+        const dryRun = asBoolean(body.dryRun);
+        const failureStrategy =
+          body.failureStrategy === "abort" ? "abort" : "continue";
+
+        const db = await readDb();
+        const schema = buildResourceSchema(resource, { db });
+        if (!schema) {
           return res
             .status(400)
-            .json({ error: "Maximum 1000 rows per import" });
+            .json({ error: `Schema for "${resource}" is unavailable` });
+        }
 
-        const mapped = rows
-          .map((row) => mapFields(row, resource))
-          .filter((r) => Object.keys(r).length > 0);
-        const createdAt = now();
-        let imported = 0;
-        await mutateDb((db) => {
-          for (const data of mapped) {
-            const record = {
-              id: id(resource.slice(0, -1) || "item"),
-              ...data,
-              createdAt,
-              updatedAt: createdAt,
-            };
-            db[resource].unshift(record);
-            imported++;
-          }
-          db.audit.unshift({
-            id: id("audit"),
-            action: `Imported ${imported} ${resource} from CSV`,
-            actor: req.user.name,
-            createdAt,
-          });
+        const persist = async (record) => {
+          const repo = repoFor(resource);
+          if (!repo) throw new Error(`No repository for resource "${resource}"`);
+          const pgData = legacyToPg({ ...record }, resource);
+          coerceBuiltIns(resource, pgData);
+          return repo.create(pgData);
+        };
+
+        const summary = await runImport({
+          csv,
+          resource,
+          schema,
+          mapping,
+          dryRun,
+          failureStrategy,
+          persist,
         });
 
-        broadcast("import.completed", { resource, count: imported, headers }, req.user.workspaceId || "default");
-        res.status(201).json({ imported, headers, total: rows.length });
+        let errorReportId;
+        if (summary.errorCsv) {
+          errorReportId = errorReports.save(summary.errorCsv, {
+            resource,
+            rowCount: summary.errorCount,
+          });
+        }
+
+        if (!dryRun && summary.importedCount > 0) {
+          await mutateDb((database) => {
+            database.audit.unshift(
+              auditEntry({
+                action: `Imported ${summary.importedCount} ${resource} from CSV`,
+                actor: req.user.name,
+                req,
+              }),
+            );
+          });
+          cacheFlush(resource);
+          broadcast(
+            "import.completed",
+            { resource, count: summary.importedCount },
+            req.user.workspaceId || "default",
+          );
+        }
+
+        return res.json({
+          success: true,
+          dryRun,
+          resource,
+          totalRows: summary.totalRows,
+          validRows: summary.validRows,
+          invalidRows: summary.invalidRows,
+          importedCount: summary.importedCount,
+          errorCount: summary.errorCount,
+          errors: summary.errors,
+          errorReportId,
+          errorCsv: summary.errorCsv || undefined,
+        });
       } catch (err) {
-        res.status(400).json({ error: `Import failed: ${err.message}` });
+        if (err instanceof ImportError) {
+          return res.status(err.status).json({ error: err.message });
+        }
+        return next(err);
       }
     },
   );
@@ -146,18 +205,21 @@ export default function registerImportRoutes(app, upload) {
     auth,
     upload.single("file"),
     async (req, res) => {
-      if (!req.file)
+      if (!req.file) {
         return res.status(400).json({ error: "CSV file is required" });
+      }
       try {
         const content = await fs.readFile(req.file.path, "utf-8");
         await fs.unlink(req.file.path).catch(() => {});
-        const { headers, rows } = parseCSV(content);
-        res.json({
-          headers,
-          preview: rows.slice(0, 5),
-          totalRows: rows.length,
-        });
+        const { headers, rows } = parseCsv(content);
+        const preview = rows.slice(0, 5).map((row) =>
+          Object.fromEntries(headers.map((h, i) => [h, row.values[i] ?? ""])),
+        );
+        res.json({ headers, preview, totalRows: rows.length });
       } catch (err) {
+        if (err instanceof ImportError) {
+          return res.status(400).json({ error: err.message });
+        }
         res.status(400).json({ error: `Preview failed: ${err.message}` });
       }
     },
