@@ -23,6 +23,20 @@ export const LoginSchema = z.object({
   password: z.string().min(1, 'Password is required')
 });
 
+// Team invitations (P2-BE1-05). `role` is limited to the roles the RBAC
+// middleware actually enforces; an omitted role defaults to the least
+// privileged writable role.
+export const InviteSchema = z.object({
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
+  role: z.enum(['admin', 'member', 'viewer']).default('member')
+});
+
+export const AcceptInviteSchema = z.object({
+  token: z.string().trim().min(1, 'Token is required'),
+  name: z.string().trim().min(1, 'Name is required'),
+  password: z.string().min(6, 'Password must be at least 6 characters')
+});
+
 export const SettingsSchema = z.object({
   workspaceName: z.string().trim().min(1).optional(),
   currency: z.string().trim().min(1).optional(),

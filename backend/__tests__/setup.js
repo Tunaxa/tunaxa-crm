@@ -28,6 +28,8 @@ const emptyDb = {
   messages: [],
   sequences: [],
   team: [],
+  invitations: [],
+  emailOutbox: [],
   customFields: [],
   audit: [],
   lists: [],
