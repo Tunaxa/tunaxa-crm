@@ -41,14 +41,6 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run lint
-      - name: Apply database migrations
-        run: npm run migrate
-        env:
-          PGHOST: 127.0.0.1
-          PGPORT: 5432
-          PGDATABASE: tunaxa
-          PGUSER: postgres
-          PGPASSWORD: ci-test-password
       - run: npm test
 
       - name: Comment on PR if failed
