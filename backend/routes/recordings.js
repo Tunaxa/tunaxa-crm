@@ -9,6 +9,7 @@ import { getSettings, isAiConfigured } from "../services/config.js";
 import { transcribeAudio } from "../services/ai.js";
 import { downloadTwilioRecording } from "../services/twilio.js";
 import { createRateLimiter } from "../services/rateLimit.js";
+import { queueTranscriptionJob } from "../services/transcriptionQueue.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const uploadDir = path.join(root, "..", "uploads");
@@ -41,7 +42,8 @@ export default function registerRecordingRoutes(app, upload) {
           item.fileUrl = `/uploads/${req.file.filename}`;
           item.originalName = req.file.originalname;
           item.mimeType = req.file.mimetype;
-          item.mediaStatus = "Audio ready";
+          item.status = "queued";
+          item.mediaStatus = "queued";
           item.updatedAt = now();
         } else {
           item = {
@@ -54,7 +56,8 @@ export default function registerRecordingRoutes(app, upload) {
             fileUrl: `/uploads/${req.file.filename}`,
             originalName: req.file.originalname,
             mimeType: req.file.mimetype,
-            mediaStatus: "Audio ready",
+            status: "queued",
+            mediaStatus: "queued",
             source: callId ? "Call" : "Upload",
             callId,
             createdAt: now(),
@@ -70,7 +73,29 @@ export default function registerRecordingRoutes(app, upload) {
         });
         return item;
       });
-      res.status(201).json(record);
+
+      const filePath = req.file.path || path.join(uploadDir, req.file.filename);
+      let job = null;
+      try {
+        job = await queueTranscriptionJob({
+          recordingId: record.id,
+          filePath,
+          fileName: req.file.originalname || req.file.filename,
+          mimeType: req.file.mimetype,
+          fileUrl: record.fileUrl,
+          workspaceId: req.user?.workspaceId || "default",
+          userId: req.user?.id,
+        });
+      } catch (err) {
+        console.error("[recordings/upload] Failed to queue transcription job:", err.message);
+      }
+
+      res.status(201).json({
+        ...record,
+        status: "queued",
+        mediaStatus: "queued",
+        jobId: job?.id || null,
+      });
     },
   );
 
@@ -146,6 +171,35 @@ export default function registerRecordingRoutes(app, upload) {
           .status(400)
           .json({ error: "No audio file attached to this recording" });
 
+      if (req.query.async === "true" || req.body?.async === true) {
+        const filePath = record.fileUrl && !/^https?:\/\//i.test(record.fileUrl)
+          ? path.join(uploadDir, path.basename(record.fileUrl))
+          : undefined;
+        const job = await queueTranscriptionJob({
+          recordingId: record.id,
+          filePath,
+          fileUrl: record.fileUrl,
+          mimeType: record.mimeType,
+          workspaceId: req.user?.workspaceId || "default",
+          userId: req.user?.id,
+        });
+        await mutateDb((db) => {
+          const r = db.recordings.find((x) => x.id === record.id);
+          if (r) {
+            r.status = "queued";
+            r.mediaStatus = "queued";
+            r.updatedAt = now();
+          }
+        });
+        return res.status(202).json({
+          message: "Transcription job enqueued",
+          status: "queued",
+          mediaStatus: "queued",
+          jobId: job.id,
+          recordingId: record.id,
+        });
+      }
+
       let audio;
       if (/^https?:\/\//i.test(String(record.fileUrl))) {
         try {
@@ -204,6 +258,7 @@ export default function registerRecordingRoutes(app, upload) {
           db.recordings[index].summary = summary;
           db.recordings[index].summaryAi = true;
         }
+        db.recordings[index].status = "completed";
         db.recordings[index].mediaStatus = "Transcribed";
         db.recordings[index].updatedAt = now();
         return { ...db.recordings[index] };

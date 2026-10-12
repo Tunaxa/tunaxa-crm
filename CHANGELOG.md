@@ -7,7 +7,33 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Async Audio Transcription Queue (`backend/services/transcriptionQueue.js`):**
+  - Implemented BullMQ queue (`transcription-queue`) and background worker for asynchronous audio transcription with automatic in-memory queue fallback (`InMemoryTranscriptionQueue`).
+  - Processes transcription jobs in the background using `transcribeAudio` from `backend/services/ai.js`, generates summaries when enabled, persists transcripts and media status, and broadcasts `recording.transcribed` (or `recording.failed`) Server-Sent Events via `backend/routes/sse.js`.
+  - Added worker lifecycle methods (`startTranscriptionWorker`, `stopTranscriptionWorker`, `closeTranscriptionQueue`) integrated into server startup and teardown.
+- **Transcription Queue Test Suite (`backend/__tests__/transcription-queue.test.js`):**
+  - Added 11 unit and integration tests covering queue fallback, immediate 201 response on upload, worker background processing, transcript persistence, SSE event delivery, failure handling, and async route modes.
 
+### Changed
+- **Recording Upload Route (`backend/routes/recordings.js`):**
+  - Decoupled synchronous transcription from `POST /api/recordings/upload`; returns immediately with HTTP 201 Created and `status: 'queued'` with job metadata.
+  - Added support for asynchronous background transcription on `POST /api/recordings/:id/transcribe` via `?async=true` returning HTTP 202 Accepted.
+- **Call Webhook Processing (`backend/routes/calls.js`):**
+  - Routed Twilio recording auto-transcription through `queueTranscriptionJob` rather than unmanaged ad-hoc timeouts.
+- **Server Initialization (`backend/server.js`):**
+  - Initialized background transcription worker on server boot alongside webhook and email workers with clean shutdown handling.
+
+- **AI Lead Scoring Worker (`backend/workers/leadScoring.js`):**
+  - Implemented multi-dimensional lead scoring algorithm calculating normalized scores from 0 to 100 based on email interactions (0–25 pts), activity recency (0–25 pts), lifecycle stage velocity (0–25 pts), and form fills (0–25 pts).
+  - Configured BullMQ repeatable scheduler executing nightly at 02:00 UTC (`pattern: '0 2 * * *'`) with an automatic in-memory queue fallback for offline/test environments.
+  - Implemented batched lead scoring with PostgreSQL persistence updating `score`, `score_factors`, and `last_scored_at`.
+  - Dispatches `lead.scored` workflow event to the workflow engine whenever a lead's score meets or exceeds the configured threshold.
+- **Workflow Event Registration (`backend/services/workflows.js`):**
+  - Registered `lead.scored` event in `EVENT_META` with description and resource association.
+- **Leads Repository Score Integration (`backend/db/repositories/leads.js`):**
+  - Enhanced `create`, `update`, `findById`, and `findAll` to unpack and map `score` and `last_scored_at` transparently.
+- **Lead Scoring Test Suite (`backend/__tests__/lead-scoring.test.js`):**
+  - Added 9 unit and integration tests covering scoring component formulas, point caps, recency decay, velocity bonuses, PostgreSQL score updates, threshold-based workflow triggers, cron scheduler registration, and in-memory fallback.
 - **Quote Signing Automations (`backend/routes/quotes.js`):**
   - Dispatches `quote.signed` workflow events to the workflow execution engine upon successful quote signature, passing quote details, contract ID, signer metadata, and workspace context.
   - Added deal owner resolution to identify the sales representative associated with the quote's deal (or creator fallback) and dispatches an email notification with signing metadata, contract reference, and financial totals.

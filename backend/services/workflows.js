@@ -40,6 +40,7 @@ const RESOURCE_BY_EVENT_PREFIX = {
 export const EVENT_META = [
   { value: 'lead.created', label: 'Lead created', resource: 'leads' },
   { value: 'lead.updated', label: 'Lead updated', resource: 'leads' },
+  { value: 'lead.scored', label: 'Lead Scored', resource: 'leads', description: 'Triggered when lead scoring completes and score meets or exceeds threshold' },
   { value: 'contact.created', label: 'Contact created', resource: 'contacts' },
   { value: 'contact.updated', label: 'Contact updated', resource: 'contacts' },
   { value: 'company.created', label: 'Company created', resource: 'companies' },
