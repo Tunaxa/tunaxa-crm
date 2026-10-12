@@ -54,6 +54,10 @@ import registerQuoteRoutes from "./routes/quotes.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { processExecutionQueue } from "./services/queue.js";
 import { startEmailSync, stopEmailSync } from "./services/emailSync.js";
+import {
+  startTranscriptionWorker,
+  stopTranscriptionWorker,
+} from "./services/transcriptionQueue.js";
 import { createRateLimiter } from "./services/rateLimit.js";
 import { initCache } from "./services/cache.js";
 import { seedPlaybooks } from "./services/seedPlaybooks.js";
@@ -267,6 +271,7 @@ if (process.env.VITEST !== "true") {
     console.log("Tunaxa API running on http://127.0.0.1:3001");
     startWebhookWorker();
     startEmailSync();
+    startTranscriptionWorker();
   });
   setInterval(
     () =>
@@ -278,6 +283,7 @@ if (process.env.VITEST !== "true") {
 
   const shutdown = () => {
     stopEmailSync();
+    stopTranscriptionWorker().catch(() => {});
     process.exit(0);
   };
   process.on("SIGTERM", shutdown);
