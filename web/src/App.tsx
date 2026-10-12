@@ -1,17 +1,5 @@
-import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
 
 import { useForm } from "react-hook-form";
-import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import {
   lazy,
   Suspense,
@@ -49,14 +37,10 @@ import {
   RevenueFlowCanvas,
 } from "./components/ui";
 import { AxacrmLogo } from "./components/common/AxacrmLogo";
-import { HomePage } from "./pages/HomePage";
-import { PricingPage } from "./pages/PricingPage";
 import { AppProvider, useApp } from "./context/AppContext";
 import { LayoutGrid, Sun, Moon } from "lucide-react";
-import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { CustomReportBuilder } from "./components/reports/CustomReportBuilder";
 import {
   invitationIsExpired,
   normalizeInvitations,
@@ -70,10 +54,38 @@ import {
   type GoalMilestone,
 } from "./components/goals/GoalProgress";
 import { QuoteForm } from "./components/quotes/QuoteForm";
-import { GenerateInvoiceButton } from "./components/quotes/GenerateInvoiceButton";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
+
+
+const WorkflowCanvas = lazy(() => import("./pages/workflows/WorkflowCanvas"));
+const RevenueForecastChart = lazy(() =>
+  import("./components/reports/RevenueForecastChart").then((m) => ({
+    default: m.RevenueForecastChart,
+  })),
+);
+const HomePage = lazy(() =>
+  import("./pages/HomePage").then((m) => ({ default: m.HomePage })),
+);
+const PricingPage = lazy(() =>
+  import("./pages/PricingPage").then((m) => ({ default: m.PricingPage })),
+);
+const EcosystemMenu = lazy(() =>
+  import("./components/layout/EcosystemMenu").then((m) => ({
+    default: m.EcosystemMenu,
+  })),
+);
+const CustomReportBuilder = lazy(() =>
+  import("./components/reports/CustomReportBuilder").then((m) => ({
+    default: m.CustomReportBuilder,
+  })),
+);
+const GenerateInvoiceButton = lazy(() =>
+  import("./components/quotes/GenerateInvoiceButton").then((m) => ({
+    default: m.GenerateInvoiceButton,
+  })),
+);
 
 const LeadsPage = lazy(() =>
   import("./pages/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
@@ -88,6 +100,7 @@ const PipelinePage = lazy(() =>
   import("./pages/sales/PipelinePage").then((module) => ({ default: module.PipelinePage })),
 );
 
+const Dashboard = lazy(() => import ("./pages/dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
 type NavItem = { path: string; label: string; icon: string };
@@ -805,7 +818,7 @@ function AppRoutes() {
                     key={location.pathname}
                     fallbackMessage="Dashboard failed to load."
                   >
-                    <DashboardPage />
+                 <Dashboard />
                   </ErrorBoundary>
                 }
               />
@@ -1330,146 +1343,6 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
   );
 }
 
-function DashboardPage() {
-  const navigate = useNavigate();
-  const [stats, setStats] = useState<any>(null);
-  useEffect(() => {
-    const load = () => api("/dashboard").then(setStats);
-    load();
-    window.addEventListener("tunaxa:resource-changed", load);
-    return () => window.removeEventListener("tunaxa:resource-changed", load);
-  }, []);
-  const cards = [
-    [
-      "Pipeline value",
-      money(stats?.pipeline || 0),
-      "Open deal value",
-      "money",
-      "blue",
-    ],
-    ["Won revenue", money(stats?.won || 0), "Closed won", "trend", "green"],
-    [
-      "Qualified leads",
-      String(stats?.qualified || 0),
-      "Ready for pipeline",
-      "lead",
-      "purple",
-    ],
-    [
-      "Connected calls",
-      String(stats?.connected || 0),
-      "Logged conversations",
-      "phone",
-      "amber",
-    ],
-  ];
-  const recent = stats?.recent || [];
-
-  return (
-    <div className="page">
-      <PageHeader
-        title="Dashboard"
-        description="A live view of your sales workspace."
-      >
-        <button className="btn primary" onClick={() => navigate("/pipeline")}>
-          <Icon name="pipeline" /> Open pipeline
-        </button>
-      </PageHeader>
-      <div className="stats-grid">
-        {cards.map((card) => (
-          <div className="stat-card hover-crm-card relative" key={card[0]}>
-            <CornerBrackets stroke="#3b82f6" size="sm" />
-            <div className={`stat-icon tone-${card[4]}`}>
-              <Icon name={card[3]} />
-            </div>
-            <div>
-              <small>{card[0]}</small>
-              <strong>{card[1]}</strong>
-              <span>{card[2]}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="dashboard-grid">
-        <section className="surface revenue-card">
-          <div className="section-head">
-            <div>
-              <h2>Workspace totals</h2>
-              <p>Everything saved in your Tunaxa workspace</p>
-            </div>
-            <button
-              className="btn secondary compact"
-              onClick={() => navigate("/reports")}
-            >
-              View reports
-            </button>
-          </div>
-          <div className="record-count-grid">
-            {[
-              ["Leads", stats?.leads, "lead", "/leads"],
-              ["Contacts", stats?.contacts, "contacts", "/contacts"],
-              ["Companies", stats?.companies, "companies", "/companies"],
-              ["Deals", stats?.deals, "pipeline", "/pipeline"],
-              ["Tasks", stats?.tasks, "tasks", "/tasks"],
-            ].map(([label, count, icon, path]) => (
-              <button
-                key={String(label)}
-                className="record-count"
-                onClick={() => navigate(String(path))}
-              >
-                <Icon name={String(icon)} />
-                <b>{count || 0}</b>
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-        <section className="surface activities-widget">
-          <div className="section-head">
-            <div>
-              <h2>Recent activity</h2>
-              <p>Latest work across the CRM</p>
-            </div>
-          </div>
-          {recent.length ? (
-            <div className="recent-list">
-              {recent.slice(0, 6).map((item: Row) => (
-                <button
-                  key={`${item.kind}-${item.id}`}
-                  onClick={() => navigate(item.route)}
-                >
-                  <span className="recent-icon">
-                    <Icon name={item.icon} />
-                  </span>
-                  <div>
-                    <b>{item.title}</b>
-                    <small>{item.meta}</small>
-                  </div>
-                  <time>{new Date(item.createdAt).toLocaleString()}</time>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <Empty
-              icon="activity"
-              title="No activity yet"
-              text="Your latest calls, tasks and activities will appear here automatically."
-              action={
-                <button
-                  className="btn primary compact"
-                  onClick={() => navigate("/leads")}
-                >
-                  Add a lead
-                </button>
-              }
-            />
-          )}
-        </section>
-      </div>
-    </div>
-  );
-}
-
 type FieldSpec = {
   key: string;
   label: string;
@@ -1478,30 +1351,6 @@ type FieldSpec = {
   required?: boolean;
   placeholder?: string;
 };
-export const leadFields: FieldSpec[] = [
-  { key: "name", label: "Lead name", required: true },
-  { key: "company", label: "Company" },
-  { key: "email", label: "Email", type: "email" },
-  { key: "phone", label: "Phone" },
-  { key: "source", label: "Source" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["New", "Contacted", "Qualified", "Nurture", "Lost"],
-  },
-  { key: "owner", label: "Owner" },
-  
-  { key: "value", label: "Estimated value", type: "number" },
-];
-export const contactFields: FieldSpec[] = [
-  { key: "name", label: "Contact name", required: true },
-  { key: "role", label: "Job title" },
-  { key: "company", label: "Company" },
-  { key: "email", label: "Email", type: "email" },
-  { key: "phone", label: "Phone" },
-  { key: "owner", label: "Owner" },
-];
 
 const campaignFields: FieldSpec[] = [
   { key: "name", label: "Campaign name", required: true },
@@ -1524,6 +1373,7 @@ const campaignFields: FieldSpec[] = [
   { key: "endDate", label: "End date", type: "date" },
   { key: "description", label: "Description", type: "textarea" },
 ];
+
 const emailListFields: FieldSpec[] = [
   { key: "name", label: "List name", required: true },
   { key: "subscribers", label: "Subscribers", type: "number" },
@@ -1535,6 +1385,7 @@ const emailListFields: FieldSpec[] = [
   },
   { key: "description", label: "Description", type: "textarea" },
 ];
+
 const landingPageFields: FieldSpec[] = [
   { key: "name", label: "Page name", required: true },
   { key: "slug", label: "Slug" },
@@ -1548,6 +1399,7 @@ const landingPageFields: FieldSpec[] = [
   { key: "views", label: "Views", type: "number" },
   { key: "conversions", label: "Conversions", type: "number" },
 ];
+
 const productFields: FieldSpec[] = [
   { key: "name", label: "Product name", required: true },
   { key: "sku", label: "SKU" },
@@ -1563,245 +1415,6 @@ const productFields: FieldSpec[] = [
     options: ["Active", "Archived"],
   },
 ];
-const orderFields: FieldSpec[] = [
-  { key: "orderNumber", label: "Order number", required: true },
-  { key: "customer", label: "Customer" },
-  { key: "email", label: "Customer email", type: "email" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Draft", "Pending", "Paid", "Shipped", "Delivered", "Cancelled"],
-  },
-  { key: "items", label: "Line items (one per line)", type: "textarea" },
-  { key: "subtotal", label: "Subtotal", type: "number" },
-  { key: "tax", label: "Tax", type: "number" },
-  { key: "shipping", label: "Shipping", type: "number" },
-  { key: "total", label: "Total", type: "number" },
-  { key: "date", label: "Order date", type: "date" },
-];
-const invoiceFields: FieldSpec[] = [
-  { key: "number", label: "Invoice number", required: true },
-  { key: "customerName", label: "Customer name" },
-  { key: "customerEmail", label: "Customer email", type: "email" },
-  { key: "amount", label: "Amount", type: "number" },
-  { key: "tax", label: "Tax", type: "number" },
-  { key: "issueDate", label: "Issue date", type: "date" },
-  { key: "dueDate", label: "Due date", type: "date" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Draft", "Pending", "Paid", "Overdue", "Cancelled"],
-  },
-  { key: "notes", label: "Notes", type: "textarea" },
-];
-const expenseFields: FieldSpec[] = [
-  { key: "title", label: "Expense title", required: true },
-  {
-    key: "category",
-    label: "Category",
-    type: "select",
-    options: ["Software", "Travel", "Marketing", "Office", "Salaries", "Other"],
-  },
-  { key: "amount", label: "Amount", type: "number" },
-  { key: "vendor", label: "Vendor" },
-  { key: "date", label: "Date", type: "date" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Pending", "Approved", "Reimbursed"],
-  },
-  { key: "notes", label: "Notes", type: "textarea" },
-];
-const employeeFields: FieldSpec[] = [
-  { key: "avatar", label: "Photo", type: "photo" },
-  { key: "name", label: "Full name", required: true },
-  { key: "email", label: "Email", type: "email" },
-  { key: "department", label: "Department" },
-  { key: "title", label: "Job title" },
-  { key: "manager", label: "Manager" },
-  { key: "salary", label: "Salary", type: "number" },
-  { key: "startDate", label: "Start date", type: "date" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Onboarding", "Active", "On leave", "Terminated"],
-  },
-];
-const leaveFields: FieldSpec[] = [
-  { key: "employee", label: "Employee", required: true },
-  {
-    key: "type",
-    label: "Type",
-    type: "select",
-    options: ["Vacation", "Sick", "Parental", "Unpaid"],
-  },
-  { key: "startDate", label: "Start date", type: "date" },
-  { key: "endDate", label: "End date", type: "date" },
-  { key: "days", label: "Days", type: "number" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Pending", "Approved", "Rejected"],
-  },
-  { key: "reason", label: "Reason", type: "textarea" },
-];
-const attendanceFields: FieldSpec[] = [
-  { key: "employee", label: "Employee", required: true },
-  { key: "date", label: "Date", type: "date" },
-  { key: "checkIn", label: "Check-in" },
-  { key: "checkOut", label: "Check-out" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Present", "Late", "Absent", "On leave", "Remote"],
-  },
-  { key: "notes", label: "Notes", type: "textarea" },
-];
-const quoteFields: FieldSpec[] = [
-  { key: "number", label: "Quote number", required: true },
-  { key: "customer", label: "Customer / deal" },
-  { key: "subtotal", label: "Subtotal", type: "number" },
-  { key: "discount", label: "Discount (%)", type: "number" },
-  { key: "tax", label: "Tax (%)", type: "number" },
-  { key: "total", label: "Total", type: "number" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Draft", "Sent", "Accepted", "Declined", "Expired"],
-  },
-  { key: "expiryDate", label: "Expiry date", type: "date" },
-];
-const contractFields: FieldSpec[] = [
-  { key: "name", label: "Contract name", required: true },
-  { key: "customer", label: "Customer" },
-  { key: "value", label: "Value", type: "number" },
-  { key: "mrr", label: "Monthly recurring", type: "number" },
-  {
-    key: "billingFrequency",
-    label: "Billing frequency",
-    type: "select",
-    options: ["Monthly", "Quarterly", "Annual"],
-  },
-  { key: "startDate", label: "Start date", type: "date" },
-  { key: "endDate", label: "End date", type: "date" },
-  { key: "autoRenew", label: "Auto-renew", type: "checkbox" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Active", "Expiring", "Expired", "Cancelled", "Draft"],
-  },
-];
-const marketingEmailFields: FieldSpec[] = [
-  { key: "name", label: "Email name", required: true },
-  { key: "subject", label: "Subject line" },
-  { key: "list", label: "Audience list" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Draft", "Scheduled", "Sent", "Archived"],
-  },
-  { key: "recipients", label: "Recipients", type: "number" },
-  { key: "opens", label: "Opens", type: "number" },
-  { key: "clicks", label: "Clicks", type: "number" },
-  { key: "conversions", label: "Conversions", type: "number" },
-  { key: "sendDate", label: "Send date", type: "date" },
-];
-const marketingEventFields: FieldSpec[] = [
-  { key: "name", label: "Event name", required: true },
-  {
-    key: "type",
-    label: "Type",
-    type: "select",
-    options: ["Webinar", "Conference", "Workshop", "Virtual", "In-person"],
-  },
-  { key: "location", label: "Location / link" },
-  { key: "startDate", label: "Start date", type: "date" },
-  { key: "endDate", label: "End date", type: "date" },
-  { key: "capacity", label: "Capacity", type: "number" },
-  { key: "registrations", label: "Registrations", type: "number" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Planned", "Upcoming", "Live", "Completed", "Cancelled"],
-  },
-];
-const goalFields: FieldSpec[] = [
-  { key: "name", label: "Goal name", required: true },
-  {
-    key: "metric",
-    label: "Metric",
-    type: "select",
-    options: [
-      "Revenue",
-      "Calls made",
-      "Deals closed",
-      "Tickets resolved",
-      "Leads generated",
-    ],
-  },
-  { key: "owner", label: "Owner / team" },
-  {
-    key: "period",
-    label: "Period",
-    type: "select",
-    options: ["Monthly", "Quarterly", "Yearly"],
-  },
-  { key: "target", label: "Target", type: "number" },
-  { key: "current", label: "Current value", type: "number" },
-  { key: "startDate", label: "Start date", type: "date" },
-  { key: "endDate", label: "End date", type: "date" },
-];
-const surveyFields: FieldSpec[] = [
-  { key: "name", label: "Survey name", required: true },
-  {
-    key: "type",
-    label: "Type",
-    type: "select",
-    options: ["NPS", "CSAT", "CES"],
-  },
-  { key: "question", label: "Question", type: "textarea" },
-  { key: "audience", label: "Audience" },
-  { key: "targetScore", label: "Target score", type: "number" },
-  {
-    key: "status",
-    label: "Status",
-    type: "select",
-    options: ["Draft", "Active", "Closed"],
-  },
-];
-const surveyResponseFields: FieldSpec[] = [
-  { key: "survey", label: "Survey", required: true },
-  { key: "respondent", label: "Respondent email" },
-  { key: "score", label: "Score", type: "number" },
-  { key: "comment", label: "Comment", type: "textarea" },
-  { key: "date", label: "Date answered", type: "date" },
-];
-
-const moneyKeys = new Set([
-  "value",
-  "price",
-  "cost",
-  "amount",
-  "total",
-  "subtotal",
-  "tax",
-  "shipping",
-  "salary",
-  "target",
-  "reached",
-]);
-const showMoney = (key: string) => moneyKeys.has(key);
-type BadgeTone = "neutral" | "blue" | "green" | "amber" | "red" | "purple";
 
 function CrudTablePage({
   resource,
@@ -2739,7 +2352,9 @@ function RecordDetailPage({
 </div>
           <div className="detail-actions">
             {resource === "quotes" ? (
-              <GenerateInvoiceButton key={record.id} quote={record} />
+             <Suspense fallback={<span>Chargement...</span>}>
+  <GenerateInvoiceButton key={record.id} quote={record} />
+</Suspense>
             ) : null}
             {record.status ? (
               <Badge
@@ -3014,145 +2629,6 @@ function RecordDetailPage({
   );
 }
 
-function RecordForm({
-  title,
-  fields,
-  initial,
-  onClose,
-  onSave,
-  toolbar,
-}: {
-  title: string;
-  fields: FieldSpec[];
-  initial: Row | Record<string, any>;
-  onClose: () => void;
-  onSave: (data: Record<string, any>) => Promise<void>;
-  toolbar?: ReactNode;
-}) {
-  const { toast } = useApp();
-  const [busy, setBusy] = useState(false);
-
-  const defaultValues = Object.fromEntries(
-    fields.map((field) => [
-      field.key,
-      initial[field.key] ??
-        (field.type === "select"
-          ? field.options?.[0] || ""
-          : field.type === "checkbox"
-            ? false
-            : ""),
-    ]),
-  );
-
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-  } = useForm<Record<string, any>>({
-    defaultValues,
-  });
-
-  async function save(data: Record<string, any>) {
-    const missing = fields.find(
-      (field) => field.required && !String(data[field.key] ?? "").trim(),
-    );
-
-    if (missing) {
-      return toast(`${missing.label} is required`, "error");
-    }
-
-    setBusy(true);
-
-    try {
-      await onSave(data);
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Drawer
-      title={title}
-      subtitle="Changes are saved directly to your workspace."
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn secondary" onClick={onClose}>
-            Cancel
-          </button>
-
-          <button
-            className="btn primary"
-            disabled={busy}
-            onClick={handleSubmit(save)}
-          >
-            {busy ? "Saving…" : "Save"}
-          </button>
-        </>
-      }
-    >
-      <div className="drawer-form">
-        {toolbar}
-
-        {fields.map((field) =>
-          field.type === "photo" ? (
-            <PhotoField
-              key={field.key}
-              label={field.label}
-              name={String(watch("name") || watch("title") || "")}
-              value={watch(field.key)}
-              onChange={(url: string) => setValue(field.key, url)}
-            />
-          ) : field.type === "checkbox" ? (
-            <label className="toggle-row" key={field.key}>
-              <input type="checkbox" {...register(field.key)} />
-              <span>{field.label}</span>
-            </label>
-          ) : (
-            <label className="field" key={field.key}>
-              <span>
-                {field.label}
-                {field.required ? (
-                  <em className="required-mark">*</em>
-                ) : null}
-              </span>
-
-              {field.type === "select" ? (
-                <select {...register(field.key)}>
-                  {field.options?.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              ) : field.type === "textarea" ? (
-                <textarea
-                  {...register(field.key)}
-                  placeholder={field.placeholder}
-                  rows={6}
-                />
-              ) : (
-                <input
-                  type={field.type || "text"}
-                  {...register(field.key, {
-                    setValueAs: (value) =>
-                      field.type === "number"
-                        ? Number(value)
-                        : value,
-                  })}
-                  placeholder={field.placeholder}
-                />
-              )}
-            </label>
-          ),
-        )}
-      </div>
-    </Drawer>
-  );
-}
 function LegacyCompaniesPage() {
   const fields: FieldSpec[] = [
     { key: "logo", label: "Logo", type: "photo" },
@@ -6809,60 +6285,9 @@ function ForecastPage() {
         </div>
 
         {chartData.length > 0 ? (
-          <div style={{ width: "100%", height: 420 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={chartData}
-                margin={{
-                  top: 20,
-                  right: 20,
-                  left: 10,
-                  bottom: 10,
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-
-                <XAxis dataKey="label" />
-
-                <YAxis tickFormatter={(value) => money(value)} />
-
-                <Tooltip
-                  formatter={(value: any, name: any, item: any) => {
-                    if (name === "pipeline") {
-                      return [
-                        money(Number(value)),
-                        `Weighted pipeline (${Number(item?.payload?.probability || 0).toFixed(0)}%)`,
-                      ];
-                    }
-
-                    return [
-                      money(Number(value)),
-                      name === "historical" ? "Historical won revenue" : name,
-                    ];
-                  }}
-                />
-
-                <Legend />
-
-                <Bar
-                  dataKey="pipeline"
-                  name="Pipeline forecast"
-                  fill="#8b5cf6"
-                  fillOpacity={0.65}
-                  radius={[4, 4, 0, 0]}
-                />
-
-                <Line
-                  type="monotone"
-                  dataKey="historical"
-                  name="Historical won revenue"
-                  stroke="#10b981"
-                  strokeWidth={3}
-                  dot={{ r: 4 }}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
+         <Suspense fallback={<div>Chargement du graphique...</div>}>
+  <RevenueForecastChart chartData={chartData} money={money} />
+</Suspense>
         ) : (
           <Empty
             icon="trend"
@@ -6933,7 +6358,9 @@ function ReportsPage() {
           <Icon name="download" /> Export CSV
         </button>
       </PageHeader>
-      <CustomReportBuilder />
+      <Suspense fallback={<div>Chargement des rapports...</div>}>
+  <CustomReportBuilder />
+</Suspense>
       <div className="stats-grid">
         <div className="stat-card hover-crm-card relative">
           <CornerBrackets stroke="#3b82f6" size="sm" />
