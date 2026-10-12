@@ -37,6 +37,7 @@ export default function registerWebhookEndpointRoutes(app) {
         name: body.name,
         description: body.description || '',
         enabled: parseFlag(body.enabled, true),
+        workspaceId: req.user.workspaceId || 'default',
         requestCount: 0,
         lastStatus: null,
         lastReceivedAt: null,
@@ -48,7 +49,7 @@ export default function registerWebhookEndpointRoutes(app) {
       db.audit.unshift({ id: id('audit'), action: `Created webhook endpoint "${item.name}"`, actor: req.user.name, createdAt: now() });
       return { ...item, url: publicUrl(item.token) };
     });
-    broadcast('webhook.created', { id: saved.id });
+    broadcast('webhook.created', { id: saved.id }, req.user.workspaceId || 'default');
     res.status(201).json(saved);
   });
 
@@ -64,7 +65,7 @@ export default function registerWebhookEndpointRoutes(app) {
       return { ...item, url: publicUrl(item.token) };
     });
     if (!saved) return res.status(404).json({ error: 'Webhook endpoint not found' });
-    broadcast('webhook.updated', { id: saved.id });
+    broadcast('webhook.updated', { id: saved.id }, req.user.workspaceId || 'default');
     res.json(saved);
   });
 
@@ -77,7 +78,7 @@ export default function registerWebhookEndpointRoutes(app) {
     });
     if (!ok) return res.status(404).json({ error: 'Webhook endpoint not found' });
     cacheFlush('webhookEndpoints');
-    broadcast('webhook.deleted', { id: req.params.id });
+    broadcast('webhook.deleted', { id: req.params.id }, req.user.workspaceId || 'default');
     res.json({ ok: true });
   });
 
@@ -115,7 +116,7 @@ export default function registerWebhookEndpointRoutes(app) {
     });
 
     triggerWorkflows('webhookEndpoints', 'webhook.received', { endpoint: { ...endpoint, requestCount: (endpoint.requestCount || 0) + 1 }, payload, receivedAt }).catch(() => {});
-    broadcast('webhook.received', { endpointId: endpoint.id, deliveryId: delivery.id });
+    broadcast('webhook.received', { endpointId: endpoint.id, deliveryId: delivery.id }, endpoint.workspaceId || 'default');
 
     res.status(200).json({ ok: true, endpoint: endpoint.name, deliveryId: delivery.id, receivedAt });
   });

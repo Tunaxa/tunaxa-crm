@@ -2,7 +2,17 @@ import crypto from 'node:crypto';
 
 export const now = () => new Date().toISOString();
 export const id = prefix => `${prefix}_${crypto.randomUUID()}`;
-export const publicUser = user => ({ id: user.id, name: user.name, email: user.email, role: user.role });
+export const publicUser = user => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  preferences: user.preferences || {
+    theme: 'light',
+    sidebarCollapsed: false,
+    pageSize: 25,
+  },
+});
 export const auditEntry = ({ action, actor, createdAt = now(), req, resourceId = '' }) => ({
   id: id('audit'),
   action,

@@ -387,6 +387,7 @@ export default function registerFormRoutes(app) {
         redirectUrl: body.redirectUrl || '',
         fields: normalizeFields(body.fields),
         enabled: true,
+        workspaceId: req.user.workspaceId || 'default',
         submissionCount: 0,
         createdBy: req.user.name,
         createdAt,

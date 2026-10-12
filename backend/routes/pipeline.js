@@ -1,4 +1,5 @@
 import { readDb, mutateDb } from "../store.js";
+import { loadRecords, findRecord, saveRecord } from "../db/legacy-records.js";
 import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import { id, now } from "../helpers.js";
@@ -37,7 +38,7 @@ export default function registerPipelineRoutes(app) {
             required: (db.stageGates || {})[name] || [],
           }))
         : DEFAULT_PIPELINE;
-    const deals = (db.deals || []).filter((d) => !["Lost"].includes(d.stage));
+    const deals = (await loadRecords('deals', db)).filter((d) => !["Lost"].includes(d.stage));
     const withStage = stages.map((stage) => {
       const inStage = deals.filter((d) => d.stage === stage.name);
       return {
@@ -69,7 +70,7 @@ export default function registerPipelineRoutes(app) {
         });
         return db.stageGates;
       });
-      broadcast("pipeline.gates_updated");
+      broadcast("pipeline.gates_updated", null, req.user.workspaceId || "default");
       res.json(saved);
     },
   );
@@ -87,10 +88,9 @@ export default function registerPipelineRoutes(app) {
           .json({ error: "dealId and toStage are required" });
 
       let gated = null;
-      const saved = await mutateDb((db) => {
-        const index = (db.deals || []).findIndex((d) => d.id === dealId);
-        if (index < 0) return null;
-        const deal = db.deals[index];
+      const saved = await mutateDb(async (db) => {
+        const deal = (await findRecord(dealId, ['deals'], db))?.record;
+        if (!deal) return null;
         if (deal.stage === toStage) return deal;
 
         // Validate the target stage against the known pipeline BEFORE persisting,
@@ -124,8 +124,8 @@ export default function registerPipelineRoutes(app) {
           stageChangedAt: now(),
           updatedAt: now(),
         };
-        db.deals[index] = updated;
-        db.activities.unshift({
+        const persisted = await saveRecord('deals', updated, db);
+        await saveRecord('activities', {
           id: id("activity"),
           title: `Deal moved ${prevStage} → ${toStage}`,
           type: "Pipeline",
@@ -135,7 +135,7 @@ export default function registerPipelineRoutes(app) {
           dealId,
           createdAt: now(),
           updatedAt: now(),
-        });
+        }, db);
         db.audit.unshift({
           id: id("audit"),
           action: `Moved deal "${deal.title}" to ${toStage}`,
@@ -143,15 +143,14 @@ export default function registerPipelineRoutes(app) {
           createdAt: now(),
         });
         if (toStage === "Won") {
-          const contactIdx = (db.contacts || []).findIndex(
+          const contact = (await loadRecords('contacts', db)).find(
             (c) => c.company === deal.company,
           );
-          if (contactIdx >= 0) {
-            db.contacts[contactIdx].lifecycleStage = "Customer";
-            db.contacts[contactIdx].updatedAt = now();
+          if (contact) {
+            await saveRecord('contacts', { ...contact, lifecycleStage: "Customer", updatedAt: now() }, db);
           }
         }
-        return updated;
+        return persisted;
       });
       if (!saved) return res.status(404).json({ error: "Deal not found" });
       if (gated?.invalidStage)
@@ -164,7 +163,7 @@ export default function registerPipelineRoutes(app) {
             missing: gated.missing,
             fields: gated.fields,
           });
-      broadcast("pipeline.deal_moved", { dealId, toStage: saved.stage });
+      broadcast("pipeline.deal_moved", { dealId, toStage: saved.stage }, req.user.workspaceId || "default");
       res.json(saved);
     },
   );

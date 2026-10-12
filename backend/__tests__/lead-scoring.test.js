@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { resetTestDb, cleanupTestDb, seedTestUser } from './setup.js';
 import { repoFor } from '../db/repositories/index.js';
-import { readDb, mutateDb } from '../store.js';
+import { mutateDb } from '../store.js';
 import {
   calculateLeadScore,
   scoreAllLeads,

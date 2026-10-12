@@ -154,19 +154,19 @@ describe('emailSync', () => {
     expect(activities).toHaveLength(2);
     expect(activities[0]).toMatchObject({
       type: 'Email',
-      contactId: 'contact_1',
+      recordId: 'contact_1',
       dealId: null,
-      subject: 'Hello there',
-      body: 'Body text',
+      title: 'Hello there',
+      notes: 'Body text',
       direction: 'inbound',
       createdAt: '2026-09-20T10:00:00.000Z',
       metadata: {
-        messageId: '<m-one@host>',
-        uid: 1001,
+        messageId: '<m-two@host>',
+        uid: 1002,
         from: 'jane.doe@example.com',
       },
     });
-    expect(activities[1].metadata.uid).toBe(1002);
+    expect(activities[1].metadata.uid).toBe(1001);
     expect(activities[1].metadata.from).toBe('jane.doe@example.com');
 
     expect(storeMock.db.settings.imap.lastSeenUid).toBe(1002);

@@ -1,9 +1,20 @@
+import { cacheIncr } from './cache.js';
+
 const buckets = new Map();
 let sweepTimer = null;
 
 export function createRateLimiter({ windowMs = 60_000, max = 30, prefix = 'rl' } = {}) {
-  return function rateLimit(req, res, next) {
+  return async function rateLimit(req, res, next) {
     const key = `${prefix}:${req.ip || req.socket?.remoteAddress || 'unknown'}`;
+    const redisCount = await cacheIncr(`rate-limit:${key}`, Math.ceil(windowMs / 1000));
+    if (redisCount !== null) {
+      if (redisCount > max) {
+        res.setHeader('Retry-After', Math.ceil(windowMs / 1000));
+        return res.status(429).json({ error: 'Too many requests, please try again shortly' });
+      }
+      return next();
+    }
+
     const now = Date.now();
     const bucket = buckets.get(key);
     if (!bucket || now - bucket.started >= windowMs) {
