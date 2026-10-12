@@ -17,8 +17,6 @@ import {
   queueTranscriptionJob,
   processTranscriptionJob,
   processNextInMemoryJob,
-  startTranscriptionWorker,
-  stopTranscriptionWorker,
   closeTranscriptionQueue,
   clearTranscriptionQueue,
   getInMemoryTranscriptionJobs,
@@ -168,7 +166,7 @@ describe('Async Transcription Queue via BullMQ', () => {
       const expectedSummary = 'Quarterly CRM sales review with customer signals and next steps.';
 
       const transcribeSpy = vi.spyOn(ai, 'transcribeAudio').mockResolvedValue(expectedTranscript);
-      const summarizeSpy = vi.spyOn(ai, 'summarizeTranscript').mockResolvedValue(expectedSummary);
+      vi.spyOn(ai, 'summarizeTranscript').mockResolvedValue(expectedSummary);
       const broadcastSpy = vi.spyOn(sse, 'broadcast').mockImplementation(() => {});
 
       // 4. Process the transcription job

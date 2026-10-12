@@ -161,8 +161,12 @@ export async function update(id, data = {}) {
   if (fields.length === 0) return null;
 
   const values = fields.map((field) => data[field]);
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
+  const assignments = fields.map((field, index) =>
+    // Merge the overflow bag instead of replacing it, so a partial update to
+    // one legacy field (e.g. contact `company`) keeps the others.
+    field === "custom_fields"
+      ? `custom_fields = COALESCE(custom_fields, '{}'::jsonb) || $${index + 1}`
+      : `${field} = $${index + 1}`,
   );
   values.push(id);
   const result = await query(

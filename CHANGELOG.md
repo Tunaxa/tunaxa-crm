@@ -7,6 +7,16 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Custom Report Aggregation Engine (`backend/services/reports.js`):**
+  - Implemented `runReportQuery()` supporting dynamic grouping and metric aggregations (`count`, `sum`, `avg`) across core, revenue, and marketing/service entities.
+  - Added strict SQL injection protection: identifier regex validation (`/^[a-zA-Z0-9_]+$/`), column whitelisting, and property mapping via `RESOURCE_MAPPINGS` in `backend/db/legacy-shape.js`.
+  - Added parameterized date range filtering (`dateRange.from`, `dateRange.to`) and tenant workspace isolation (`workspace_id = $1`).
+  - Implemented `runJsonStoreReportQuery()` providing an in-memory aggregation fallback when tables are missing or in offline JSON store mode.
+- **Custom Report Query Endpoint (`backend/routes/reports.js`):**
+  - Added authenticated `POST /api/reports/query` endpoint restricted to `admin` and `member` roles via `requireRole('admin', 'member')`.
+  - Returns normalized output array `[{ group, value, count }]` ordered by value and count descending.
+- **Reports Query Test Suite (`backend/__tests__/reports-query.test.js`):**
+  - Added 23 unit and integration tests covering role-based access control, input validation, SQL injection prevention, metric calculations (`count`, `sum`, `avg`), date range filters, cross-entity queries, workspace isolation, and in-memory fallback.
 - **Async Audio Transcription Queue (`backend/services/transcriptionQueue.js`):**
   - Implemented BullMQ queue (`transcription-queue`) and background worker for asynchronous audio transcription with automatic in-memory queue fallback (`InMemoryTranscriptionQueue`).
   - Processes transcription jobs in the background using `transcribeAudio` from `backend/services/ai.js`, generates summaries when enabled, persists transcripts and media status, and broadcasts `recording.transcribed` (or `recording.failed`) Server-Sent Events via `backend/routes/sse.js`.

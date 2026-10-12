@@ -809,6 +809,18 @@ function genericPgToLegacy(row) {
     const parts = [out.first_name, out.last_name].filter(Boolean);
     out.name = parts.join(" ") || out.first_name || "";
   }
+  // Contacts and leads predate RESOURCE_MAPPINGS, so they have no `columns`
+  // list of their own. Merge their custom_fields overflow bag back out the same
+  // way the mapped entities do, otherwise fields the legacy contract carries
+  // (a contact's `company`, a lead's `lifecycleStage`, ...) vanish on read.
+  const extra = out.custom_fields;
+  if (extra && typeof extra === "object" && !Array.isArray(extra)) {
+    for (const [key, value] of Object.entries(extra)) {
+      if (!Object.prototype.hasOwnProperty.call(out, key)) {
+        out[key] = value;
+      }
+    }
+  }
   return out;
 }
 
@@ -820,7 +832,7 @@ function genericPgToLegacy(row) {
  */
 export function legacyToPg(body, resource) {
   const mapping = mappingFor(resource);
-  if (!mapping) return genericLegacyToPg(body);
+  if (!mapping) return genericLegacyToPg(body, resource);
 
   const out = {};
   const extra = {};
@@ -892,18 +904,84 @@ function applyTitleFallback(mapping, out, body) {
   }
 }
 
-function genericLegacyToPg(body) {
-  const out = { ...body };
-  if ("name" in out) {
-    const parts = String(out.name || "")
+/**
+ * Column knowledge for the resources that predate RESOURCE_MAPPINGS (contacts
+ * and leads). Mirrors migrations/004_contacts_leads.sql. Any key outside this
+ * set is an overflow field and is stored in custom_fields, the same contract
+ * the mapped entities use; that is what lets legacy-only fields such as a
+ * contact's `company` or a lead's `lifecycleStage` survive the PG cutover.
+ */
+const GENERIC_COLUMNS = {
+  contacts: new Set([
+    "id",
+    "workspace_id",
+    "company_id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "title",
+    "owner_id",
+    "custom_fields",
+    "created_at",
+    "updated_at",
+  ]),
+  leads: new Set([
+    "id",
+    "workspace_id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "company_name",
+    "status",
+    "source",
+    "value",
+    "owner_id",
+    "custom_fields",
+    "created_at",
+    "updated_at",
+  ]),
+};
+
+function genericLegacyToPg(body, resource) {
+  const source = { ...(body || {}) };
+  const name = source.name;
+  delete source.name;
+
+  const columns = GENERIC_COLUMNS[resource] || null;
+  const out = {};
+  const extra = {};
+
+  for (const [key, value] of Object.entries(source)) {
+    // The database owns the id and both timestamps.
+    if (key === "id" || key === "createdAt" || key === "updatedAt") continue;
+    if (key === "custom_fields") {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        Object.assign(extra, value);
+      }
+      continue;
+    }
+    if (columns && !columns.has(key)) {
+      extra[key] = value;
+      continue;
+    }
+    out[key] = value;
+  }
+
+  // Reconstruct first_name / last_name from the legacy `name` field, matching
+  // the previous behaviour (an explicit first_name in the body is replaced).
+  if (name !== undefined) {
+    const parts = String(name || "")
       .trim()
       .split(/\s+/);
     out.first_name = parts[0] || "";
     out.last_name = parts.slice(1).join(" ") || undefined;
-    delete out.name;
   }
-  // Drop camelCase timestamp fields if accidentally sent in body
-  delete out.createdAt;
-  delete out.updatedAt;
+
+  // Left unset when empty so a partial update does not wipe the stored bag.
+  if (Object.keys(extra).length) {
+    out.custom_fields = extra;
+  }
   return out;
 }

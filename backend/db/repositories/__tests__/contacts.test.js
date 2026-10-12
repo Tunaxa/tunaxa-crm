@@ -192,7 +192,11 @@ describe("contacts repository", () => {
 
     expect(result).toBe(record);
     const [sql, params] = pg.query.mock.calls[0];
-    expect(sql).toContain("first_name = $1, custom_fields = $2");
+    // custom_fields is merged with the stored bag, not replaced, so a partial
+    // update preserves overflow fields (see update()).
+    expect(sql).toContain(
+      "first_name = $1, custom_fields = COALESCE(custom_fields, '{}'::jsonb) || $2",
+    );
     expect(sql).toContain("WHERE id = $3");
     expect(sql).not.toContain("workspace_id = $");
     expect(sql).not.toContain("unknown = $");
