@@ -32,6 +32,7 @@ import registerSseRoutes from "./routes/sse.js";
 import registerReportRoutes from "./routes/reports.js";
 import registerPermissionsRoutes from "./routes/permissions.js";
 import registerImportRoutes from "./routes/import.js";
+import registerExportRoutes from "./routes/export.js";
 import registerOnboardingRoutes from "./routes/onboarding.js";
 import registerListRoutes from "./routes/lists.js";
 import registerLifecycleRoutes from "./routes/lifecycle.js";
@@ -236,6 +237,10 @@ registerSseRoutes(app);
 registerReportRoutes(app);
 registerPermissionsRoutes(app);
 registerImportRoutes(app, generalUpload);
+// Streaming CSV/JSON export (P2-BE1-06). Must be registered before the generic
+// `/api/:resource/:id` handlers, otherwise `/api/export/:resource` is read as
+// the record `:resource` of the unknown `export` resource.
+registerExportRoutes(app);
 registerOnboardingRoutes(app);
 registerListRoutes(app);
 registerLifecycleRoutes(app);
