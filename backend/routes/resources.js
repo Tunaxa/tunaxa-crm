@@ -3,7 +3,8 @@ import fs from "node:fs/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { updateRecord } from "../services/resources.js";
-import { updatedEvent, eventFor, recordRevision } from "../services/workflows.js";
+import { updatedEvent, eventFor } from "../services/workflows.js";
+import { recordRevision } from "../services/revisions.js";
 import { requireRole } from "../middleware/rbac.js";
 import {
   id,
@@ -227,8 +228,14 @@ export default function registerResourceRoutes(app) {
       );
     }
 
-    // AXA-128: pagination for messages
-    if (req.params.resource === "messages") {
+    // AXA-128: pagination for messages. Only switch shapes when the caller
+    // actually asks to page: the long-standing `/api/messages` contract is a
+    // bare array, and callers that pass page/limit (the inbox UI) still get the
+    // paginated envelope.
+    if (
+      req.params.resource === "messages" &&
+      (req.query.page !== undefined || req.query.limit !== undefined)
+    ) {
       const total = rows.length;
       const paginatedRows = rows.slice(start, start + limit);
 
@@ -328,6 +335,16 @@ export default function registerResourceRoutes(app) {
           coerceBuiltIns(resource, pgData);
           const row = await repo.create(pgData);
           const item = pgToLegacy(row, resource);
+          await mutateDb((db) => {
+            db.audit.unshift(
+              auditEntry({
+                action: `Created ${resource.slice(0, -1)}`,
+                actor: req.user.name,
+                req,
+                resourceId: item.id,
+              }),
+            );
+          });
           const event = createdEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
           broadcast("record.created", { resource, item });
@@ -474,9 +491,34 @@ export default function registerResourceRoutes(app) {
         try {
           const pgData = legacyToPg({ ...req.body }, resource);
           coerceBuiltIns(resource, pgData);
-          const row = await repo.update(req.params.id, pgData);
+          const previousRow = await repo.findById(req.params.id);
+          if (!previousRow)
+            return res.status(404).json({ error: "Record not found" });
+          const previous = pgToLegacy(previousRow, resource);
+          // An empty payload (only the id/timestamps were sent) must still
+          // return the record rather than 404: PUT keeps PATCH's merge
+          // semantics, and repo.update() bails on an empty field set.
+          const row =
+            Object.keys(pgData).length > 0
+              ? await repo.update(req.params.id, pgData)
+              : previousRow;
           if (!row) return res.status(404).json({ error: "Record not found" });
           const item = pgToLegacy(row, resource);
+          // Revisions and the field-level audit trail live in the JSON store
+          // even for PG-backed records, so the /api/revisions view sees them.
+          const revisionId = await mutateDb((db) => {
+            const revId = recordRevision(db, resource, previous, item, req.user);
+            db.audit.unshift(
+              auditEntry({
+                action: `Updated ${resource.slice(0, -1)}`,
+                actor: req.user.name,
+                req,
+                resourceId: req.params.id,
+              }),
+            );
+            return revId;
+          });
+          if (revisionId) item.revisionId = revisionId;
           const event = updatedEvent(resource);
           if (event) triggerWorkflows(resource, event, item);
           broadcast("record.updated", { resource, item });

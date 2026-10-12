@@ -1,5 +1,5 @@
 import { query } from "../pg.js";
-import { cachedList } from "./cache.js";
+import { cachedList, invalidateListCache } from "./cache.js";
 
 const SORT_COLUMNS = new Set([
   "created_at",
@@ -211,7 +211,9 @@ export async function create(data = {}) {
       createData.custom_fields ?? {},
     ],
   );
-  return enrichLead(result.rows[0]) || null;
+  const row = enrichLead(result.rows[0]) || null;
+  if (row) await invalidateListCache("leads");
+  return row;
 }
 
 export async function update(id, data = {}) {
@@ -243,8 +245,12 @@ export async function update(id, data = {}) {
   if (fields.length === 0) return null;
 
   const values = fields.map((field) => updateData[field]);
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
+  const assignments = fields.map((field, index) =>
+    // Merge the overflow bag instead of replacing it, so a partial update to
+    // one legacy field (e.g. lead `lifecycleStage`) keeps the others.
+    field === "custom_fields"
+      ? `custom_fields = COALESCE(custom_fields, '{}'::jsonb) || $${index + 1}`
+      : `${field} = $${index + 1}`,
   );
   values.push(id);
   const result = await query(
@@ -254,7 +260,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
-  return enrichLead(result.rows[0]) || null;
+  const row = enrichLead(result.rows[0]) || null;
+  if (row) await invalidateListCache("leads");
+  return row;
 }
 
 async function remove(id) {
@@ -262,7 +270,9 @@ async function remove(id) {
     "DELETE FROM leads WHERE id = $1 RETURNING id",
     [id],
   );
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("leads");
+  return deleted;
 }
 
 export { remove as delete };

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { setDbPath } from "../store.js";
+import { setDbPath, EMPTY_DB } from "../store.js";
 import { query } from "../db/pg.js";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -12,57 +12,6 @@ const workerId = (process.env.VITEST_POOL_ID || "1").replace(
   "_",
 );
 const testDbFile = path.join(testDbDir, `test-db-${workerId}.json`);
-
-const emptyDb = {
-  users: [],
-  sessions: [],
-  leads: [],
-  contacts: [],
-  companies: [],
-  deals: [],
-  tasks: [],
-  activities: [],
-  workflows: [],
-  calls: [],
-  recordings: [],
-  messages: [],
-  sequences: [],
-  team: [],
-  customFields: [],
-  audit: [],
-  lists: [],
-  tickets: [],
-  articles: [],
-  revisions: [],
-  webVisits: [],
-  chatConversations: [],
-  meetingLinks: [],
-  leadScoringRules: [],
-  stageGates: {},
-  forms: [],
-  executionQueue: [],
-  campaigns: [],
-  emailLists: [],
-  landingPages: [],
-  products: [],
-  orders: [],
-  invoices: [],
-  expenses: [],
-  employees: [],
-  leaveRequests: [],
-  attendance: [],
-  quotes: [],
-  contracts: [],
-  marketingEmails: [],
-  marketingEvents: [],
-  goals: [],
-  surveys: [],
-  surveyResponses: [],
-  webhookEndpoints: [],
-  webhookDeliveries: [],
-  settings: {},
-  meta: { seedVersion: 0 },
-};
 
 // null = not probed yet; true/false = cached for the life of this test file.
 let pgReachable = null;
@@ -88,7 +37,7 @@ function canReachPostgres(timeoutMs = 300) {
 
 export async function resetTestDb() {
   await fs.mkdir(testDbDir, { recursive: true });
-  await fs.writeFile(testDbFile, JSON.stringify(emptyDb, null, 2));
+  await fs.writeFile(testDbFile, JSON.stringify(EMPTY_DB, null, 2));
   setDbPath(testDbFile);
   // Resources served from Postgres (see migrations/004_contacts_leads.sql,
   // 005_core_entities.sql, 006_revenue_tables.sql and
