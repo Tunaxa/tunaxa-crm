@@ -1,17 +1,11 @@
 import crypto from 'node:crypto';
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import supertest from 'supertest';
 import { app } from '../server.js';
 import { resetTestDb, cleanupTestDb } from './setup.js';
 import { query } from '../db/pg.js';
-import { mutateDb, readDb } from '../store.js';
-import {
-  runReportQuery,
-  runJsonStoreReportQuery,
-  resolveColumn,
-  SUPPORTED_ENTITIES,
-  ReportQueryError,
-} from '../services/reports.js';
+import { mutateDb } from '../store.js';
+import { runJsonStoreReportQuery } from '../services/reports.js';
 
 let adminToken;
 let memberToken;
@@ -264,7 +258,7 @@ describe('POST /api/reports/query - Custom Report Aggregation Engine', () => {
             ('default', 'Deal Epsilon', 100000, 'Closed Won', '2026-03-12T10:00:00Z'),
             ('default', 'Deal Zeta', 0, NULL, '2026-03-15T10:00:00Z')
         `);
-      } catch (err) {
+      } catch {
         // Fallback for tests if PG is down
         await mutateDb((db) => {
           db.deals.push(
@@ -411,7 +405,7 @@ describe('POST /api/reports/query - Custom Report Aggregation Engine', () => {
             ('default', 'INV-003', 750.25, 'Sent', '2026-04-03T10:00:00Z'),
             ('default', 'INV-004', 300.00, 'Overdue', '2026-04-04T10:00:00Z')
         `);
-      } catch (err) {
+      } catch {
         await mutateDb((db) => {
           db.invoices.push(
             { id: 'inv1', workspace_id: 'default', invoiceNumber: 'INV-001', total: 500.5, status: 'Paid', createdAt: '2026-04-01T10:00:00Z' },
@@ -431,7 +425,7 @@ describe('POST /api/reports/query - Custom Report Aggregation Engine', () => {
             ('default', 'Billing inquiry', 'High', 'Open', '2026-04-06T10:00:00Z'),
             ('default', 'Feature request', 'Low', 'Resolved', '2026-04-07T10:00:00Z')
         `);
-      } catch (err) {
+      } catch {
         await mutateDb((db) => {
           db.tickets.push(
             { id: 't1', workspace_id: 'default', subject: 'Bug in login', priority: 'High', stage: 'Open', createdAt: '2026-04-05T10:00:00Z' },
@@ -493,7 +487,7 @@ describe('POST /api/reports/query - Custom Report Aggregation Engine', () => {
             ('ws_acme', 'Acme Deal 2', 25000, 'Won'),
             ('ws_globex', 'Globex Giant Deal', 1000000, 'Won')
         `);
-      } catch (err) {
+      } catch {
         await mutateDb((db) => {
           db.deals.push(
             { id: 'acme_d1', workspace_id: 'ws_acme', title: 'Acme Deal 1', value: 75000, stage: 'Won' },

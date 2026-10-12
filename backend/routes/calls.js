@@ -7,9 +7,7 @@ import {
   createOutboundCall,
   validateSignature,
   voiceTwiML,
-  downloadTwilioRecording,
 } from "../services/twilio.js";
-import { transcribeAudio } from "../services/ai.js";
 import { isAiConfigured } from "../services/config.js";
 import { queueTranscriptionJob } from "../services/transcriptionQueue.js";
 import { triggerWorkflows } from "../services/workflows.js";

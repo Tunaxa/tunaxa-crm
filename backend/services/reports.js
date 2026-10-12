@@ -392,7 +392,7 @@ export async function runReportQuery({
         return [];
       }
     }
-  } catch (err) {
+  } catch {
     // If PG is not running, table is missing, or connection error, proceed to JSON store fallback
   }
 

@@ -2,7 +2,7 @@ import { readDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { cacheGet, cacheSet } from '../services/cache.js';
-import { runReportQuery, ReportQueryError } from '../services/reports.js';
+import { runReportQuery } from '../services/reports.js';
 
 export default function registerReportRoutes(app) {
   app.get('/api/reports/pipeline', auth, async (req, res) => {
