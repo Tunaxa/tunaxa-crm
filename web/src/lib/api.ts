@@ -120,16 +120,18 @@ export async function api<T>(
    let response = await requestWithRetry();
   let body = await response.json().catch(() => ({}));
 
-  if (response.status === 401 && path !== "/auth/refresh") {
+ if (response.status === 401 && path !== "/auth/refresh") {
     const token = await refreshToken();
 
-    if (token) {
+    if (!token) {
+      await notifyAuthFailure();
+    } else {
       response = await request();
       body = await response.json().catch(() => ({}));
 
-      if (response.ok) return body as T;
-    } else {
-      await notifyAuthFailure();
+      if (response.status === 401) {
+        await notifyAuthFailure();
+      }
     }
   }
 
