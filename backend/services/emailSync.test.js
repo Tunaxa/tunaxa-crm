@@ -152,22 +152,34 @@ describe('emailSync', () => {
 
     const { activities } = storeMock.db;
     expect(activities).toHaveLength(2);
-    expect(activities[0]).toMatchObject({
-      type: 'Email',
-      recordId: 'contact_1',
-      dealId: null,
-      title: 'Hello there',
-      notes: 'Body text',
-      direction: 'inbound',
-      createdAt: '2026-09-20T10:00:00.000Z',
-      metadata: {
-        messageId: '<m-two@host>',
-        uid: 1002,
-        from: 'jane.doe@example.com',
-      },
-    });
-    expect(activities[1].metadata.uid).toBe(1001);
-    expect(activities[1].metadata.from).toBe('jane.doe@example.com');
+   const activityByUid = new Map(
+  activities.map((activity) => [activity.metadata?.uid, activity])
+);
+
+expect(activityByUid.get(1002)).toMatchObject({
+  type: 'Email',
+  recordId: 'contact_1',
+  dealId: null,
+  title: 'Hello there',
+  notes: 'Body text',
+  direction: 'inbound',
+  createdAt: '2026-09-20T10:00:00.000Z',
+  metadata: {
+    messageId: '<m-two@host>',
+    uid: 1002,
+    from: 'jane.doe@example.com',
+  },
+});
+
+expect(activityByUid.get(1001)).toMatchObject({
+  type: 'Email',
+  recordId: 'contact_1',
+  metadata: {
+    messageId: '<m-one@host>',
+    uid: 1001,
+    from: 'jane.doe@example.com',
+  },
+});
 
     expect(storeMock.db.settings.imap.lastSeenUid).toBe(1002);
     expect(storeMock.mutateCount).toBe(1);
