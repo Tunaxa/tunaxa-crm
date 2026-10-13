@@ -30,7 +30,10 @@ export default function registerSchemaRoutes(app) {
       }
       res.json(schema);
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      // Log the real cause server-side; never echo an internal error message
+      // (which can carry a stack, SQL detail or filesystem path) to the client.
+      console.error('[schema] reflection failed:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 }

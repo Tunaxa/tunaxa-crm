@@ -451,7 +451,11 @@ export async function runImport({
       await persist(record);
       importedCount += 1;
     } catch (err) {
-      const message = `Could not be saved: ${err.message}`;
+      // Never echo the persistence error back to the client: a driver/SQL
+      // error carries table, column and filesystem detail. Keep the real
+      // cause in the server log and return a sanitized reason.
+      console.error(`[import] failed to persist a ${resource} row:`, err);
+      const message = 'Could not be saved';
       errors.push({ row: row.index, errors: [message] });
       failedRows.push({ values: row.values, errors: [message] });
       if (failureStrategy === 'abort') break;

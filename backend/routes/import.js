@@ -220,7 +220,11 @@ export default function registerImportRoutes(app, upload) {
         if (err instanceof ImportError) {
           return res.status(400).json({ error: err.message });
         }
-        res.status(400).json({ error: `Preview failed: ${err.message}` });
+        // A non-ImportError here is a server-side failure (for example the
+        // uploaded file could not be read); log it and return a generic
+        // contract instead of the raw message, which can include the path.
+        console.error('[import] preview failed:', err);
+        return res.status(500).json({ error: 'Internal server error' });
       }
     },
   );
