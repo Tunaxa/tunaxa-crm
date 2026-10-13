@@ -81,7 +81,8 @@ async function deliverInviteEmail(invite, token, inviterName) {
   try {
     result = await sendEmail(settings, { to: invite.email, ...message });
   } catch (error) {
-    result = { delivered: false, status: 'Failed', error: error.message };
+    console.error('[invitations] email delivery threw:', error);
+    result = { delivered: false, status: 'Failed', error: 'Email delivery failed' };
   }
   await mutateDb((db) => {
     const outbox = db.emailOutbox || (db.emailOutbox = []);
@@ -103,10 +104,15 @@ async function deliverInviteEmail(invite, token, inviterName) {
 }
 
 function emailSummary(result) {
+  if (result.error) {
+    // Mailer messages can carry SMTP host/account detail; keep the real
+    // cause in the server log and tell the client only that delivery failed.
+    console.error('[invitations] email delivery failed:', result.error);
+  }
   return {
     sent: Boolean(result.delivered),
     status: result.status || 'Unknown',
-    ...(result.error ? { error: result.error } : {}),
+    ...(result.error ? { error: 'Email delivery failed' } : {}),
   };
 }
 
