@@ -1,3 +1,4 @@
+
 import path from "node:path";
 import fs from "node:fs/promises";
 import { readDb, mutateDb } from "../store.js";
@@ -11,7 +12,11 @@ import {
   coerceCustomFields,
   resources,
 } from "../helpers.js";
-import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
+import {
+  validate,
+  ResourceSchema,
+  BatchSchema,
+} from "../services/validate.js";
 import {
   triggerWorkflows,
   createdEvent,
@@ -21,7 +26,10 @@ import {
 import { broadcast } from "./sse.js";
 import { cacheFlush } from "../services/cache.js";
 import { recordRevision } from "../services/revisions.js";
-import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
+import {
+  getFieldPermissions,
+  applyFieldMasking,
+} from "./permissions.js";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -29,7 +37,9 @@ const uploadDir = path.join(root, "..", "uploads");
 
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
-    if (!resources.has(req.params.resource) || !req.user) return next();
+    if (!resources.has(req.params.resource) || !req.user) {
+      return next();
+    }
 
     req.db = await readDb();
     req.fieldPerms = getFieldPermissions(
@@ -42,7 +52,9 @@ export default function registerResourceRoutes(app) {
   });
 
   app.get("/api/:resource", auth, async (req, res, next) => {
-    if (!resources.has(req.params.resource)) return next();
+    if (!resources.has(req.params.resource)) {
+      return next();
+    }
 
     const db = req.db || (await readDb());
 
@@ -99,7 +111,7 @@ export default function registerResourceRoutes(app) {
       }
     }
 
-    // AXA-128: only return email messages when type=email is requested
+    // AXA-128: only return email messages when type=email is requested.
     if (req.params.resource === "messages") {
       const type = String(req.query.type || "").toLowerCase();
 
@@ -117,30 +129,49 @@ export default function registerResourceRoutes(app) {
       );
     }
 
-    // AXA-128: pagination for messages
-    if (req.params.resource === "messages") {
-      const total = rows.length;
-      const paginatedRows = rows.slice(start, start + limit);
+    const total = rows.length;
+    const paginatedRows = rows.slice(start, start + limit);
 
+      // Pagination spécifique pour les messages.
+      if (req.params.resource === "messages") {
+        return res.json({
+          items: paginatedRows,
+          total,
+          page,
+          limit,
+          hasMore: start + limit < total,
+        });
+      }
+
+      // Les produits conservent une réponse sous forme de tableau.
+
+
+      // Les activités conservent une réponse sous forme de tableau.
+      if (req.params.resource === "activities") {
+        return res.json(paginatedRows);
+      }
+
+      // Réponse paginée standard pour les autres ressources.
       return res.json({
-        items: paginatedRows,
+        data: paginatedRows,
         total,
         page,
         limit,
         hasMore: start + limit < total,
       });
-    }
-
-    res.json(rows);
-  });
+    });
 
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
-    if (!resources.has(req.params.resource)) return next();
+    if (!resources.has(req.params.resource)) {
+      return next();
+    }
 
     const db = req.db || (await readDb());
 
     const rows = (db[req.params.resource] || []).map((item) =>
-      req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
+      req.fieldPerms
+        ? applyFieldMasking(item, req.fieldPerms)
+        : item,
     );
 
     const columns = [
@@ -176,17 +207,21 @@ export default function registerResourceRoutes(app) {
   });
 
   app.get("/api/:resource/:id", auth, async (req, res, next) => {
-    if (!resources.has(req.params.resource)) return next();
+    if (!resources.has(req.params.resource)) {
+      return next();
+    }
 
     const db = req.db || (await readDb());
     const rows = db[req.params.resource] || [];
     const item = rows.find((x) => x.id === req.params.id);
 
     if (!item) {
-      return res.status(404).json({ error: "Record not found" });
+      return res.status(404).json({
+        error: "Record not found",
+      });
     }
 
-    res.json(
+    return res.json(
       req.fieldPerms
         ? applyFieldMasking(item, req.fieldPerms)
         : item,
@@ -201,7 +236,9 @@ export default function registerResourceRoutes(app) {
     async (req, res, next) => {
       const resource = req.params.resource;
 
-      if (!resources.has(resource)) return next();
+      if (!resources.has(resource)) {
+        return next();
+      }
 
       const item = await mutateDb((db) => {
         const createdAt = now();
@@ -251,11 +288,20 @@ export default function registerResourceRoutes(app) {
       });
 
       const event = createdEvent(resource);
-      if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.created", { resource, item }, req.user.workspaceId || "default");
+
+      if (event) {
+        triggerWorkflows(resource, event, item);
+      }
+
+      broadcast(
+        "record.created",
+        { resource, item },
+        req.user.workspaceId || "default",
+      );
+
       cacheFlush(resource);
 
-      res.status(201).json(item);
+      return res.status(201).json(item);
     },
   );
 
@@ -267,7 +313,9 @@ export default function registerResourceRoutes(app) {
     async (req, res, next) => {
       const resource = req.params.resource;
 
-      if (!resources.has(resource)) return next();
+      if (!resources.has(resource)) {
+        return next();
+      }
 
       const incoming = req.body;
 
@@ -295,10 +343,16 @@ export default function registerResourceRoutes(app) {
 
         return rows;
       });
-      broadcast("records.batch", { resource, count: saved.length }, req.user.workspaceId || "default");
+
+      broadcast(
+        "records.batch",
+        { resource, count: saved.length },
+        req.user.workspaceId || "default",
+      );
+
       cacheFlush(resource);
 
-      res.status(201).json(saved);
+      return res.status(201).json(saved);
     },
   );
 
@@ -310,7 +364,9 @@ export default function registerResourceRoutes(app) {
     async (req, res, next) => {
       const resource = req.params.resource;
 
-      if (!resources.has(resource)) return next();
+      if (!resources.has(resource)) {
+        return next();
+      }
 
       let previous = null;
       let revisionId = null;
@@ -320,7 +376,9 @@ export default function registerResourceRoutes(app) {
           (x) => x.id === req.params.id,
         );
 
-        if (index < 0) return null;
+        if (index < 0) {
+          return null;
+        }
 
         previous = { ...db[resource][index] };
 
@@ -364,11 +422,20 @@ export default function registerResourceRoutes(app) {
 
       const event =
         eventFor(resource, previous, item) || updatedEvent(resource);
-      if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.updated", { resource, item, revisionId }, req.user.workspaceId || "default");
+
+      if (event) {
+        triggerWorkflows(resource, event, item);
+      }
+
+      broadcast(
+        "record.updated",
+        { resource, item, revisionId },
+        req.user.workspaceId || "default",
+      );
+
       cacheFlush(resource);
 
-      res.json(
+      return res.json(
         revisionId
           ? { ...item, revisionId }
           : item,
@@ -383,14 +450,18 @@ export default function registerResourceRoutes(app) {
     async (req, res, next) => {
       const resource = req.params.resource;
 
-      if (!resources.has(resource)) return next();
+      if (!resources.has(resource)) {
+        return next();
+      }
 
       const result = await mutateDb((db) => {
         const index = db[resource].findIndex(
           (x) => x.id === req.params.id,
         );
 
-        if (index < 0) return null;
+        if (index < 0) {
+          return null;
+        }
 
         const [record] = db[resource].splice(index, 1);
         const files = [];
@@ -459,7 +530,9 @@ export default function registerResourceRoutes(app) {
         result.files.map(async (fileUrl) => {
           const name = path.basename(String(fileUrl));
 
-          if (!name) return;
+          if (!name) {
+            return;
+          }
 
           try {
             await fs.unlink(path.join(uploadDir, name));
@@ -473,10 +546,16 @@ export default function registerResourceRoutes(app) {
           }
         }),
       );
-      broadcast("record.deleted", { resource, id: req.params.id }, req.user.workspaceId || "default");
+
+      broadcast(
+        "record.deleted",
+        { resource, id: req.params.id },
+        req.user.workspaceId || "default",
+      );
+
       cacheFlush(resource);
 
-      res.json({ ok: true });
+      return res.json({ ok: true });
     },
   );
 }

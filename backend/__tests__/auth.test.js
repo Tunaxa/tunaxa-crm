@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { resetRateLimiters } from '../services/rateLimit.js';
 import request from 'supertest';
 import { resetTestDb, cleanupTestDb } from './setup.js';
 import { mutateDb } from '../store.js';
@@ -12,7 +13,9 @@ beforeAll(async () => {
 });
 
 afterAll(() => cleanupTestDb());
-
+beforeEach(() => {
+  resetRateLimiters();
+});
 describe('Health', () => {
   it('GET /api/health returns ok', async () => {
     const res = await request(app).get('/api/health');

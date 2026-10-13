@@ -41,3 +41,6 @@ export function startRateLimitSweeper(intervalMs = 10 * 60 * 1000) {
   sweepTimer.unref();
   return sweepTimer;
 }
+export function resetRateLimiters() {
+  buckets.clear();
+}

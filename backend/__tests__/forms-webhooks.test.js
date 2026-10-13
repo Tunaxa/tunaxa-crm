@@ -145,7 +145,7 @@ describe('Forms management (Marketing > Forms)', () => {
     expect(submit.body.recordId).toBeTruthy();
 
     const leads = await request(app).get('/api/leads').set('Authorization', `Bearer ${token}`);
-    expect(leads.body.some(l => l.email === 'jane@demo.com')).toBe(true);
+    expect(leads.body.data.some(l => l.email === 'jane@demo.com')).toBe(true);
   });
 
   it('rejects a submission missing required fields', async () => {

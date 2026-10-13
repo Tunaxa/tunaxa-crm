@@ -10,3 +10,5 @@ backend/data/db.json
 backend/__tests__/test-db.json
 .opencode/
 .vscode/
+/backend/__tests__/test-db-1.json
+printf '\n' >> .gitignore

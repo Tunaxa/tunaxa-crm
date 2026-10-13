@@ -1,8 +1,17 @@
+
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
-import { resetTestDb, cleanupTestDb, seedTestUser, loginAs } from './setup.js';
+import {
+  resetTestDb,
+  cleanupTestDb,
+  seedTestUser,
+  loginAs
+} from './setup.js';
 import { createdEvent, updatedEvent } from '../services/workflows.js';
-import { AUTOMATION_PLAYBOOKS, seedPlaybooks } from '../services/seedPlaybooks.js';
+import {
+  AUTOMATION_PLAYBOOKS,
+  seedPlaybooks
+} from '../services/seedPlaybooks.js';
 import { readDb, mutateDb } from '../store.js';
 
 let app;
@@ -10,13 +19,17 @@ let token;
 
 beforeAll(async () => {
   await resetTestDb();
+
   const mod = await import('../server.js');
   app = mod.app;
+
   await seedTestUser();
   token = await loginAs(app);
 });
 
-afterAll(() => cleanupTestDb());
+afterAll(async () => {
+  await cleanupTestDb();
+});
 
 describe('Workflow engine events for module resources', () => {
   it('emits createdEvent for every module resource', () => {
@@ -42,21 +55,54 @@ describe('Workflow engine events for module resources', () => {
 
   it('seeds exactly the 8 automation playbooks idempotently', async () => {
     await seedPlaybooks();
+
     const db = await readDb();
-    expect(db.workflows.filter(w => AUTOMATION_PLAYBOOKS.some(p => p.name === w.name)).length).toBe(8);
+
+    expect(
+      db.workflows.filter(w =>
+        AUTOMATION_PLAYBOOKS.some(p => p.name === w.name)
+      ).length
+    ).toBe(8);
+
     await seedPlaybooks();
+
     const db2 = await readDb();
-    expect(db2.workflows.filter(w => AUTOMATION_PLAYBOOKS.some(p => p.name === w.name)).length).toBe(8);
+
+    expect(
+      db2.workflows.filter(w =>
+        AUTOMATION_PLAYBOOKS.some(p => p.name === w.name)
+      ).length
+    ).toBe(8);
   });
 
-  it('scaffolds fireable events for the low-stock and invoice playbooks', async () => {
+  it('scaffolds fireable events for the low-stock and invoice playbooks', () => {
     for (const playbook of AUTOMATION_PLAYBOOKS) {
-      expect(playbook.event.split('.')[0]).toContain(
-        ['lead', 'contact', 'deal', 'form', 'product', 'invoice', 'task', 'webhook'].find(p => playbook.event.startsWith(p))
-      );
+      const matchingPrefix = [
+        'lead',
+        'contact',
+        'deal',
+        'form',
+        'product',
+        'invoice',
+        'task',
+        'webhook'
+      ].find(prefix => playbook.event.startsWith(prefix));
+
+      expect(matchingPrefix).toBeTruthy();
+      expect(playbook.event.split('.')[0]).toContain(matchingPrefix);
     }
-    expect(AUTOMATION_PLAYBOOKS.find(p => p.name === 'Low-stock reorder reminder').event).toBe('product.updated');
-    expect(AUTOMATION_PLAYBOOKS.find(p => p.name === 'Invoice overdue reminder').event).toBe('invoice.created');
+
+    expect(
+      AUTOMATION_PLAYBOOKS.find(
+        p => p.name === 'Low-stock reorder reminder'
+      ).event
+    ).toBe('product.updated');
+
+    expect(
+      AUTOMATION_PLAYBOOKS.find(
+        p => p.name === 'Invoice overdue reminder'
+      ).event
+    ).toBe('invoice.created');
   });
 });
 
@@ -64,17 +110,36 @@ describe('Workflows actually fire on module events', () => {
   it('product update triggers the low-stock reorder task', async () => {
     await mutateDb(db => {
       db.workflows.push({
-        id: 'workflow_lowstock_test', name: 'Low-stock test', event: 'product.updated', enabled: true,
+        id: 'workflow_lowstock_test',
+        name: 'Low-stock test',
+        event: 'product.updated',
+        enabled: true,
         filter: { field: 'stock', op: 'isSet' },
-        actions: [{ type: 'task', title: 'Reorder low-stock product {{name}}', owner: '', priority: 'High', dueDate: '' }],
-        createdAt: new Date().toISOString(), createdBy: 'System', updatedAt: new Date().toISOString()
+        actions: [
+          {
+            type: 'task',
+            title: 'Reorder low-stock product {{name}}',
+            owner: '',
+            priority: 'High',
+            dueDate: ''
+          }
+        ],
+        createdAt: new Date().toISOString(),
+        createdBy: 'System',
+        updatedAt: new Date().toISOString()
       });
     });
 
     const product = await request(app)
       .post('/api/products')
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: 'Widget', price: 9.99, stock: 5, minStock: 10 });
+      .send({
+        name: 'Widget',
+        price: 9.99,
+        stock: 5,
+        minStock: 10
+      });
+
     expect(product.status).toBe(201);
 
     await request(app)
@@ -82,29 +147,74 @@ describe('Workflows actually fire on module events', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ stock: 4 });
 
-    const tasks = await request(app).get('/api/tasks').set('Authorization', `Bearer ${token}`);
-    const created = tasks.body.find(t => t.title === 'Reorder low-stock product Widget');
+    const tasks = await request(app)
+      .get('/api/tasks')
+      .set('Authorization', `Bearer ${token}`);
+
+    const taskList = Array.isArray(tasks.body)
+      ? tasks.body
+      : tasks.body.data ?? tasks.body.items ?? [];
+
+    const created = taskList.find(
+      task => task.title === 'Reorder low-stock product Widget'
+    );
+
     expect(created).toBeTruthy();
   });
 
   it('invoice creation triggers the unpaid-reminder email', async () => {
     await mutateDb(db => {
       db.workflows.push({
-        id: 'workflow_invoice_test', name: 'Invoice overdue test', event: 'invoice.created', enabled: true,
-        filter: { field: 'status', op: 'neq', value: 'paid' },
-        actions: [{ type: 'email', to: '{{customerEmail}}', subject: 'Invoice reminder', body: 'Hi {{customerName}}, reminder about {{number}}.' }],
-        createdAt: new Date().toISOString(), createdBy: 'System', updatedAt: new Date().toISOString()
+        id: 'workflow_invoice_test',
+        name: 'Invoice overdue test',
+        event: 'invoice.created',
+        enabled: true,
+        filter: {
+          field: 'status',
+          op: 'neq',
+          value: 'paid'
+        },
+        actions: [
+          {
+            type: 'email',
+            to: '{{customerEmail}}',
+            subject: 'Invoice reminder',
+            body: 'Hi {{customerName}}, reminder about {{number}}.'
+          }
+        ],
+        createdAt: new Date().toISOString(),
+        createdBy: 'System',
+        updatedAt: new Date().toISOString()
       });
     });
 
     const invoice = await request(app)
       .post('/api/invoices')
       .set('Authorization', `Bearer ${token}`)
-      .send({ number: 'INV-5002', amount: 250, status: 'unpaid', customerName: 'Acme', customerEmail: 'acme@test.com' });
+      .send({
+        number: 'INV-5002',
+        amount: 250,
+        status: 'unpaid',
+        customerName: 'Acme',
+        customerEmail: 'acme@test.com'
+      });
+
     expect(invoice.status).toBe(201);
 
-    const messages = await request(app).get('/api/messages').set('Authorization', `Bearer ${token}`);
-    const created = messages.body.find(m => m.subject === 'Invoice reminder');
+    const messages = await request(app)
+      .get('/api/messages')
+      .set('Authorization', `Bearer ${token}`);
+
+
+
+    const messageList = Array.isArray(messages.body)
+      ? messages.body
+      : messages.body.data ?? messages.body.items ?? [];
+
+    const created = messageList.find(
+      message => message.subject === 'Invoice reminder'
+    );
+
     expect(created).toBeTruthy();
     expect(created.to).toBe('acme@test.com');
   });
