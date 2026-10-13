@@ -1,3 +1,4 @@
+
 import { query } from "../pg.js";
 import {
   cacheFlush,
@@ -7,6 +8,7 @@ import {
 } from "../../services/cache.js";
 
 const RESOURCE = "deals";
+
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
@@ -16,6 +18,7 @@ const SORT_COLUMNS = new Set([
   "company",
   "expected_close_date",
 ]);
+
 const UPDATE_FIELDS = [
   "title",
   "company",
@@ -32,22 +35,32 @@ const UPDATE_FIELDS = [
 ];
 
 function validatePositiveInteger(value, name) {
-  if (!Number.isInteger(value) || value <= 0) {
+  const number = Number(value);
+
+  if (!Number.isInteger(number) || number <= 0) {
     throw new RangeError(`${name} must be a positive integer`);
   }
-  return value;
+
+  return number;
 }
 
 function getSort(sortBy) {
   const parts = typeof sortBy === "string" ? sortBy.split(":") : [];
   const direction = parts[1]?.toLowerCase();
+
   if (
     parts.length > 2 ||
     !SORT_COLUMNS.has(parts[0]) ||
-    (parts.length === 2 && direction !== "asc" && direction !== "desc")
+    (parts.length === 2 &&
+      direction !== "asc" &&
+      direction !== "desc")
   ) {
-    return { column: "created_at", direction: "DESC" };
+    return {
+      column: "created_at",
+      direction: "DESC",
+    };
   }
+
   return {
     column: parts[0],
     direction: direction === "asc" ? "ASC" : "DESC",
@@ -55,90 +68,146 @@ function getSort(sortBy) {
 }
 
 function getSearchTerm(q) {
-  if (q === undefined || q === null) return "";
-  const value = String(q);
-  return value.trim() ? `%${value}%` : "";
+  if (q === undefined || q === null) {
+    return "";
+  }
+
+  const value = String(q).trim();
+  return value ? `%${value}%` : "";
 }
 
-export async function findAll(params = {}) {
-  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
-  const cached = await cacheGet(cacheKey);
-  if (cached) return cached;
-
+export async function findAll(options = {}) {
   const {
     page = 1,
     limit = 20,
     sortBy = "created_at:desc",
     q = "",
-  } = params;
+    stage = "",
+  } = options;
+
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
     100,
   );
+
   const offset = (normalizedPage - 1) * normalizedLimit;
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
-  // The pipeline board groups on an exact stage label, so match it exactly
-  // rather than fuzzily the way `q` does.
   const stageFilter = String(stage || "").trim().toLowerCase();
+
+  const cacheKey = `${RESOURCE}:list:${hashParams({
+    page: normalizedPage,
+    limit: normalizedLimit,
+    sortBy,
+    q: searchTerm,
+    stage: stageFilter,
+  })}`;
+
+  const cached = await cacheGet(cacheKey);
+
+  if (cached !== null && cached !== undefined) {
+    return cached;
+  }
+
   const conditions = [];
-  const params = [];
+  const queryParams = [];
+
   if (searchTerm) {
-    params.push(searchTerm);
-    const p = `$${params.length}`;
+    queryParams.push(searchTerm);
+    const placeholder = `$${queryParams.length}`;
+
     conditions.push(
-      `(title ILIKE ${p} OR company ILIKE ${p} OR stage ILIKE ${p})`,
+      `(title ILIKE ${placeholder}
+        OR company ILIKE ${placeholder}
+        OR stage ILIKE ${placeholder})`,
     );
   }
+
+  // Filter by the selected pipeline stage.
   if (stageFilter) {
-    params.push(stageFilter);
-    conditions.push(`LOWER(COALESCE(stage, '')) = $${params.length}`);
+    queryParams.push(stageFilter);
+
+    conditions.push(
+      `LOWER(COALESCE(stage, '')) = $${queryParams.length}`,
+    );
   }
-  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const whereClause = conditions.length
+    ? `WHERE ${conditions.join(" AND ")}`
+    : "";
+
+  // Count matching deals on the server.
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
      FROM deals
      ${whereClause}`,
-    [...params],
+    queryParams,
   );
-  const params2 = [...params, normalizedLimit, offset];
-    searchTerm ? [searchTerm] : [],
-  );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
+
+  // Fetch only the requested page.
+  const dataParams = [
+    ...queryParams,
+    normalizedLimit,
+    offset,
+  ];
+
+  const limitParameter = queryParams.length + 1;
+  const offsetParameter = queryParams.length + 2;
+
   const dataResult = await query(
     `SELECT *
      FROM deals
      ${whereClause}
      ORDER BY ${column} ${direction}
-     LIMIT $${params2.length - 1} OFFSET $${params2.length}`,
-    params2,
+     LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
+    dataParams,
   );
+
   const total = Number(countResult.rows[0]?.total ?? 0);
-  return {
+
+  const result = {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
+
   await cacheSet(cacheKey, result, 60);
+
   return result;
 }
 
 export async function findById(id) {
-  const result = await query("SELECT * FROM deals WHERE id = $1", [id]);
+  const result = await query(
+    "SELECT * FROM deals WHERE id = $1",
+    [id],
+  );
+
   return result.rows[0] || null;
 }
 
 export async function create(data = {}) {
   const result = await query(
     `INSERT INTO deals (
-       workspace_id, title, company, company_id, contact, contact_id,
-       pipeline_id, owner, owner_id, value, stage, expected_close_date,
+       workspace_id,
+       title,
+       company,
+       company_id,
+       contact,
+       contact_id,
+       pipeline_id,
+       owner,
+       owner_id,
+       value,
+       stage,
+       expected_close_date,
        custom_fields
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7,
+       $8, $9, $10, $11, $12, $13
+     )
      RETURNING *`,
     [
       data.workspace_id,
@@ -156,7 +225,9 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+
   await cacheFlush(`${RESOURCE}:list:*`);
+
   return result.rows[0] || null;
 }
 
@@ -166,13 +237,19 @@ export async function update(id, data = {}) {
       Object.prototype.hasOwnProperty.call(data, field) &&
       data[field] !== undefined,
   );
-  if (fields.length === 0) return null;
+
+  if (fields.length === 0) {
+    return null;
+  }
 
   const values = fields.map((field) => data[field]);
+
   const assignments = fields.map(
     (field, index) => `${field} = $${index + 1}`,
   );
+
   values.push(id);
+
   const result = await query(
     `UPDATE deals
      SET ${assignments.join(", ")}
@@ -180,7 +257,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
+
   await cacheFlush(`${RESOURCE}:list:*`);
+
   return result.rows[0] || null;
 }
 
@@ -189,17 +268,24 @@ async function remove(id) {
     "DELETE FROM deals WHERE id = $1 RETURNING id",
     [id],
   );
+
   await cacheFlush(`${RESOURCE}:list:*`);
+
   return result.rowCount > 0;
 }
 
 export async function getPipelineSummary({ workspace_id } = {}) {
-  const params = [];
+  const queryParams = [];
+
   const whereClause =
     workspace_id === undefined || workspace_id === null
       ? ""
       : "WHERE workspace_id = $1";
-  if (whereClause) params.push(workspace_id);
+
+  if (whereClause) {
+    queryParams.push(workspace_id);
+  }
+
   const result = await query(
     `SELECT stage,
             COUNT(*)::int AS count,
@@ -208,8 +294,9 @@ export async function getPipelineSummary({ workspace_id } = {}) {
      ${whereClause}
      GROUP BY stage
      ORDER BY stage`,
-    params,
+    queryParams,
   );
+
   return result.rows;
 }
 

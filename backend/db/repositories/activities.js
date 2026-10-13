@@ -16,6 +16,7 @@ const SORT_COLUMNS = new Set([
   "subject",
   "direction",
 ]);
+
 const UPDATE_FIELDS = [
   "type",
   "title",
@@ -34,27 +35,36 @@ const UPDATE_FIELDS = [
   "custom_fields",
 ];
 
-// ?type=System is a bucket, not a stored value: it means "anything that is not
-// one of the four interaction types the timeline renders as its own tab.
+// The System type includes activities other than the four direct types.
 export const DIRECT_TYPES = ["email", "call", "meeting", "note"];
 
 function validatePositiveInteger(value, name) {
-  if (!Number.isInteger(value) || value <= 0) {
+  const number = Number(value);
+
+  if (!Number.isInteger(number) || number <= 0) {
     throw new RangeError(`${name} must be a positive integer`);
   }
-  return value;
+
+  return number;
 }
 
 function getSort(sortBy) {
   const parts = typeof sortBy === "string" ? sortBy.split(":") : [];
   const direction = parts[1]?.toLowerCase();
+
   if (
     parts.length > 2 ||
     !SORT_COLUMNS.has(parts[0]) ||
-    (parts.length === 2 && direction !== "asc" && direction !== "desc")
+    (parts.length === 2 &&
+      direction !== "asc" &&
+      direction !== "desc")
   ) {
-    return { column: "created_at", direction: "DESC" };
+    return {
+      column: "created_at",
+      direction: "DESC",
+    };
   }
+
   return {
     column: parts[0],
     direction: direction === "asc" ? "ASC" : "DESC",
@@ -62,13 +72,15 @@ function getSort(sortBy) {
 }
 
 function getSearchTerm(q) {
-  if (q === undefined || q === null) return "";
-  const value = String(q);
-  return value.trim() ? `%${value}%` : "";
+  if (q === undefined || q === null) {
+    return "";
+  }
+
+  const value = String(q).trim();
+  return value ? `%${value}%` : "";
 }
 
-// Free-text search mirrors the legacy JSON path, which matched the whole
-// serialized record. Every column it can reach is listed here.
+// Search across the activity fields used by the timeline.
 function searchCondition(param) {
   return [
     "title",
@@ -93,23 +105,42 @@ export async function findAll({
   recordId = "",
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
+
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
     100,
   );
+
   const offset = (normalizedPage - 1) * normalizedLimit;
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
   const typeFilter = String(type || "").trim().toLowerCase();
   const recordIdFilter = String(recordId || "").trim();
   const contactFilter = String(contact || "").trim().toLowerCase();
+
+  const cacheKey = `${RESOURCE}:list:${hashParams({
+    page: normalizedPage,
+    limit: normalizedLimit,
+    sortBy,
+    q: searchTerm,
+    type: typeFilter,
+    contact: contactFilter,
+    recordId: recordIdFilter,
+  })}`;
+
+  const cached = await cacheGet(cacheKey);
+
+  if (cached !== null && cached !== undefined) {
+    return cached;
+  }
+
   const conditions = [];
   const params = [];
 
   if (searchTerm) {
     params.push(searchTerm);
-    const p = `$${params.length}`;
-    conditions.push(`(${searchCondition(p)})`);
+    const placeholder = `$${params.length}`;
+    conditions.push(`(${searchCondition(placeholder)})`);
   }
 
   if (typeFilter) {
@@ -121,45 +152,50 @@ export async function findAll({
       );
     } else {
       params.push(typeFilter);
-      conditions.push(`LOWER(COALESCE(type, '')) = $${params.length}`);
+      conditions.push(
+        `LOWER(COALESCE(type, '')) = $${params.length}`,
+      );
     }
   }
 
-  // `recordId` and `contact` are alternatives, not an intersection: the legacy
-  // filter kept a row when either one matched, and the timeline relies on that
-  // to show a record's events when only its name is known.
+  // recordId and contact are alternatives, not an intersection.
   const recordConditions = [];
+
   if (recordIdFilter) {
     params.push(recordIdFilter);
     recordConditions.push(`record_id = $${params.length}`);
   }
+
   if (contactFilter) {
     params.push(contactFilter);
-    const p = `$${params.length}`;
+    const placeholder = `$${params.length}`;
+
     recordConditions.push(
-      `LOWER(COALESCE(contact, '')) = ${p}`,
-      `LOWER(COALESCE(company, '')) = ${p}`,
-      `COALESCE(title, '') ILIKE '%' || ${p} || '%'`,
+      `LOWER(COALESCE(contact, '')) = ${placeholder}`,
+      `LOWER(COALESCE(company, '')) = ${placeholder}`,
+      `COALESCE(title, '') ILIKE '%' || ${placeholder} || '%'`,
     );
   }
-  if (recordConditions.length) {
+
+  if (recordConditions.length > 0) {
     conditions.push(`(${recordConditions.join(" OR ")})`);
   }
 
   const whereClause = conditions.length
     ? `WHERE ${conditions.join(" AND ")}`
     : "";
+
+  // Count matching activities on the server.
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
      FROM activities
      ${whereClause}`,
     [...params],
   );
+
+  // Fetch only the requested page.
   const dataParams = [...params, normalizedLimit, offset];
-    searchTerm ? [searchTerm] : [],
-  );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
+
   const dataResult = await query(
     `SELECT *
      FROM activities
@@ -168,30 +204,54 @@ export async function findAll({
      LIMIT $${dataParams.length - 1} OFFSET $${dataParams.length}`,
     dataParams,
   );
+
   const total = Number(countResult.rows[0]?.total ?? 0);
-  return {
+
+  const result = {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
+
   await cacheSet(cacheKey, result, 60);
+
   return result;
 }
 
 export async function findById(id) {
-  const result = await query("SELECT * FROM activities WHERE id = $1", [id]);
+  const result = await query(
+    "SELECT * FROM activities WHERE id = $1",
+    [id],
+  );
+
   return result.rows[0] || null;
 }
 
 export async function create(data = {}) {
   const result = await query(
     `INSERT INTO activities (
-       workspace_id, type, title, subject, description, contact, company,
-       direction, record_id, entity_type, entity_id, user_id, contact_id,
-       deal_id, metadata, custom_fields
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       workspace_id,
+       type,
+       title,
+       subject,
+       description,
+       contact,
+       company,
+       direction,
+       record_id,
+       entity_type,
+       entity_id,
+       user_id,
+       contact_id,
+       deal_id,
+       metadata,
+       custom_fields
+     ) VALUES (
+       $1, $2, $3, $4, $5, $6, $7, $8,
+       $9, $10, $11, $12, $13, $14, $15, $16
+     )
      RETURNING *`,
     [
       data.workspace_id,
@@ -212,6 +272,9 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
+
+  await cacheFlush(`${RESOURCE}:list:*`);
+
   return result.rows[0] || null;
 }
 
@@ -221,13 +284,19 @@ export async function update(id, data = {}) {
       Object.prototype.hasOwnProperty.call(data, field) &&
       data[field] !== undefined,
   );
-  if (fields.length === 0) return null;
+
+  if (fields.length === 0) {
+    return null;
+  }
 
   const values = fields.map((field) => data[field]);
+
   const assignments = fields.map(
     (field, index) => `${field} = $${index + 1}`,
   );
+
   values.push(id);
+
   const result = await query(
     `UPDATE activities
      SET ${assignments.join(", ")}
@@ -235,7 +304,9 @@ export async function update(id, data = {}) {
      RETURNING *`,
     values,
   );
+
   await cacheFlush(`${RESOURCE}:list:*`);
+
   return result.rows[0] || null;
 }
 
@@ -244,7 +315,9 @@ async function remove(id) {
     "DELETE FROM activities WHERE id = $1 RETURNING id",
     [id],
   );
+
   await cacheFlush(`${RESOURCE}:list:*`);
+
   return result.rowCount > 0;
 }
 

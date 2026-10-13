@@ -219,33 +219,36 @@ describe("tasks repository", () => {
     expect(params.at(-1)).toEqual({});
   });
 
-  it("updates only whitelisted task fields and appends the id", async () => {
-    const record = { id: "task-1", status: "Completed" };
-    pg.query.mockResolvedValueOnce({ rows: [record] });
+ it("updates only whitelisted task fields and appends the id", async () => {
+  const record = { id: "task-1", status: "Completed" };
+  pg.query.mockResolvedValueOnce({ rows: [record] });
 
-    const result = await update("task-1", {
-      status: "Completed",
-      completed: true,
-      assigned_to: "user-2",
-      workspace_id: "ignored",
-      unknown: "ignored",
-    });
-
-    expect(result).toBe(record);
-    const [sql, params] = pg.query.mock.calls[0];
-    expect(sql).toContain(
-      "status = $1, completed = $2, assigned_to = $3",
-    );
-    expect(sql).toContain("WHERE id = $4");
-    expect(sql).not.toContain("workspace_id = $");
-    expect(sql).not.toContain("unknown = $");
-    expect(params).toEqual(["Completed", true, "user-2", "task-1"]);
-    expect(sql).toContain("description = $1, status = $2");
-    expect(sql).toContain("WHERE id = $3");
-    expect(sql).not.toContain("workspace_id = $");
-    expect(sql).not.toContain("unknown = $");
-    expect(params).toEqual(["Completed", "completed", "task-1"]);
+  const result = await update("task-1", {
+    status: "Completed",
+    completed: true,
+    assigned_to: "user-2",
+    workspace_id: "ignored",
+    unknown: "ignored",
   });
+
+  expect(result).toBe(record);
+
+  const [sql, params] = pg.query.mock.calls[0];
+
+  expect(sql).toContain(
+    "status = $1, completed = $2, assigned_to = $3",
+  );
+  expect(sql).toContain("WHERE id = $4");
+  expect(sql).not.toContain("workspace_id = $");
+  expect(sql).not.toContain("unknown = $");
+
+  expect(params).toEqual([
+    "Completed",
+    true,
+    "user-2",
+    "task-1",
+  ]);
+});
 
   it("returns null for empty or non-matching updates", async () => {
     await expect(update("task-1", { unknown: "value" })).resolves.toBeNull();

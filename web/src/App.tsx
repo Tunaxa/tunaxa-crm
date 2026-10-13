@@ -1991,9 +1991,9 @@ function changePageSize(value: number) {
             />
           </div>
 
-          <span className="table-count">
-            {filteredRows.length} total
-          </span>
+        <span className="table-count">
+  {total} total
+</span>
 
           <select
             value={pageSize}
@@ -2248,15 +2248,22 @@ function PeoplePage({
   icon: string;
   fields: FieldSpec[];
 }) {
-  const { items, loading, load, create, update, remove } =
-    useResource<Row>(resource);
-  const { toast } = useApp();
-  const navigate = useNavigate();
-  const [query, setQuery] = useState("");
-  const [pageSize, setPageSize] = useState(getPageSize());
-  const [page, setPage] = useState(1);
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const inputRef = useRef<HTMLInputElement>(null);
+ const { toast } = useApp();
+const navigate = useNavigate();
+
+const [query, setQuery] = useState("");
+const [pageSize, setPageSize] = useState(getPageSize());
+const [page, setPage] = useState(1);
+const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+
+const { items, loading, load, create, update, remove, total } =
+  useResource<Row>(resource, {
+    page,
+    limit: pageSize,
+    q: query,
+  });
+
+const inputRef = useRef<HTMLInputElement>(null);
   const custom = useSchema(resource);
   const allFields = [
     ...fields,
@@ -2273,21 +2280,8 @@ function PeoplePage({
   const synopsis = (row: Row) => row.company || row.role || "";
   const statusField = "status";
   const toneOf = (value?: string): BadgeTone => value === "Active" ? "green" : "blue";
-const filteredRows = items.filter(
-  (row) =>
-    !query ||
-    JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
-);
-
-const totalPages = Math.max(
-  1,
-  Math.ceil(filteredRows.length / pageSize),
-);
-
-const rows = filteredRows.slice(
-  (page - 1) * pageSize,
-  page * pageSize,
-);
+const totalPages = Math.max(1, Math.ceil(total / pageSize));
+const rows = items;
 
 useEffect(() => {
   setPage(1);
@@ -2377,7 +2371,7 @@ function changePageSize(value: number) {
             />
           </div>
 <span className="table-count">
-  {filteredRows.length} total
+  {total} total
 </span>
 
 <select
