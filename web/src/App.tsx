@@ -1246,80 +1246,116 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    const term = q.trim();
+
     const timer = window.setTimeout(() => {
-      if (!q.trim()) {
+      if (!term) {
         setResults([]);
         setSelectedIndex(0);
         return;
       }
 
-      api<Row[]>(`/search?q=${encodeURIComponent(q)}`)
+      api<Row[]>(`/search?q=${encodeURIComponent(term)}`)
         .then((data) => {
-          setResults(data);
+          if (!active) return;
+
+          setResults(Array.isArray(data) ? data : []);
           setSelectedIndex(0);
         })
         .catch(() => {
+          if (!active) return;
+
           setResults([]);
           setSelectedIndex(0);
         });
     }, 180);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [q]);
 
+  const grouped = results.reduce<Record<string, Row[]>>((groups, item) => {
+    const type = String(item.type || "Other");
+
+    if (!groups[type]) groups[type] = [];
+    groups[type].push(item);
+
+    return groups;
+  }, {});
+
+  // Keyboard navigation must follow the same order as the grouped display.
+  const orderedResults = Object.values(grouped).flat();
+
   const openResult = (item: Row) => {
-    navigate(item.route);
+    navigate(String(item.route));
     onClose();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Escape") {
+      e.preventDefault();
       onClose();
       return;
     }
 
-    if (!results.length) return;
+    if (!orderedResults.length) return;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setSelectedIndex((index) => (index + 1) % results.length);
-    }
-
-    if (e.key === "ArrowUp") {
+      setSelectedIndex((index) => (index + 1) % orderedResults.length);
+    } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setSelectedIndex(
-        (index) => (index - 1 + results.length) % results.length,
+        (index) =>
+          (index - 1 + orderedResults.length) % orderedResults.length,
       );
-    }
+    } else if (e.key === "Enter") {
+      const selected = orderedResults[selectedIndex];
 
-    if (e.key === "Enter") {
-      e.preventDefault();
-      openResult(results[selectedIndex]);
+      if (selected) {
+        e.preventDefault();
+        openResult(selected);
+      }
     }
   };
 
-  const grouped = results.reduce<Record<string, Row[]>>((groups, item) => {
-    if (!groups[item.type]) groups[item.type] = [];
-    groups[item.type].push(item);
-    return groups;
-  }, {});
+  const activeOption =
+    orderedResults[selectedIndex] && orderedResults.length
+      ? `global-search-option-${selectedIndex}`
+      : undefined;
 
   let resultIndex = 0;
 
   return (
     <div className="search-overlay" onMouseDown={onClose}>
-      <div className="global-search" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="global-search"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Global search"
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
         <div className="global-search-input">
           <Icon name="search" />
+
           <input
             autoFocus
             aria-label="Search workspace"
+            aria-autocomplete="list"
+            aria-controls="global-search-results"
+            aria-expanded={orderedResults.length > 0}
+            aria-activedescendant={activeOption}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={handleKeyDown}
             placeholder="Search leads, contacts, deals, tasks..."
           />
+
           <button
+            type="button"
             className="icon-btn tiny"
             aria-label="Close search"
             onClick={onClose}
@@ -1328,16 +1364,22 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <div className="search-results">
-          {!q ? (
+        <div
+          id="global-search-results"
+          className="search-results"
+          role="listbox"
+          aria-label="Search results"
+          aria-live="polite"
+        >
+          {!q.trim() ? (
             <Empty
               icon="search"
               title="Search your workspace"
               text="Start typing to search stored CRM records."
             />
-          ) : results.length ? (
+          ) : orderedResults.length ? (
             Object.entries(grouped).map(([type, items]) => (
-              <div key={type}>
+              <div key={type} role="group" aria-label={type}>
                 <div className="px-3 py-2 text-xs font-mono uppercase opacity-60">
                   {type}
                 </div>
@@ -1347,6 +1389,10 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
 
                   return (
                     <button
+                      type="button"
+                      id={`global-search-option-${currentIndex}`}
+                      role="option"
+                      aria-selected={currentIndex === selectedIndex}
                       key={`${item.type}-${item.id}`}
                       className={
                         currentIndex === selectedIndex ? "active" : ""

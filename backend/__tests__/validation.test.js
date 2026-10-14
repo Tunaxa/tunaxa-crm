@@ -100,6 +100,59 @@ describe("Search", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
   });
+  it("GET /api/search returns results across multiple resource types", async () => {
+  const marker = `AXA311Search${Date.now()}`;
+  const email = `${marker.toLowerCase()}@example.test`;
+
+  const resources = [
+    {
+      path: "/api/leads",
+      payload: { name: marker, email, status: "New" },
+      type: "Lead",
+    },
+    {
+      path: "/api/contacts",
+      payload: { name: marker, email, status: "New" },
+      type: "Contact",
+    },
+    {
+      path: "/api/companies",
+      payload: { name: marker, industry: marker },
+      type: "Company",
+    },
+  ];
+
+  for (const resource of resources) {
+    const created = await request(app)
+      .post(resource.path)
+      .set("Authorization", `Bearer ${token}`)
+      .send(resource.payload);
+
+    expect(created.status).toBe(201);
+  }
+
+  const response = await request(app)
+    .get("/api/search")
+    .query({ q: marker })
+    .set("Authorization", `Bearer ${token}`);
+
+  expect(response.status).toBe(200);
+  expect(Array.isArray(response.body)).toBe(true);
+
+  const types = response.body.map((item) => item.type);
+
+  expect(types).toContain("Lead");
+  expect(types).toContain("Contact");
+  expect(types).toContain("Company");
+
+  for (const resource of resources) {
+    expect(
+      response.body.some(
+        (item) => item.type === resource.type && item.name === marker,
+      ),
+    ).toBe(true);
+  }
+});
 });
 
 describe("Dashboard", () => {
