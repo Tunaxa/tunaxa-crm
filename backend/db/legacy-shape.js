@@ -268,7 +268,14 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: ["name", "subject", "quoteNumber", "number", "customerEmail", "email"],
+    titleFallbacks: [
+      "name",
+      "subject",
+      "quoteNumber",
+      "number",
+      "customerEmail",
+      "email",
+    ],
   },
   contracts: {
     columns: [
@@ -315,7 +322,14 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: ["name", "subject", "contractNumber", "number", "customerEmail", "email"],
+    titleFallbacks: [
+      "name",
+      "subject",
+      "contractNumber",
+      "number",
+      "customerEmail",
+      "email",
+    ],
   },
   orders: {
     columns: [
@@ -793,7 +807,10 @@ export function pgToLegacy(row, resource) {
   const out = {};
   for (const [key, value] of Object.entries(row)) {
     if (mapping.hidden.includes(key)) continue;
-    const legacyKey = Object.prototype.hasOwnProperty.call(mapping.toLegacy, key)
+    const legacyKey = Object.prototype.hasOwnProperty.call(
+      mapping.toLegacy,
+      key,
+    )
       ? mapping.toLegacy[key]
       : key;
     if (value == null && (key === "created_at" || key === "updated_at")) {
@@ -811,7 +828,8 @@ export function pgToLegacy(row, resource) {
   const extra = row.custom_fields;
   if (extra && typeof extra === "object" && !Array.isArray(extra)) {
     for (const [key, value] of Object.entries(extra)) {
-      if (!Object.prototype.hasOwnProperty.call(out, key)) setOwn(out, key, value);
+      if (!Object.prototype.hasOwnProperty.call(out, key))
+        setOwn(out, key, value);
     }
   }
 

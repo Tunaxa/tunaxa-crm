@@ -71,7 +71,15 @@ app.use(
     frameguard: { action: "deny" },
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "data:", "blob:", "http:", "https:"],
+        defaultSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "data:",
+          "blob:",
+          "http:",
+          "https:",
+        ],
         connectSrc: ["'self'", "http:", "https:", "ws:", "wss:"],
         frameAncestors: ["'none'"],
       },
