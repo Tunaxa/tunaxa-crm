@@ -52,7 +52,9 @@ export async function resetTestDb() {
     if (pgReachable === false) return;
   }
   try {
-    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses, workflow_runs, goals CASCADE;");
+    await query(
+      "TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses, workflow_runs, goals CASCADE;",
+    );
     pgReachable = true;
     // Migration 011 may not have been applied yet, and a 42P01 here must not
     // be read as "Postgres is down" - that would silently disable the
