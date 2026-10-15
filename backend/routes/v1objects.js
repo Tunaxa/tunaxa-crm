@@ -14,6 +14,7 @@ import {
 import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import { broadcast } from "./sse.js";
+import { checkWriteFieldMask } from "./permissions.js";
 
 export default function registerV1ObjectRoutes(app) {
   // ============================================
@@ -77,6 +78,7 @@ export default function registerV1ObjectRoutes(app) {
     "/api/v1/objects/:type/batch/create",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
     async (req, res) => {
       const objectType = req.params.type;
       const items = req.body;
@@ -137,6 +139,7 @@ export default function registerV1ObjectRoutes(app) {
     "/api/v1/objects/:type/batch/update",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
     async (req, res) => {
       const objectType = req.params.type;
       const items = req.body;
@@ -264,6 +267,7 @@ export default function registerV1ObjectRoutes(app) {
     "/api/v1/objects/:type",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
     async (req, res) => {
       const objectType = req.params.type;
 
@@ -306,6 +310,7 @@ export default function registerV1ObjectRoutes(app) {
     "/api/v1/objects/:type/:id",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
     async (req, res) => {
       const objectType = req.params.type;
 

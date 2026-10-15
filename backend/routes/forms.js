@@ -7,6 +7,7 @@ import { matchCondition } from '../services/conditions.js';
 import { triggerWorkflows, createdEvent, updatedEvent } from '../services/workflows.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import { broadcast } from './sse.js';
+import { checkWriteFieldMask } from './permissions.js';
 import { repoFor } from '../db/repositories/index.js';
 import { pgToLegacy, legacyToPg } from '../db/legacy-shape.js';
 
@@ -363,7 +364,7 @@ export default function registerFormRoutes(app) {
     }
   });
 
-  app.post('/api/forms', auth, requireRole('admin', 'member'), async (req, res) => {
+  app.post('/api/forms', auth, requireRole('admin', 'member'), checkWriteFieldMask('form'), async (req, res) => {
     const body = req.body || {};
     if (!body.name || !Array.isArray(body.fields) || !body.fields.length) {
       return res.status(400).json({ error: 'name and at least one field are required' });
@@ -410,7 +411,7 @@ export default function registerFormRoutes(app) {
     }
   });
 
-  app.put('/api/forms/:id', auth, requireRole('admin', 'member'), async (req, res) => {
+  app.put('/api/forms/:id', auth, requireRole('admin', 'member'), checkWriteFieldMask('form'), async (req, res) => {
     const body = req.body || {};
     const workspaceId = req.user?.workspaceId || req.user?.workspace_id || 'default';
     try {

@@ -201,11 +201,13 @@ describe("leads repository", () => {
 
     expect(result).toBe(record);
     const [sql, params] = pg.query.mock.calls[0];
-    expect(sql).toContain("status = $1, custom_fields = $2");
+    expect(sql).toContain(
+      "status = $1, custom_fields = COALESCE(custom_fields, '{}'::jsonb) || $2::jsonb",
+    );
     expect(sql).toContain("WHERE id = $3");
     expect(sql).not.toContain("workspace_id = $");
     expect(sql).not.toContain("unknown = $");
-    expect(params).toEqual(["Customer", { followed_up: true }, "lead-1"]);
+    expect(params).toEqual(["Customer", '{"followed_up":true}', "lead-1"]);
   });
 
   it("returns null for an update with no allowed fields or no matching record", async () => {

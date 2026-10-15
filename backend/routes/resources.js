@@ -23,7 +23,7 @@ import {
 import { broadcast } from "./sse.js";
 import { cacheFlush } from "../services/cache.js";
 import { recordRevision } from "../services/revisions.js";
-import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
+import { getFieldPermissions, applyFieldMasking, checkWriteFieldMask, objectTypeOf } from "./permissions.js";
 import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
 import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
@@ -150,7 +150,7 @@ export default function registerResourceRoutes(app) {
     req.db = await readDb();
     req.fieldPerms = getFieldPermissions(
       req.db,
-      req.params.resource.replace(/s$/, ""),
+      objectTypeOf(req.params.resource),
       req.user.role,
     );
     next();
@@ -268,6 +268,7 @@ export default function registerResourceRoutes(app) {
     "/api/:resource",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
     validate(ResourceSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
@@ -342,6 +343,9 @@ export default function registerResourceRoutes(app) {
     "/api/:resource/batch",
     auth,
     requireRole("admin", "member"),
+    // Per-element, not per-request: a batch is the obvious way to smuggle one
+    // masked field past a check that only inspects the first object.
+    checkWriteFieldMask(),
     validate(BatchSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
@@ -401,6 +405,7 @@ export default function registerResourceRoutes(app) {
     "/api/:resource/:id",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
     validate(ResourceSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
@@ -468,6 +473,7 @@ export default function registerResourceRoutes(app) {
     "/api/:resource/:id",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
     validate(ResourceSchema),
     async (req, res, next) => {
       const resource = req.params.resource;

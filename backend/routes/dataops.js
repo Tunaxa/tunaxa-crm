@@ -6,6 +6,7 @@ import { cacheFlush } from '../services/cache.js';
 import { broadcast } from './sse.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import { mergeRecords, MergeError, MERGE_RESOURCES } from '../services/merge.js';
+import { checkWriteFieldMask } from './permissions.js';
 import { findDuplicateScan, DEDUP_RESOURCES } from '../services/dedup.js';
 import Fuse from 'fuse.js';
 import { repoFor } from '../db/repositories/index.js';
@@ -95,7 +96,7 @@ export default function registerDataOpsRoutes(app) {
   // One transaction: lock both rows, re-point every child pointer, update the
   // survivor, delete the duplicate, log the merge. See services/merge.js for
   // why none of those steps may be split up.
-  app.post('/api/:resource/merge', auth, requireRole('admin', 'member'), async (req, res, next) => {
+  app.post('/api/:resource/merge', auth, requireRole('admin', 'member'), checkWriteFieldMask(null, (req) => req.body?.fieldOverrides ?? {}), async (req, res, next) => {
     const resource = req.params.resource;
     if (!MERGE_RESOURCES.has(resource)) return next();
 
