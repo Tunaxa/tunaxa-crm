@@ -10,31 +10,6 @@ const num = value => {
 
 const monthKeyOf = iso => String(iso || '').slice(0, 7);
 
-/**
- * Read one resource from wherever it is actually stored.
- *
- * products/orders/invoices/expenses moved to Postgres in
- * 006_revenue_tables.sql, and campaigns/email_lists in
- * 007_marketing_service_tables.sql, so the commerce, finance and marketing
- * summaries have to read them from the repositories. Reading the JSON store
- * instead would aggregate an empty array and report zero revenue for records
- * that plainly exist - the same split-store bug loadRows() guards against in
- * dataops.js.
- */
-async function loadRows(resource, db) {
-  if (!PG_RESOURCES.has(resource)) return (db && db[resource]) || [];
-  const repo = repoFor(resource);
-  const rows = [];
-  // findAll() caps a page at 100, so page the whole set; a summary that stops
-  // after one page under-reports totals as soon as the table grows.
-  for (let page = 1; ; page++) {
-    const result = await repo.findAll({ page, limit: 100 });
-    rows.push(...result.data.map(row => pgToLegacy(row, resource)));
-    if (result.data.length === 0 || rows.length >= result.total) break;
-  }
-  return rows;
-}
-
 export default function registerModuleRoutes(app) {
   // --- Marketing ---
   app.get('/api/marketing/summary', auth, async (req, res) => {
