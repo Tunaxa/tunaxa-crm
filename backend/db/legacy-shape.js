@@ -35,6 +35,7 @@ export const PG_RESOURCES = new Set([
   "surveys",
   "surveyResponses",
   "survey_responses",
+  "goals",
 ]);
 
 /**
@@ -267,7 +268,14 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: ["name", "subject", "quoteNumber", "number", "customerEmail", "email"],
+    titleFallbacks: [
+      "name",
+      "subject",
+      "quoteNumber",
+      "number",
+      "customerEmail",
+      "email",
+    ],
   },
   contracts: {
     columns: [
@@ -314,7 +322,14 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
     extraLegacy: { title: "name" },
-    titleFallbacks: ["name", "subject", "contractNumber", "number", "customerEmail", "email"],
+    titleFallbacks: [
+      "name",
+      "subject",
+      "contractNumber",
+      "number",
+      "customerEmail",
+      "email",
+    ],
   },
   orders: {
     columns: [
@@ -655,6 +670,43 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
   },
+  goals: {
+    columns: [
+      "workspace_id",
+      "name",
+      "type",
+      "target",
+      "period",
+      "assigned_to",
+      "assigned_type",
+      "start_date",
+      "end_date",
+      "status",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      metric: "type",
+      assignedTo: "assigned_to",
+      assignedType: "assigned_type",
+      startDate: "start_date",
+      endDate: "end_date",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      assigned_to: "assignedTo",
+      assigned_type: "assignedType",
+      start_date: "startDate",
+      end_date: "endDate",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "name",
+    titleFallbacks: ["name", "title"],
+  },
 };
 
 /**
@@ -755,7 +807,10 @@ export function pgToLegacy(row, resource) {
   const out = {};
   for (const [key, value] of Object.entries(row)) {
     if (mapping.hidden.includes(key)) continue;
-    const legacyKey = Object.prototype.hasOwnProperty.call(mapping.toLegacy, key)
+    const legacyKey = Object.prototype.hasOwnProperty.call(
+      mapping.toLegacy,
+      key,
+    )
       ? mapping.toLegacy[key]
       : key;
     if (value == null && (key === "created_at" || key === "updated_at")) {
@@ -773,7 +828,8 @@ export function pgToLegacy(row, resource) {
   const extra = row.custom_fields;
   if (extra && typeof extra === "object" && !Array.isArray(extra)) {
     for (const [key, value] of Object.entries(extra)) {
-      if (!Object.prototype.hasOwnProperty.call(out, key)) setOwn(out, key, value);
+      if (!Object.prototype.hasOwnProperty.call(out, key))
+        setOwn(out, key, value);
     }
   }
 

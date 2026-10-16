@@ -52,6 +52,7 @@ import registerDataOpsRoutes from "./routes/dataops.js";
 import registerWebhookEndpointRoutes from "./routes/webhookendpoints.js";
 import registerQuoteRoutes from "./routes/quotes.js";
 import registerContactRoutes from "./routes/contacts.js";
+import registerGoalRoutes from "./routes/goals.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { processExecutionQueue } from "./services/queue.js";
 import { startEmailSync, stopEmailSync } from "./services/emailSync.js";
@@ -70,7 +71,15 @@ app.use(
     frameguard: { action: "deny" },
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "data:", "blob:", "http:", "https:"],
+        defaultSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "'unsafe-eval'",
+          "data:",
+          "blob:",
+          "http:",
+          "https:",
+        ],
         connectSrc: ["'self'", "http:", "https:", "ws:", "wss:"],
         frameAncestors: ["'none'"],
       },
@@ -249,6 +258,7 @@ registerDataOpsRoutes(app);
 registerWebhookEndpointRoutes(app);
 registerQuoteRoutes(app);
 registerContactRoutes(app);
+registerGoalRoutes(app);
 registerResourceRoutes(app);
 
 app.use((err, req, res, next) => {
