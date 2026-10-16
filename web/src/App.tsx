@@ -1,7 +1,7 @@
 import { DuplicateResolution } from "./components/DuplicateResolution";
 import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
-
+import { DesignSystemPage } from "./pages/DesignSystemPage";
 import { useForm } from "react-hook-form";
 import {
   Bar,
@@ -1115,6 +1115,7 @@ function AppRoutes() {
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/design-system" element={<DesignSystemPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </ErrorBoundary>

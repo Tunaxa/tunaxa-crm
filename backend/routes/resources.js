@@ -15,10 +15,7 @@ import {
   resources,
 } from "../helpers.js";
 import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
-import {
-  triggerWorkflows,
-  createdEvent,
-} from "../services/workflows.js";
+import { triggerWorkflows, createdEvent } from "../services/workflows.js";
 import { broadcast } from "./sse.js";
 import { cacheFlush } from "../services/cache.js";
 import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
@@ -80,7 +77,8 @@ const MAX_PG_PAGES = 50;
 function readPgFilters(query) {
   const filters = {};
   for (const key of PG_FILTER_KEYS) {
-    if (query[key] !== undefined && query[key] !== "") filters[key] = query[key];
+    if (query[key] !== undefined && query[key] !== "")
+      filters[key] = query[key];
   }
   // `completed` has to arrive as a real boolean: a non-empty string is truthy
   // in SQL, so the string "false" would filter for completed work.
@@ -108,13 +106,19 @@ async function pgFindAll(resource, query = {}) {
     filters.page = Number(query.page) || 1;
     filters.limit = Number(query.limit) || 20;
     const result = await repo.findAll(filters);
-    return result.data.map((row) => pgToLegacy(row, resource));
+    return result.data.map((row) =>
+      coerceBuiltIns(resource, pgToLegacy(row, resource)),
+    );
   }
 
   const rows = [];
   for (let page = 1; page <= MAX_PG_PAGES; page++) {
     const result = await repo.findAll({ ...filters, page, limit: 100 });
-    rows.push(...result.data.map((row) => pgToLegacy(row, resource)));
+    rows.push(
+      ...result.data.map((row) =>
+        coerceBuiltIns(resource, pgToLegacy(row, resource)),
+      ),
+    );
     if (result.data.length === 0 || rows.length >= result.total) break;
   }
   return rows;
@@ -158,10 +162,7 @@ export default function registerResourceRoutes(app) {
     const db = req.db || (await readDb());
 
     const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(
-      50,
-      Math.max(1, Number(req.query.limit) || 20),
-    );
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
     const start = (page - 1) * limit;
 
     let rows = db[req.params.resource] || [];
@@ -216,16 +217,13 @@ export default function registerResourceRoutes(app) {
 
       if (type === "email") {
         rows = rows.filter(
-          (item) =>
-            String(item.channel || "").toLowerCase() === "email",
+          (item) => String(item.channel || "").toLowerCase() === "email",
         );
       }
     }
 
     if (req.fieldPerms) {
-      rows = rows.map((item) =>
-        applyFieldMasking(item, req.fieldPerms),
-      );
+      rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
     }
 
     // AXA-128: pagination for messages. Only switch shapes when the caller
@@ -251,7 +249,6 @@ export default function registerResourceRoutes(app) {
     res.json(rows);
   });
 
-
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
@@ -274,9 +271,14 @@ export default function registerResourceRoutes(app) {
     const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
     // buildCsvRow indexes by column name, so the header is the same shape with
     // each column named after itself.
-    const header = Object.fromEntries(columns.map((column) => [column, column]));
+    const header = Object.fromEntries(
+      columns.map((column) => [column, column]),
+    );
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${req.params.resource}.csv"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${req.params.resource}.csv"`,
+    );
     res.write(`${buildCsvRow(columns, header)}\r\n`);
     for (const row of rows) {
       res.write(`${buildCsvRow(columns, row)}\r\n`);
@@ -294,7 +296,12 @@ export default function registerResourceRoutes(app) {
       try {
         const row = await repo.findById(req.params.id);
         if (!row) return res.status(404).json({ error: "Record not found" });
-        return res.json(pgToLegacy(row, req.params.resource));
+        return res.json(
+          coerceBuiltIns(
+            req.params.resource,
+            pgToLegacy(row, req.params.resource),
+          ),
+        );
       } catch (err) {
         return next(err);
       }
@@ -309,11 +316,7 @@ export default function registerResourceRoutes(app) {
       return res.status(404).json({ error: "Record not found" });
     }
 
-    res.json(
-      req.fieldPerms
-        ? applyFieldMasking(item, req.fieldPerms)
-        : item,
-    );
+    res.json(req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item);
   });
 
   app.post(
@@ -334,7 +337,7 @@ export default function registerResourceRoutes(app) {
           // Coerce numeric built-ins (e.g. deals.value, companies.employees)
           coerceBuiltIns(resource, pgData);
           const row = await repo.create(pgData);
-          const item = pgToLegacy(row, resource);
+          const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
           await mutateDb((db) => {
             db.audit.unshift(
               auditEntry({
@@ -362,10 +365,7 @@ export default function registerResourceRoutes(app) {
 
         const record = {
           id: id(resource.slice(0, -1) || "item"),
-          ...coerceBuiltIns(
-            resource,
-            coerceCustomFields(db, resource, data),
-          ),
+          ...coerceBuiltIns(resource, coerceCustomFields(db, resource, data)),
           createdAt,
           updatedAt: createdAt,
         };
@@ -405,7 +405,11 @@ export default function registerResourceRoutes(app) {
 
       const event = createdEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.created", { resource, item }, req.user.workspaceId || "default");
+      broadcast(
+        "record.created",
+        { resource, item },
+        req.user.workspaceId || "default",
+      );
       cacheFlush(resource);
 
       res.status(201).json(item);
@@ -469,7 +473,11 @@ export default function registerResourceRoutes(app) {
 
         return rows;
       });
-      broadcast("records.batch", { resource, count: saved.length }, req.user.workspaceId || "default");
+      broadcast(
+        "records.batch",
+        { resource, count: saved.length },
+        req.user.workspaceId || "default",
+      );
       cacheFlush(resource);
 
       res.status(201).json(saved);
@@ -503,11 +511,17 @@ export default function registerResourceRoutes(app) {
               ? await repo.update(req.params.id, pgData)
               : previousRow;
           if (!row) return res.status(404).json({ error: "Record not found" });
-          const item = pgToLegacy(row, resource);
+          const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
           // Revisions and the field-level audit trail live in the JSON store
           // even for PG-backed records, so the /api/revisions view sees them.
           const revisionId = await mutateDb((db) => {
-            const revId = recordRevision(db, resource, previous, item, req.user);
+            const revId = recordRevision(
+              db,
+              resource,
+              previous,
+              item,
+              req.user,
+            );
             db.audit.unshift(
               auditEntry({
                 action: `Updated ${resource.slice(0, -1)}`,
@@ -550,12 +564,14 @@ export default function registerResourceRoutes(app) {
           db[resource][index],
           req.user,
         );
-        db.audit.unshift(auditEntry({
-          action: `Updated ${resource.slice(0, -1)}`,
-          actor: req.user.name,
-          req,
-          resourceId: req.params.id,
-        }));
+        db.audit.unshift(
+          auditEntry({
+            action: `Updated ${resource.slice(0, -1)}`,
+            actor: req.user.name,
+            req,
+            resourceId: req.params.id,
+          }),
+        );
         return db[resource][index];
       });
       if (!item) return res.status(404).json({ error: "Record not found" });
@@ -591,7 +607,8 @@ export default function registerResourceRoutes(app) {
         const repo = repoFor(resource);
         try {
           const deleted = await repo.delete(req.params.id);
-          if (!deleted) return res.status(404).json({ error: "Record not found" });
+          if (!deleted)
+            return res.status(404).json({ error: "Record not found" });
           broadcast("record.deleted", { resource, id: req.params.id });
           cacheFlush(resource);
           return res.json({ ok: true });
@@ -602,9 +619,7 @@ export default function registerResourceRoutes(app) {
 
       // ── Legacy JSON path ──────────────────────────────────────────────────
       const result = await mutateDb((db) => {
-        const index = db[resource].findIndex(
-          (x) => x.id === req.params.id,
-        );
+        const index = db[resource].findIndex((x) => x.id === req.params.id);
 
         if (index < 0) return null;
 
@@ -620,11 +635,7 @@ export default function registerResourceRoutes(app) {
             (item) => item.callId === record.id,
           );
 
-          files.push(
-            ...linked
-              .map((item) => item.fileUrl)
-              .filter(Boolean),
-          );
+          files.push(...linked.map((item) => item.fileUrl).filter(Boolean));
 
           db.recordings = db.recordings.filter(
             (item) => item.callId !== record.id,
@@ -637,9 +648,7 @@ export default function registerResourceRoutes(app) {
           }
 
           if (record.callId) {
-            const call = db.calls.find(
-              (item) => item.callId === record.id,
-            );
+            const call = db.calls.find((item) => item.callId === record.id);
 
             if (call?.recordingId === record.id) {
               delete call.recordingId;
@@ -681,15 +690,16 @@ export default function registerResourceRoutes(app) {
             await fs.unlink(path.join(uploadDir, name));
           } catch (error) {
             if (process.env.NODE_ENV !== "production") {
-              console.warn(
-                "Failed to remove uploaded file",
-                error.message,
-              );
+              console.warn("Failed to remove uploaded file", error.message);
             }
           }
         }),
       );
-      broadcast("record.deleted", { resource, id: req.params.id }, req.user.workspaceId || "default");
+      broadcast(
+        "record.deleted",
+        { resource, id: req.params.id },
+        req.user.workspaceId || "default",
+      );
       cacheFlush(resource);
 
       res.json({ ok: true });

@@ -9748,3 +9748,53 @@ summary:focus-visible,
   border: 0;
   border-radius: 0;
 }}
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    width: 260px;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: rgba(0, 0, 0, 0.4);
+  }
+
+  .mobile-overlay.show {
+    display: block;
+  }
+
+  .pipeline-board,
+  .task-board {
+    display: flex;
+    overflow-x: auto;
+    gap: 12px;
+    padding-bottom: 12px;
+  }
+
+  .pipeline-column,
+  .task-column {
+    flex: 0 0 85vw;
+    max-width: 340px;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
