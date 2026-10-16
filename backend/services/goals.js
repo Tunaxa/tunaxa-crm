@@ -153,7 +153,7 @@ export async function calculateGoalProgress(goal, { workspaceId, now = new Date(
         pgSuccess = true;
       }
     }
-  } catch (err) {
+  } catch {
     // If PG is unreachable or table missing in offline mode, fallback to in-memory JSON
     pgSuccess = false;
   }

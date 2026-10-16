@@ -63,7 +63,7 @@ export default function registerGoalRoutes(app) {
             });
           }
           return res.json(data);
-        } catch (_) {
+        } catch {
           // If PG query fails, proceed to in-memory store fallback
         }
       }
@@ -105,8 +105,8 @@ export default function registerGoalRoutes(app) {
         });
       }
       return res.json(records);
-    } catch (err) {
-      next(err);
+    } catch (e) {
+      next(e);
     }
   });
 
@@ -170,7 +170,7 @@ export default function registerGoalRoutes(app) {
             const item = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
             return res.status(201).json(item);
           }
-        } catch (_) {
+        } catch {
           // Fallback to in-memory store
         }
       }
@@ -197,8 +197,8 @@ export default function registerGoalRoutes(app) {
         db.goals.unshift(record);
       });
       return res.status(201).json(record);
-    } catch (err) {
-      next(err);
+    } catch (e) {
+      next(e);
     }
   });
 
@@ -218,7 +218,7 @@ export default function registerGoalRoutes(app) {
           if (row) {
             goal = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
           }
-        } catch (_) {
+        } catch {
           // ignore
         }
       }
@@ -240,8 +240,8 @@ export default function registerGoalRoutes(app) {
       });
 
       return res.json(progress);
-    } catch (err) {
-      next(err);
+    } catch (e) {
+      next(e);
     }
   });
 
@@ -261,7 +261,7 @@ export default function registerGoalRoutes(app) {
           if (row) {
             goal = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
           }
-        } catch (_) {
+        } catch {
           // ignore
         }
       }
@@ -278,8 +278,8 @@ export default function registerGoalRoutes(app) {
       }
 
       return res.json(goal);
-    } catch (err) {
-      next(err);
+    } catch (e) {
+      next(e);
     }
   });
 
@@ -327,7 +327,7 @@ export default function registerGoalRoutes(app) {
             const item = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
             return res.json(item);
           }
-        } catch (_) {
+        } catch {
           // ignore
         }
       }
@@ -353,8 +353,8 @@ export default function registerGoalRoutes(app) {
         return res.status(404).json({ error: 'Goal not found' });
       }
       return res.json(updated);
-    } catch (err) {
-      next(err);
+    } catch (e) {
+      next(e);
     }
   });
 
@@ -371,7 +371,7 @@ export default function registerGoalRoutes(app) {
       if (repo) {
         try {
           deleted = await repo.delete(req.params.id, workspaceId);
-        } catch (_) {
+        } catch {
           // ignore
         }
       }
@@ -394,8 +394,8 @@ export default function registerGoalRoutes(app) {
       }
 
       return res.json({ message: 'Goal deleted successfully' });
-    } catch (err) {
-      next(err);
+    } catch (e) {
+      next(e);
     }
   });
 }

@@ -11,7 +11,10 @@ const num = value => {
 const monthKeyOf = iso => String(iso || '').slice(0, 7);
 
 async function loadRows(resource, db) {
-  if (PG_RESOURCES.has(resource)) {
+  // Convert camelCase resource name to snake_case for DB table name checks
+  const snakeResource = resource.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+
+  if (PG_RESOURCES.has(resource) || PG_RESOURCES.has(snakeResource)) {
     const pageResult = await repoFor(resource).findAll({ limit: 10000 });
     return pageResult.data.map(pgToLegacy);
   }

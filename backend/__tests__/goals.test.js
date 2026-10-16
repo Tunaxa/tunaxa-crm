@@ -8,7 +8,6 @@ import { mutateDb } from '../store.js';
 import {
   getGoalDateRange,
   computeGoalStatus,
-  calculateGoalProgress,
 } from '../services/goals.js';
 
 let adminToken;
