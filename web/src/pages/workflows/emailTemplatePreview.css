@@ -1,0 +1,15 @@
+.workflow-builder .workflow-canvas { min-width: 180px; }
+.workflow-action-config { width: 320px; flex-shrink: 0; overflow: auto; padding: 16px; border-left: 1px solid var(--border); background: var(--surface); }
+.workflow-action-config header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.workflow-action-config h3 { margin: 0; font-size: 15px; }
+.workflow-action-config select { width: 100%; }
+.workflow-template-preview { margin-top: 16px; overflow-wrap: anywhere; }
+.workflow-template-preview h4 { margin: 0 0 12px; }
+.workflow-template-body { white-space: pre-wrap; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; }
+.email-merge-tag { background: #e0e7ff; color: #312e81; border-radius: 3px; padding: 1px 3px; }
+.workflow-palette-item:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+@media (max-width: 900px) {
+  .workflow-builder:has(.workflow-action-config) { flex-wrap: wrap; height: auto; min-height: 420px; }
+  .workflow-builder:has(.workflow-action-config) .workflow-canvas { height: 420px; }
+  .workflow-action-config { width: 100%; max-height: 360px; border-left: 0; border-top: 1px solid var(--border); }
+}
