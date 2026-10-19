@@ -1,0 +1,10 @@
+.webhook-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 24px 0; }
+.webhook-endpoints { display: grid; gap: 16px; }
+.webhook-endpoint-card { padding: 20px; overflow-wrap: anywhere; }
+.webhook-endpoint-heading { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.webhook-endpoint-heading h2 { font-size: 16px; margin: 0; }
+.webhook-endpoint-card h3 { font-size: 14px; margin-top: 16px; }
+.webhook-endpoint-card details { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.webhook-endpoint-card summary { cursor: pointer; }
+.webhook-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+@media (max-width: 600px) { .webhook-endpoint-heading { flex-direction: column; } }
