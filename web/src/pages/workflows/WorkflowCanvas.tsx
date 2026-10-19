@@ -13,6 +13,9 @@ import "@xyflow/react/dist/style.css";
 import TriggerNode from "./nodes/TriggerNode";
 import ConditionNode from "./nodes/ConditionNode";
 import ActionNode from "./nodes/ActionNode";
+import { ActionConfigPanel } from "./ActionConfigPanel";
+import { templateConfiguration } from "./emailTemplates";
+import "./emailTemplatePreview.css";
 
 type WorkflowCanvasProps = {
   workflow: {
@@ -47,11 +50,13 @@ const paletteItems = [
     label: "Action",
     section: "Actions",
   },
+  { type: "emailAction", label: "Send Email", section: "Actions" },
 ];
 
 export default function WorkflowCanvas({
   workflow,
 }: WorkflowCanvasProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
 
@@ -163,13 +168,13 @@ export default function WorkflowCanvas({
         return;
       }
 
-      const type = event.dataTransfer.getData(
+      const paletteType = event.dataTransfer.getData(
         "application/reactflow",
       );
-
-      if (!type) {
+      if (!["trigger", "condition", "action", "emailAction"].includes(paletteType)) {
         return;
       }
+      const type = paletteType === "emailAction" ? "action" : paletteType;
 
       const position =
         reactFlowInstance.screenToFlowPosition({
@@ -192,7 +197,7 @@ export default function WorkflowCanvas({
         };
       } else {
         data = {
-          type: "Action",
+          type: paletteType === "emailAction" ? "send_email" : "Action",
           configuration: {},
         };
       }
@@ -208,9 +213,14 @@ export default function WorkflowCanvas({
         ...currentNodes,
         newNode,
       ]);
+      if (type === "action") setSelectedId(id);
     },
     [reactFlowInstance],
   );
+
+  const selected = nodes.find(node => node.id === selectedId && node.type === "action");
+  const selectedConfig = selected?.data.configuration && typeof selected.data.configuration === "object" && !Array.isArray(selected.data.configuration)
+    ? selected.data.configuration as Record<string, unknown> : {};
 
   return (
     <div className="workflow-builder">
@@ -263,6 +273,11 @@ export default function WorkflowCanvas({
 
         <section className="workflow-palette-section">
           <h4>Actions</h4>
+          <button type="button" className="btn secondary compact" onClick={() => {
+            const id = `action-${crypto.randomUUID()}`;
+            setNodes(current => [...current, { id, type: "action", position: { x: 650, y: 150 }, data: { type: "send_email", configuration: {} } }]);
+            setSelectedId(id);
+          }}>Add Send Email</button>
 
           {paletteItems
             .filter(
@@ -293,12 +308,17 @@ export default function WorkflowCanvas({
           edges={edges}
           nodeTypes={nodeTypes}
           onInit={setReactFlowInstance}
+          onNodeClick={(_, node) => setSelectedId(node.type === "action" ? node.id : null)}
           fitView
         >
           <Background />
           <Controls />
         </ReactFlow>
       </div>
+      {selected && <ActionConfigPanel key={selected.id} actionType={String(selected.data.type || "Action")}
+        templateId={typeof selectedConfig.templateId === "string" ? selectedConfig.templateId : ""}
+        onClose={() => setSelectedId(null)} onSelect={template => setNodes(current => current.map(node => node.id === selected.id
+          ? { ...node, data: { ...node.data, configuration: templateConfiguration(selectedConfig, template) } } : node))} />}
     </div>
   );
 }
