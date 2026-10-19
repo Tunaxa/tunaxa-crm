@@ -77,6 +77,7 @@ export const MessageSchema = z.object({
   to: z.string().trim().min(1, 'Recipient is required'),
   subject: z.string().optional(),
   body: z.string().min(1, 'Message body is required'),
+  html: z.string().max(100000, 'Formatted message is too large').optional(),
   contact: z.string().optional()
 }).passthrough();
 

@@ -1,6 +1,8 @@
 import { DuplicateResolution } from "./components/DuplicateResolution";
 import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
+import { EmailComposerDrawer } from "./pages/messages/EmailComposerDrawer";
+import { canSend } from "./pages/messages/composerModel";
 
 import { useForm } from "react-hook-form";
 import {
@@ -4378,7 +4380,7 @@ function RecordingsPage() {
 }
 
 function InboxPage() {
-  const { toast } = useApp();
+  const { toast, user } = useApp();
 
   const [messages, setMessages] = useState<Row[]>([]);
   const [selectedThread, setSelectedThread] = useState<Row[]>([]);
@@ -4393,25 +4395,6 @@ function InboxPage() {
   const [loading, setLoading] = useState(false);
 
   const [compose, setCompose] = useState(false);
-  const [sending, setSending] = useState(false);
-
-  const [templates, setTemplates] = useState<Row[]>([]);
-  const [templateId, setTemplateId] = useState("");
-  const {
-  reset
-} = useForm<{
-  channel: string;
-  to: string;
-  subject: string;
-  body: string;
-}>({
-  defaultValues: {
-    channel: "Email",
-    to: "",
-    subject: "",
-    body: "",
-  },
-});
 
   const [draft, setDraft] = useState<Row>({
     id: "",
@@ -4452,26 +4435,6 @@ function InboxPage() {
   useEffect(() => {
     loadMessages(page);
   }, [page]);
-
-  useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
-      .catch(() => {});
-  }, []);
-
-  function applyTemplate(id: string) {
-    setTemplateId(id);
-
-    const template = templates.find((item) => item.id === id);
-
-    if (!template) return;
-
-    setDraft((prev) => ({
-      ...prev,
-      subject: template.subject || "",
-      body: template.body || "",
-    }));
-  }
 
   function getThreadKey(message: Row) {
     return `${String(message.to || "").toLowerCase()}::${String(
@@ -4547,50 +4510,6 @@ function InboxPage() {
     );
   }
 
-  async function sendMessage(message: Row) {
-    setSending(true);
-
-    try {
-      const saved = await api<Row>(
-        "/messages/send",
-        json("POST", {
-          id: message.id,
-          channel: "Email",
-          to: message.to,
-          subject: message.subject,
-          body: message.body,
-          contact: message.contact,
-        }),
-      );
-
-      setCompose(false);
-      setTemplateId("");
-      setDraft({
-        id: "",
-        channel: "Email",
-        to: "",
-        subject: "",
-        body: "",
-      });
-
-      await loadMessages(page);
-
-      setSelectedThread([saved]);
-
-      toast(
-        saved.deliveredAt
-          ? "Message sent"
-          : saved.status === "Failed"
-            ? "Delivery failed"
-            : "Message saved for later",
-      );
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setSending(false);
-    }
-  }
-
   async function deleteMessage(message: Row) {
     if (!confirm("Delete this message?")) return;
 
@@ -4618,6 +4537,7 @@ function InboxPage() {
       >
         <button
           className="btn primary"
+          disabled={!canSend(user?.role)}
           onClick={() => {
             setDraft({
               id: "",
@@ -4626,7 +4546,6 @@ function InboxPage() {
               subject: "",
               body: "",
             });
-            setTemplateId("");
             setCompose(true);
           }}
         >
@@ -5000,14 +4919,14 @@ function InboxPage() {
                 >
                   <button
                     className="btn primary"
-                    disabled={sending}
-                    onClick={() =>
-                      sendMessage({
-                        ...selectedLastMessage,
-                        id: "",
-                        body: "",
-                      })
-                    }
+                    disabled={!canSend(user?.role)}
+                    onClick={() => {
+                      const inbound = String(selectedLastMessage?.direction || "").toLowerCase() === "inbound";
+                      const address = inbound ? selectedLastMessage.replyTo || selectedLastMessage.from : selectedLastMessage.to;
+                      if (!address) return toast("A sender email is required to reply.", "error");
+                      setDraft({ id: "", to: address, subject: `Re: ${String(selectedLastMessage.subject || "").replace(/^(?:re:\s*)+/iu, "")}` });
+                      setCompose(true);
+                    }}
                   >
                     <Icon name="send" /> Reply
                   </button>
@@ -5033,108 +4952,7 @@ function InboxPage() {
       </section>
 
       {/* COMPOSE */}
-      {compose ? (
-        <Drawer
-          title="New email"
-          subtitle="Compose a new email message."
-          onClose={() => {
-  setCompose(false);
-  setTemplateId("");
-  reset();
-}}
-          footer={
-            <button
-              className="btn secondary"
-              onClick={() => {
-                setCompose(false);
-                setTemplateId("");
-              }}
-            >
-              Cancel
-            </button>
-          }
-        >
-          <div className="drawer-form">
-            {templates.length ? (
-              <label className="field">
-                <span>Template</span>
-
-                <select
-                  value={templateId}
-                  onChange={(e) => applyTemplate(e.target.value)}
-                >
-                  <option value="">No template</option>
-
-                  {templates.map((template) => (
-                    <option
-                      key={template.id}
-                      value={template.id}
-                    >
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            <label className="field">
-              <span>Recipient *</span>
-
-              <input
-                type="email"
-                value={draft.to || ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    to: e.target.value,
-                  }))
-                }
-                placeholder="recipient@example.com"
-              />
-            </label>
-
-            <label className="field">
-              <span>Subject</span>
-
-              <input
-                type="text"
-                value={draft.subject || ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    subject: e.target.value,
-                  }))
-                }
-                placeholder="Email subject"
-              />
-            </label>
-
-            <label className="field">
-              <span>Message *</span>
-
-              <textarea
-                value={draft.body || ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    body: e.target.value,
-                  }))
-                }
-                placeholder="Write your email…"
-                rows={8}
-              />
-            </label>
-
-            <button
-              className="btn primary"
-              disabled={!draft.to || !draft.body || sending}
-              onClick={() => sendMessage(draft)}
-            >
-              {sending ? "Sending…" : "Send email"}
-            </button>
-          </div>
-        </Drawer>
-      ) : null}
+      {compose && <EmailComposerDrawer recipient={String(draft.to || "")} subject={String(draft.subject || "")} onClose={() => setCompose(false)} onSent={saved => { setSelectedThread([saved]); void loadMessages(page); }} />}
     </div>
   );
 }

@@ -8,12 +8,14 @@ import { sendSms } from '../services/twilio.js';
 import { triggerWorkflows } from '../services/workflows.js';
 import { validate, MessageSchema } from '../services/validate.js';
 import { createRateLimiter } from '../services/rateLimit.js';
+import { safeEmailHtml } from '../services/emailFormatting.js';
 
 const providerLimiter = createRateLimiter({ windowMs: 60_000, max: 30, prefix: 'provider' });
 
-function injectTracking(body, messageId, publicBaseUrl) {
+function injectTracking(body, messageId, publicBaseUrl, formattedHtml = '') {
   const baseUrl = publicBaseUrl || 'http://127.0.0.1:3001';
   const pixel = `<img src="${baseUrl}/api/tracking/open/${messageId}" width="1" height="1" style="display:none" alt="" />`;
+  if (formattedHtml) return `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#33475b">${formattedHtml}</div>${pixel}`;
   let html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#33475b">${body.replace(/\n/g, '<br>')}</div>${pixel}`;
   html = html.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${baseUrl}/api/tracking/click/${messageId}?url=${encodeURIComponent(url)}">${url}</a>`);
   return html;
@@ -22,6 +24,7 @@ function injectTracking(body, messageId, publicBaseUrl) {
 export default function registerMessageRoutes(app) {
   app.post('/api/messages/send', auth, requireRole('admin', 'member'), providerLimiter, validate(MessageSchema), async (req, res) => {
     const { id: existingId, idempotencyKey, channel = 'Email', to, subject, body, contact } = req.body;
+    const formattedHtml = channel === 'Email' ? safeEmailHtml(req.body.html) : '';
     const settings = await getSettings();
     const createdAt = now();
     let message = null;
@@ -48,12 +51,14 @@ export default function registerMessageRoutes(app) {
         if (index >= 0) message = db.messages[index];
       }
       if (!message) {
-        message = { id: id('message'), channel, to: String(to).trim(), subject: subject || '', body: String(body), contact: contact || '', direction: 'Outbound', status: 'Queued', read: true, idempotencyKey: idempotencyKey || '', createdAt, updatedAt: createdAt };
+        message = { id: id('message'), channel, to: String(to).trim(), subject: subject || '', body: String(body), ...(formattedHtml ? { html: formattedHtml } : {}), contact: contact || '', direction: 'Outbound', status: 'Queued', read: true, idempotencyKey: idempotencyKey || '', createdAt, updatedAt: createdAt };
         db.messages.unshift(message);
       } else {
         const index = db.messages.findIndex(x => x.id === message.id);
         if (index >= 0) {
           db.messages[index] = { ...db.messages[index], channel, to, subject, body, contact, status: 'Queued', error: '', read: true, updatedAt: createdAt };
+          if (formattedHtml) db.messages[index].html = formattedHtml;
+          else delete db.messages[index].html;
           message = { ...db.messages[index] };
         }
       }
@@ -70,7 +75,7 @@ export default function registerMessageRoutes(app) {
     } else {
       const track = settings.emailTracking !== false && settings.publicBaseUrl;
       result = isEmailConfigured(settings)
-        ? await sendEmail(settings, { to: message.to, subject: message.subject, text: message.body, html: track ? injectTracking(message.body, message.id, settings.publicBaseUrl) : undefined })
+        ? await sendEmail(settings, { to: message.to, subject: message.subject, text: message.body, html: track ? injectTracking(message.body, message.id, settings.publicBaseUrl, message.html) : message.html || undefined })
         : { delivered: false, status: 'Saved', error: 'SMTP is not configured in Settings' };
     }
 
