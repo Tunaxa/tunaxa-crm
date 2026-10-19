@@ -2,6 +2,7 @@ import { readDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { repoFor } from '../db/repositories/index.js';
 import { PG_RESOURCES, pgToLegacy } from '../db/legacy-shape.js';
+import { getNavigationForUser } from '../services/navigation.js';
 
 const num = value => {
   const n = Number(value);
@@ -36,6 +37,21 @@ async function loadRows(resource, db) {
 }
 
 export default function registerModuleRoutes(app) {
+  // --- Navigation ---
+  // Data-driven module navigation (P2-BE1-01). The registry and the role
+  // visibility matrix live in `services/navigation.js`; this handler only adapts
+  // the authenticated user to the ordered module list. Registered before the
+  // generic `/api/:resource` router in server.js, otherwise `/api/modules` would
+  // be answered as a list of records for a `modules` resource.
+  app.get('/api/modules', auth, (req, res) => {
+    try {
+      res.json({ success: true, modules: getNavigationForUser(req.user) });
+    } catch (error) {
+      console.error('[modules] query failed:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // --- Marketing ---
   app.get('/api/marketing/summary', auth, async (req, res) => {
     try {

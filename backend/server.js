@@ -259,6 +259,9 @@ registerWorkflowBuilderRoutes(app);
 registerExecutionRoutes(app);
 registerFormRoutes(app);
 registerDashboardRoutes(app);
+// Data-driven module navigation (P2-BE1-01). Registered ahead of the generic
+// `/api/:resource` router so `/api/modules` is answered by the navigation
+// handler instead of being read as the resource collection `modules`.
 registerModuleRoutes(app);
 registerGraphQLRoutes(app);
 registerDataOpsRoutes(app);
