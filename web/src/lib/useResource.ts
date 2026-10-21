@@ -86,11 +86,15 @@ export function useResource<T extends { id: string }>(
     }
   }
 
-  async function update(id: string, data: Partial<T>) {
+  async function update(
+    id: string,
+    data: Partial<T>,
+    options: { successToast?: boolean } = {},
+  ) {
     try {
       const item = await api<T>(`/${resource}/${id}`, json("PUT", data));
       setItems((current) => current.map((row) => (row.id === id ? item : row)));
-      toast("Changes saved");
+      if (options.successToast !== false) toast("Changes saved");
       changed();
       return item;
     } catch (error) {

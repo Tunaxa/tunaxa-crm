@@ -4,23 +4,53 @@ import { PixelIndicator } from './PixelIndicator';
 
 interface RevenueTickerProps {
   className?: string;
+  totalWonRevenue?: number;
 }
 
-export const RevenueTicker: React.FC<RevenueTickerProps> = ({ className = '' }) => {
-  const [dealWonAmount, setDealWonAmount] = useState<number>(48500);
+export const RevenueTicker: React.FC<RevenueTickerProps> = ({
+  className = '',
+  totalWonRevenue,
+}) => {
+  const [dealWonAmount, setDealWonAmount] = useState<number>(
+    totalWonRevenue ?? 48500,
+  );
   const [velocityDays] = useState<number>(14.2);
   const [pulseWon, setPulseWon] = useState<boolean>(false);
 
-  // Periodic subtle simulated deal activity
   useEffect(() => {
+    if (totalWonRevenue === undefined) {
+      const interval = setInterval(() => {
+        const delta = Math.floor(Math.random() * 6000) + 1500;
+        setDealWonAmount((prev) => prev + delta);
+        setPulseWon(true);
+        setTimeout(() => setPulseWon(false), 1200);
+      }, 8000);
+
+      return () => clearInterval(interval);
+    }
+
+    const start = dealWonAmount;
+    const difference = totalWonRevenue - start;
+    const duration = 700;
+    const startedAt = Date.now();
+
+    setPulseWon(true);
+
     const interval = setInterval(() => {
-      const delta = Math.floor(Math.random() * 6000) + 1500;
-      setDealWonAmount((prev) => prev + delta);
-      setPulseWon(true);
-      setTimeout(() => setPulseWon(false), 1200);
-    }, 8000);
+      const progress = Math.min((Date.now() - startedAt) / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+
+      setDealWonAmount(Math.round(start + difference * easedProgress));
+
+      if (progress >= 1) {
+        clearInterval(interval);
+        setDealWonAmount(totalWonRevenue);
+        setPulseWon(false);
+      }
+    }, 16);
+
     return () => clearInterval(interval);
-  }, []);
+  }, [totalWonRevenue]);
 
   const items = [
     { label: 'PIPELINE VELOCITY', val: `${velocityDays} DAYS`, sub: '-28% vs Industry', icon: Zap },
@@ -30,7 +60,7 @@ export const RevenueTicker: React.FC<RevenueTickerProps> = ({ className = '' }) 
     { label: 'LEAD SLA', val: '< 3.2 MIN', sub: 'Instant Routing', icon: Clock },
     {
       label: 'CLOSED WON TODAY',
-      val: `$${dealWonAmount.toLocaleString()}`,
+      val: `$${dealWonAmount.toLocaleString('en-US')}`,
       sub: 'Live Pipeline Win',
       icon: ShieldCheck,
       highlight: true,
@@ -53,6 +83,7 @@ export const RevenueTicker: React.FC<RevenueTickerProps> = ({ className = '' }) 
           {items.map((item, idx) => {
             const Icon = item.icon;
             const isHighlighted = item.highlight && pulseWon;
+
             return (
               <div
                 key={idx}

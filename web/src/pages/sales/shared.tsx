@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { Icon } from "../../components/Icon";
-import { Avatar, Badge, Drawer, Empty, PageHeader, PhotoField, money } from "../../components/ui";
+import { Avatar, Badge, Drawer, Empty, PageHeader, PhotoField, RevenueTicker, money } from "../../components/ui";
 import { useApp } from "../../context/AppContext";
 import { api, getToken, json } from "../../lib/api";
 import { useResource } from "../../lib/useResource";
@@ -567,10 +567,22 @@ export function CompaniesPage() {
 
 export function PipelinePage() {
   const { items, create, update, remove } = useResource<Row>("deals");
+  const { toast } = useApp();
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const [dragging, setDragging] = useState<string | null>(null);
+  const [winFlash, setWinFlash] = useState(false);
+  const winFlashTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const custom = useSchema("deals");
+  const totalWonRevenue = items
+    .filter((item) => item.stage === "won")
+    .reduce((sum, item) => sum + Number(item.value || 0), 0);
+
+  useEffect(() => {
+    return () => {
+      if (winFlashTimeout.current) clearTimeout(winFlashTimeout.current);
+    };
+  }, []);
   const fields: FieldSpec[] = [
     { key: "title", label: "Deal name" },
     { key: "company", label: "Company" },
@@ -590,8 +602,26 @@ export function PipelinePage() {
   ];
   async function drop(stage: string) {
     if (!dragging) return;
-    await update(dragging, { stage });
-    setDragging(null);
+    const deal = items.find((item) => item.id === dragging);
+    const previousStage = deal?.stage || "new";
+
+    try {
+      await update(dragging, { stage }, { successToast: false });
+
+      if (stage === "won" && previousStage !== "won" && deal) {
+        setWinFlash(true);
+        if (winFlashTimeout.current) clearTimeout(winFlashTimeout.current);
+        winFlashTimeout.current = setTimeout(() => setWinFlash(false), 1000);
+
+        toast(`🎉 Deal won: $${Number(deal.value || 0).toLocaleString("en-US")}`);
+      } else {
+        toast("Changes saved");
+      }
+    } catch {
+      // useResource already displays the error notification.
+    } finally {
+      setDragging(null);
+    }
   }
   return (
     <div className="page pipeline-page">
@@ -603,6 +633,7 @@ export function PipelinePage() {
           <Icon name="plus" /> Add deal
         </button>
       </PageHeader>
+      <RevenueTicker totalWonRevenue={totalWonRevenue} />
       {items.length ? (
         <div className="pipeline-board">
           {stages.map((stage) => {
@@ -611,7 +642,9 @@ export function PipelinePage() {
             );
             return (
               <section
-                className="pipeline-column"
+                className={`pipeline-column ${
+                  stage.id === "won" && winFlash ? "animate-win-flash" : ""
+                }`}
                 key={stage.id}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => drop(stage.id)}
