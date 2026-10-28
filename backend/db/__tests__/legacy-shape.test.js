@@ -19,6 +19,7 @@ describe("PG_RESOURCES", () => {
       "email_lists",
       "expenses",
       "forms",
+      "goals",
       "invoices",
       "leads",
       "orders",
