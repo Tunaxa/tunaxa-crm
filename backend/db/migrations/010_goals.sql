@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS goals (
 );
 
 CREATE INDEX IF NOT EXISTS idx_goals_workspace ON goals(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_goals_workspace_period ON goals(workspace_id, period);
 CREATE INDEX IF NOT EXISTS idx_goals_assigned_to ON goals(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_goals_type ON goals(type);
 CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);

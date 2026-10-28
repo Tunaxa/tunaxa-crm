@@ -4,12 +4,8 @@ import supertest from 'supertest';
 import { app } from '../server.js';
 import { resetTestDb, cleanupTestDb } from './setup.js';
 import { query } from '../db/pg.js';
-import { mutateDb } from '../store.js';
-import {
-  getGoalDateRange,
-  computeGoalStatus,
-  calculateGoalProgress,
-} from '../services/goals.js';
+import { mutateDb, readDb } from '../store.js';
+import { getGoalDateRange, computeGoalStatus } from '../services/goals.js';
 
 let adminToken;
 let memberToken;
@@ -524,5 +520,101 @@ describe('Tenant Workspace Isolation', () => {
       .delete(`/api/goals/${acmeGoalId}`)
       .set('Authorization', `Bearer ${globexToken}`);
     expect(delRes.status).toBe(404);
+  });
+});
+
+describe('JSON Fallback Tenant Isolation', () => {
+  const jsonGoalId = 'goal_json_globex_isolation';
+
+  beforeAll(async () => {
+    const stamp = new Date().toISOString();
+    await mutateDb((db) => {
+      if (!db.goals) db.goals = [];
+      db.goals.unshift({
+        id: jsonGoalId,
+        workspaceId: 'ws_globex',
+        name: 'Globex JSON-only Goal',
+        type: 'revenue',
+        target: 75000,
+        period: 'monthly',
+        assignedTo: null,
+        assignedType: 'user',
+        status: 'active',
+        createdAt: stamp,
+        updatedAt: stamp,
+      });
+    });
+  });
+
+  afterAll(async () => {
+    await mutateDb((db) => {
+      db.goals = (db.goals || []).filter((g) => g.id !== jsonGoalId);
+    });
+  });
+
+  it('lets the owning workspace read a goal that only exists in the JSON fallback', async () => {
+    const res = await supertest(app)
+      .get(`/api/goals/${jsonGoalId}`)
+      .set('Authorization', `Bearer ${globexToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(jsonGoalId);
+    expect(res.body.name).toBe('Globex JSON-only Goal');
+  });
+
+  it('returns 404 when a default-workspace user reads a JSON-fallback goal owned by another workspace', async () => {
+    const getRes = await supertest(app)
+      .get(`/api/goals/${jsonGoalId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(getRes.status).toBe(404);
+
+    const progressRes = await supertest(app)
+      .get(`/api/goals/${jsonGoalId}/progress`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(progressRes.status).toBe(404);
+  });
+
+  it('returns 404 when a default-workspace user updates or deletes a JSON-fallback goal owned by another workspace', async () => {
+    const putRes = await supertest(app)
+      .put(`/api/goals/${jsonGoalId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ target: 999999, workspaceId: 'default', workspace_id: 'default' });
+    expect(putRes.status).toBe(404);
+
+    const delRes = await supertest(app)
+      .delete(`/api/goals/${jsonGoalId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(delRes.status).toBe(404);
+
+    // The record must still belong to the original workspace and be unchanged.
+    const db = await readDb();
+    const stored = (db.goals || []).find((g) => g.id === jsonGoalId);
+    expect(stored).toBeTruthy();
+    expect(stored.workspaceId).toBe('ws_globex');
+    expect(stored.target).toBe(75000);
+  });
+
+  it('ignores a client-supplied workspace on create and pins the caller workspace', async () => {
+    const res = await supertest(app)
+      .post('/api/goals')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Spoof Attempt Goal',
+        type: 'revenue',
+        target: 12345,
+        period: 'monthly',
+        workspace_id: 'ws_victim_created',
+        workspaceId: 'ws_victim_created',
+      });
+
+    expect(res.status).toBe(201);
+    // Ownership is never echoed back to the client.
+    expect(res.body.workspace_id).toBeUndefined();
+    // In the in-memory path the record is returned with its camelCase workspace.
+    expect(res.body.workspaceId ?? 'default').toBe('default');
+
+    const { rows } = await query('SELECT workspace_id FROM goals WHERE id = $1', [res.body.id]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].workspace_id).toBe('default');
   });
 });

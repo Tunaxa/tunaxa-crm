@@ -9,6 +9,62 @@ import { calculateGoalProgress } from '../services/goals.js';
 const VALID_TYPES = new Set(['revenue', 'activity', 'deal']);
 const VALID_PERIODS = new Set(['monthly', 'quarterly', 'annual']);
 
+// Normalize a stored goal's workspace so JSON-fallback rows are compared the
+// same way the PG path compares `workspace_id`. Never fall back to a wildcard:
+// a missing workspace on the record means the record belongs to `default` only.
+const goalWorkspace = (g) => g.workspaceId || g.workspace_id || 'default';
+
+// Fields a client may change on an existing goal, with the legacy snake_case
+// aliases still accepted by this API. `id`, `workspaceId` and `workspace_id`
+// are deliberately absent: identity and ownership are server-enforced.
+const MUTABLE_FIELDS = [
+  { key: 'name', parse: (v) => (v == null ? undefined : String(v).trim()) },
+  { key: 'type', aliases: ['metric'], parse: (v) => String(v).trim().toLowerCase() },
+  { key: 'target', parse: (v) => (v === null || v === '' ? undefined : Number(v)) },
+  { key: 'period', parse: (v) => String(v).trim().toLowerCase() },
+  { key: 'assignedTo', aliases: ['assigned_to'] },
+  { key: 'assignedType', aliases: ['assigned_type'] },
+  { key: 'startDate', aliases: ['start_date'] },
+  { key: 'endDate', aliases: ['end_date'] },
+  { key: 'status' },
+];
+
+function buildGoalPatch(body) {
+  const patch = {};
+  for (const { key, aliases = [], parse } of MUTABLE_FIELDS) {
+    const raw = [key, ...aliases]
+      .map((name) => body[name])
+      .find((value) => value !== undefined);
+    if (raw === undefined) continue;
+    const value = parse ? parse(raw) : raw;
+    if (value === undefined) continue;
+    patch[key] = value;
+  }
+  return patch;
+}
+
+// Ownership lives in the `workspace_id` column. Drop both aliases from the
+// request body so they cannot be smuggled into `custom_fields` and echoed back
+// as a spoofed workspace on read.
+function stripWorkspaceFields(body) {
+  const clean = {};
+  for (const [key, value] of Object.entries(body || {})) {
+    if (key === 'workspace_id' || key === 'workspaceId') continue;
+    clean[key] = value;
+  }
+  return clean;
+}
+
+// Serialize a PG row for the API. `workspace_id` is hidden by the mapping, but
+// a stray `custom_fields.workspace_id`/`customFields.workspaceId` could still
+// shadow it, so ownership is stripped explicitly here too.
+function goalResponse(row) {
+  const goal = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
+  delete goal.workspaceId;
+  delete goal.workspace_id;
+  return goal;
+}
+
 export default function registerGoalRoutes(app) {
   /**
    * GET /api/goals
@@ -49,9 +105,7 @@ export default function registerGoalRoutes(app) {
             workspaceId,
           });
 
-          const data = (result.data || []).map((row) =>
-            coerceBuiltIns('goals', pgToLegacy(row, 'goals')),
-          );
+          const data = (result.data || []).map(goalResponse);
 
           if (hasPaging) {
             return res.json({
@@ -63,16 +117,15 @@ export default function registerGoalRoutes(app) {
             });
           }
           return res.json(data);
-        } catch (_) {
-          // If PG query fails, proceed to in-memory store fallback
+        } catch (err) {
+          console.warn('[goals] list PG query failed, using JSON fallback:', err.message);
         }
       }
 
       // In-memory fallback
       const db = await readDb();
       const records = (db.goals || []).filter((g) => {
-        const itemWs = g.workspaceId || g.workspace_id || 'default';
-        if (workspaceId && itemWs !== workspaceId && !(workspaceId === 'default' && !g.workspaceId)) {
+        if (goalWorkspace(g) !== workspaceId) {
           return false;
         }
         if (status && String(g.status || '').toLowerCase() !== String(status).toLowerCase()) {
@@ -150,6 +203,7 @@ export default function registerGoalRoutes(app) {
         try {
           const pgData = legacyToPg(
             {
+              ...stripWorkspaceFields(body),
               workspace_id: workspaceId,
               name: String(body.name).trim(),
               type: rawType,
@@ -160,18 +214,20 @@ export default function registerGoalRoutes(app) {
               start_date: body.startDate || body.start_date || null,
               end_date: body.endDate || body.end_date || null,
               status: body.status || 'active',
-              ...body,
             },
             'goals',
           );
+          // Server-enforced: a client-supplied workspace_id must never win,
+          // whether it arrives as `workspace_id` or `workspaceId`.
+          pgData.workspace_id = workspaceId;
           coerceBuiltIns('goals', pgData);
           const row = await repo.create(pgData);
           if (row) {
-            const item = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
+            const item = goalResponse(row);
             return res.status(201).json(item);
           }
-        } catch (_) {
-          // Fallback to in-memory store
+        } catch (err) {
+          console.warn('[goals] create PG insert failed, using JSON fallback:', err.message);
         }
       }
 
@@ -216,17 +272,17 @@ export default function registerGoalRoutes(app) {
         try {
           const row = await repo.findById(req.params.id, workspaceId);
           if (row) {
-            goal = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
+            goal = goalResponse(row);
           }
-        } catch (_) {
-          // ignore
+        } catch (err) {
+          console.warn('[goals] PG goal lookup failed, using JSON fallback:', err.message);
         }
       }
 
       if (!goal) {
         const db = await readDb();
         goal = (db.goals || []).find(
-          (g) => g.id === req.params.id && (g.workspaceId === workspaceId || workspaceId === 'default'),
+          (g) => g.id === req.params.id && goalWorkspace(g) === workspaceId,
         );
       }
 
@@ -259,17 +315,17 @@ export default function registerGoalRoutes(app) {
         try {
           const row = await repo.findById(req.params.id, workspaceId);
           if (row) {
-            goal = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
+            goal = goalResponse(row);
           }
-        } catch (_) {
-          // ignore
+        } catch (err) {
+          console.warn('[goals] PG goal lookup failed, using JSON fallback:', err.message);
         }
       }
 
       if (!goal) {
         const db = await readDb();
         goal = (db.goals || []).find(
-          (g) => g.id === req.params.id && (g.workspaceId === workspaceId || workspaceId === 'default'),
+          (g) => g.id === req.params.id && goalWorkspace(g) === workspaceId,
         );
       }
 
@@ -317,18 +373,22 @@ export default function registerGoalRoutes(app) {
         }
       }
 
+      // Explicit whitelist: `id`, `workspaceId` and `workspace_id` in the body
+      // are ignored on both the PG and the in-memory path.
+      const patch = buildGoalPatch(body);
+
       const repo = repoFor('goals');
       if (repo) {
         try {
-          const pgData = legacyToPg(body, 'goals');
+          const pgData = legacyToPg(patch, 'goals');
           coerceBuiltIns('goals', pgData);
           const row = await repo.update(req.params.id, pgData, workspaceId);
           if (row) {
-            const item = coerceBuiltIns('goals', pgToLegacy(row, 'goals'));
+            const item = goalResponse(row);
             return res.json(item);
           }
-        } catch (_) {
-          // ignore
+        } catch (err) {
+          console.warn('[goals] update PG query failed, using JSON fallback:', err.message);
         }
       }
 
@@ -337,12 +397,12 @@ export default function registerGoalRoutes(app) {
       await mutateDb((db) => {
         const list = db.goals || [];
         const index = list.findIndex(
-          (g) => g.id === req.params.id && (g.workspaceId === workspaceId || workspaceId === 'default'),
+          (g) => g.id === req.params.id && goalWorkspace(g) === workspaceId,
         );
         if (index >= 0) {
           list[index] = {
             ...list[index],
-            ...body,
+            ...patch,
             updatedAt: now(),
           };
           updated = list[index];
@@ -371,8 +431,8 @@ export default function registerGoalRoutes(app) {
       if (repo) {
         try {
           deleted = await repo.delete(req.params.id, workspaceId);
-        } catch (_) {
-          // ignore
+        } catch (err) {
+          console.warn('[goals] delete PG query failed, using JSON fallback:', err.message);
         }
       }
 
@@ -380,7 +440,7 @@ export default function registerGoalRoutes(app) {
         await mutateDb((db) => {
           const list = db.goals || [];
           const idx = list.findIndex(
-            (g) => g.id === req.params.id && (g.workspaceId === workspaceId || workspaceId === 'default'),
+            (g) => g.id === req.params.id && goalWorkspace(g) === workspaceId,
           );
           if (idx >= 0) {
             list.splice(idx, 1);

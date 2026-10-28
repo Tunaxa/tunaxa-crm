@@ -155,6 +155,7 @@ export async function calculateGoalProgress(goal, { workspaceId, now = new Date(
     }
   } catch (err) {
     // If PG is unreachable or table missing in offline mode, fallback to in-memory JSON
+    console.warn('[goals] progress PG aggregation failed, using JSON fallback:', err.message);
     pgSuccess = false;
   }
 
