@@ -222,6 +222,33 @@ describe("GET /api/health/deep - authentication and RBAC", () => {
     expect(res.body.postgres).toBe("error");
   });
 
+  it("logs and returns a generic 503 when the deep check throws", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    spiedGetDeepHealthStatus.mockImplementationOnce(async () => {
+      throw new Error("connect ECONNREFUSED postgres://admin:secret@db:5432/tunaxa");
+    });
+
+    try {
+      const res = await request(app)
+        .get("/api/health/deep")
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({
+        status: "error",
+        error: "Deep health check failed",
+      });
+      expect(JSON.stringify(res.body)).not.toContain("postgres://");
+      expect(JSON.stringify(res.body)).not.toContain("secret");
+      expect(consoleError).toHaveBeenCalledWith(
+        "[health] Unexpected failure during deep health check:",
+        expect.objectContaining({ message: expect.stringContaining("postgres://") }),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("keeps the public liveness probe open and unauthenticated", async () => {
     const res = await request(app).get("/api/health");
     expect(res.status).toBe(200);
