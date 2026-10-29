@@ -3,7 +3,7 @@ import helmet from "helmet";
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import multer from "multer";
 import * as Sentry from "@sentry/node";
 import { fileURLToPath } from "node:url";
@@ -283,14 +283,16 @@ registerResourceRoutes(app);
 const webDistDir = path.join(root, "..", "web", "dist");
 if (existsSync(path.join(webDistDir, "index.html"))) {
   // Static assets are public and unauthenticated, so they need their own
-  // throttle ahead of the file system access below. The SPA shell fallback
-  // performs res.sendFile() on every unmatched GET, which CodeQL flags as a
-  // DoS surface unless a rate limiter guards the route.
+  // throttle ahead of the file system access below. The SPA shell is read once
+  // at startup rather than per request: production images are immutable, and
+  // keeping disk I/O out of the request path removes the DoS surface CodeQL
+  // flags for unmatched GETs.
   const staticLimiter = createRateLimiter({
     windowMs: 15 * 60 * 1000,
     max: 300,
     prefix: "static",
   });
+  const indexHtml = readFileSync(path.join(webDistDir, "index.html"));
   app.use(staticLimiter);
   // index: false - the shell is served explicitly below, so that it can be sent
   // with no-store while the content-hashed assets under /assets stay immutable.
@@ -299,9 +301,8 @@ if (existsSync(path.join(webDistDir, "index.html"))) {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
     res.setHeader("Cache-Control", "no-store");
-    return res.sendFile(path.join(webDistDir, "index.html"), (error) => {
-      if (error) next(error);
-    });
+    res.type("html");
+    return res.send(indexHtml);
   });
 }
 
