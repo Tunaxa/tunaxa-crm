@@ -282,6 +282,16 @@ registerResourceRoutes(app);
 // 404 rather than the HTML shell.
 const webDistDir = path.join(root, "..", "web", "dist");
 if (existsSync(path.join(webDistDir, "index.html"))) {
+  // Static assets are public and unauthenticated, so they need their own
+  // throttle ahead of the file system access below. The SPA shell fallback
+  // performs res.sendFile() on every unmatched GET, which CodeQL flags as a
+  // DoS surface unless a rate limiter guards the route.
+  const staticLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    prefix: "static",
+  });
+  app.use(staticLimiter);
   // index: false - the shell is served explicitly below, so that it can be sent
   // with no-store while the content-hashed assets under /assets stay immutable.
   app.use(express.static(webDistDir, { index: false, maxAge: "1y", immutable: true }));
