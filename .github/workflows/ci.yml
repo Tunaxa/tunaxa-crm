@@ -5,66 +5,94 @@ on:
     branches: [main, dev]
   push:
     branches: [main, dev]
-    
+  workflow_dispatch:
+
+# Cancel superseded runs for the same ref so a force-push does not burn runner
+# minutes re-running checks that are already obsolete. main is never cancelled
+# so the post-merge signal on the default branch always completes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 permissions:
   contents: read
-  
+
 jobs:
   ci:
-    uses: ./.github/workflows/lint-test.yml
-  test:
+    name: Typecheck, Lint, Migrate, Test
     runs-on: ubuntu-latest
+
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16-alpine
         env:
-          POSTGRES_DB: tunaxa
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: ci-test-password
+          POSTGRES_DB: tunaxa
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d tunaxa"
+          --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
-      PGHOST: 127.0.0.1
-      PGPORT: 5432
-      PGDATABASE: tunaxa
+      PGHOST: localhost
+      PGPORT: "5432"
       PGUSER: postgres
       PGPASSWORD: ci-test-password
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm install
-      - run: npm run lint
-      - name: Apply database migrations
-        run: npm run migrate
-        env:
-          PGHOST: 127.0.0.1
-          PGPORT: 5432
-          PGDATABASE: tunaxa
-          PGUSER: postgres
-          PGPASSWORD: ci-test-password
-      - run: npm test
+      PGDATABASE: tunaxa
+      REDIS_URL: redis://localhost:6379
 
-      - name: Comment on PR if failed
-        if: failure()
-        uses: actions/github-script@v7
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          script: |
-            try {
-              await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `@${context.payload.pull_request.user.login} ❌ CI (lint/test) failed.
-            Please review the logs and fix the issues:
-            ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
-              });
-            } catch (error) {
-              core.warning(`Could not post CI failure comment: ${error.message}`);
-            }
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      # Hard gate. Blocking.
+      - name: Run Typecheck
+        run: npm run typecheck
+
+      # Hard gate. Blocking. Migrations are idempotent (IF NOT EXISTS /
+      # OR REPLACE throughout), so re-running against the ephemeral service
+      # container is safe.
+      - name: Run Database Migrations
+        run: npm run migrate
+
+      # Hard gate. Blocking.
+      - name: Run Linter
+        run: npm run lint
+
+      # The queue and fallback suites assert in-memory behavior when their
+      # modules are imported, so the Vitest suite runs with Redis explicitly
+      # disabled. The service container itself is verified below.
+      - name: Verify Redis Service
+        run: |
+          node -e "const Redis = require('ioredis'); const client = new Redis(process.env.REDIS_URL); client.ping().then((pong) => { if (pong !== 'PONG') throw new Error('Redis did not answer PING'); return client.quit(); }).then(() => console.log('Redis PONG')).catch((error) => { console.error(error); process.exit(1); });"
+
+      # Hard gate. Blocking.
+      - name: Run Vitest Test Suite
+        env:
+          CI: true
+          NODE_ENV: test
+          REDIS_URL: ""
+          REDIS_ENABLED: "false"
+        run: npm test
