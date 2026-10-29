@@ -11,9 +11,10 @@ and this project adheres to Semantic Versioning.
   - Configured automated CI workflow triggering on pull requests targeting `main` or `dev`, pushes to `main` or `dev`, and `workflow_dispatch`.
   - Added concurrency control (`concurrency: ${{ github.workflow }}-${{ github.ref }}`) with automatic cancellation of superseded runs on PR branches, while leaving `main` runs uncancelled so the post-merge signal always completes.
   - Configured PostgreSQL 16 (`postgres:16-alpine` with `pg_isready` health check on port 5432) and Redis 7 (`redis:7-alpine` with `redis-cli ping` health check on port 6379) service containers.
-  - Implemented 7-step pipeline: code checkout (`actions/checkout@v4`), Node 22 setup with npm cache (`actions/setup-node@v4`), clean dependency installation (`npm ci`), TypeScript type checking (`npm run typecheck`), database migrations (`npm run migrate`), linting (`npm run lint`), and Vitest test execution (`npm test`).
+  - Implemented 8-step pipeline: code checkout (`actions/checkout@v4`), Node 22 setup with npm cache (`actions/setup-node@v4`), clean dependency installation (`npm ci`), TypeScript type checking (`npm run typecheck`), database migrations (`npm run migrate`), linting (`npm run lint`), Redis service readiness (`PING`), and Vitest test execution (`npm test`).
   - Consolidates the previous split workflow into a single job. A reusable-workflow job cannot declare its own service containers or environment, so the PostgreSQL and Redis services could not live alongside the delegated lint/test job.
   - `typecheck`, `migrate`, `lint` and `npm test` are all blocking gates: no step uses `continue-on-error`, so a red check always fails the workflow.
+  - The Vitest suite runs in its supported in-memory fallback mode (`REDIS_URL` is cleared for that step) because the queue and fallback suites assert fallback behavior when their modules load. The Redis service container is still verified with a dedicated `PING` step.
 - **NPM Scripts & Dependencies (`package.json`):**
   - Added `npm run typecheck` (`tsc --noEmit -p web`) validating frontend TypeScript sources.
   - Added `npm run migrate` (`node run-migrations.js`) running PostgreSQL schema migrations.

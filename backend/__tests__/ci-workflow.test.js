@@ -145,7 +145,13 @@ describe('GitHub Actions CI workflow', () => {
       expect(env.PGPASSWORD).toBe(services.postgres.env.POSTGRES_PASSWORD);
       expect(env.PGDATABASE).toBe(services.postgres.env.POSTGRES_DB);
       expect(env.REDIS_URL).toBe('redis://localhost:6379');
-      expect(env.REDIS_ENABLED).toBeTruthy();
+
+      // The suite is designed for fallback mode, so the test step clears the
+      // Redis settings; a separate readiness step still exercises the service.
+      const testStep = stepFor('npm test');
+      expect(testStep.env.REDIS_URL).toBe('');
+      expect(testStep.env.REDIS_ENABLED).toBe('false');
+      expect(steps.some((step) => step.name === 'Verify Redis Service')).toBe(true);
     });
   });
 
