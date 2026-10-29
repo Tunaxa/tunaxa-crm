@@ -31,7 +31,7 @@ describe('GitHub Actions CI workflow', () => {
     expect(typeof workflowText).toBe('string');
     expect(workflowText.length).toBeGreaterThan(0);
     expect(load(workflowText)).toBeTypeOf('object');
-    expect(workflow.name).toBe('CI Pipeline');
+    expect(workflow.name).toBe('CI');
   });
 
   it('triggers on pull requests targeting main', () => {
@@ -150,12 +150,10 @@ describe('GitHub Actions CI workflow', () => {
   });
 
   /**
-   * These assertions encode the current, deliberate gate policy. The repo still
-   * carries pre-existing lint errors and pre-existing test failures, so lint and
-   * the suite run as advisory steps (`continue-on-error`) while typecheck and
-   * migrations stay blocking. Deleting the two `continue-on-error: true` lines
-   * is how the debt is retired, and these tests are what makes that flip
-   * deliberate instead of accidental.
+   * These assertions encode the deliberate gate policy: every quality step is a
+   * hard gate. Lint, typecheck, migrations and the test suite must all pass
+   * before a pull request can merge. `continue-on-error` would silently turn a
+   * red pipeline green, so it is forbidden outright.
    */
   describe('gate policy', () => {
     it('blocks merges on typecheck and migrations', () => {
@@ -163,9 +161,10 @@ describe('GitHub Actions CI workflow', () => {
       expect(stepFor('npm run migrate')['continue-on-error']).toBeFalsy();
     });
 
-    it('runs lint and the test suite as advisory steps', () => {
-      expect(stepFor('npm run lint')['continue-on-error']).toBe(true);
-      expect(stepFor('npm test')['continue-on-error']).toBe(true);
+    it('blocks merges on lint and the test suite', () => {
+      expect(stepFor('npm run lint')['continue-on-error']).toBeFalsy();
+      expect(stepFor('npm test')['continue-on-error']).toBeFalsy();
+      expect(steps.some((step) => step['continue-on-error'] === true)).toBe(false);
     });
   });
 });

@@ -1,10 +1,10 @@
-name: CI Pipeline
+name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 # Cancel superseded runs for the same ref so a force-push does not burn runner
@@ -13,6 +13,9 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
 
 jobs:
   ci:
@@ -24,7 +27,7 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: monosie
+          POSTGRES_PASSWORD: ci-test-password
           POSTGRES_DB: tunaxa
         ports:
           - 5432:5432
@@ -47,7 +50,7 @@ jobs:
       PGHOST: localhost
       PGPORT: "5432"
       PGUSER: postgres
-      PGPASSWORD: monosie
+      PGPASSWORD: ci-test-password
       PGDATABASE: tunaxa
       REDIS_URL: redis://localhost:6379
       REDIS_ENABLED: "true"
@@ -75,18 +78,12 @@ jobs:
       - name: Run Database Migrations
         run: npm run migrate
 
-      # Advisory. The repository carries pre-existing lint errors, so this step
-      # reports status without failing the job until that debt is cleared.
-      # Removing continue-on-error makes lint a merge blocker again.
+      # Hard gate. Blocking.
       - name: Run Linter
-        continue-on-error: true
         run: npm run lint
 
-      # Advisory. Same rationale as the lint step: the suite has known
-      # pre-existing failures that are tracked separately. Drop
-      # continue-on-error to make the suite a merge blocker.
+      # Hard gate. Blocking.
       - name: Run Vitest Test Suite
-        continue-on-error: true
         env:
           CI: true
           NODE_ENV: test
