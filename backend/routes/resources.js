@@ -628,6 +628,10 @@ export default function registerResourceRoutes(app) {
     "/api/:resource/:id",
     auth,
     requireRole("admin", "member"),
+    // This handler is registered before the partial-delta PATCH below, so it is
+    // the one Express reaches first. The mask has to run here or a masked field
+    // stays writable through the effective PATCH handler.
+    checkWriteFieldMask(),
     validate(ResourceSchema),
     updateRecord,
   );

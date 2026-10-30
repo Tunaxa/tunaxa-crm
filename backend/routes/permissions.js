@@ -254,12 +254,20 @@ export function checkWriteFieldMask(resource, pick = (req) => req.body) {
  * dropped. `resources.js` resolves its read-side permission row through this
  * same helper: if the two sides disagreed about the key, a field could be
  * masked on read and writable on write, which is the exact hole this closes.
+ *
+ * Plurals in `-ies` are not formed by appending an `s` to the singular, so a
+ * naive trailing-`s` strip turns `companies` into `companie` and `activities`
+ * into `activitie`. Those keys match no permission row, which silently
+ * disables masking for both resources. Both spellings are recognized here
+ * because the read and write paths must resolve to the same key.
  */
 export function objectTypeOf(resource) {
-  if (!resource) return null;
-  const raw = String(resource);
-  if (!raw) return null;
-  return raw.endsWith('s') ? raw.slice(0, -1) : raw;
+  if (!resource || typeof resource !== 'string') return null;
+  const lower = resource.toLowerCase();
+  if (lower.endsWith('ies')) {
+    return `${lower.slice(0, -3)}y`;
+  }
+  return lower.replace(/s$/, '');
 }
 
 export default function registerPermissionsRoutes(app) {

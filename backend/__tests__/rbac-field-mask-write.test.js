@@ -173,6 +173,11 @@ describe("Write field mask: key normalization", () => {
     expect(objectTypeOf("contact")).toBe("contact");
     expect(objectTypeOf(undefined)).toBe(null);
   });
+
+  it("maps irregular -ies plurals to the permission key", () => {
+    expect(objectTypeOf("companies")).toBe("company");
+    expect(objectTypeOf("activities")).toBe("activity");
+  });
 });
 
 // ===========================================================================

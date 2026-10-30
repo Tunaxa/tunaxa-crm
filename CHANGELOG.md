@@ -12,7 +12,7 @@ and this project adheres to Semantic Versioning.
   - Added `normalizeFieldKey` folding keys to snake_case so casing variations (`firstName`, `first_name`, `First Name`) cannot bypass field permission masks.
   - Added `submittedFieldKeys` expanding nested `customFields` and `custom_fields` payloads, treating any key presence (including `null`, `false`, `0`, and empty strings) as an intentional write operation.
   - Implemented `checkWriteFieldMask(resource, pick)` middleware: returns HTTP 403 Forbidden with `{ error, maskedFields[] }` before data validation runs, fails closed with 500 on store errors, and skips checks for admin roles (`ADMIN_ROLES`).
-  - Added `objectTypeOf` shared singularization helper synchronizing read and write permission keys.
+  - Added `objectTypeOf` shared singularization helper synchronizing read and write permission keys, including irregular `-ies` plurals so `companies`/`activities` resolve to the `company`/`activity` permission rows instead of unmatched `companie`/`activitie` keys.
   - Attached write-mask enforcement across 13 write routes: generic resource CRUD (`POST`, `PUT`, `PATCH`, batch updates), all four `/api/v1/objects` endpoints, dedicated entity routes (`tickets`, `forms`, `goals`, `sequences`), and `POST /api/:resource/merge` to prevent bypasses via `fieldOverrides`.
 - **Cross-Tenant IDOR Remediations (`backend/routes/` & repositories):**
   - Remediated un-scoped generic CRUD and CSV export in `backend/routes/resources.js` to enforce tenant workspace boundaries across all 19 entities. The tenant is now server-derived on every write, so a `workspace_id` supplied in a request body is ignored on both create and update; cross-tenant reads and writes return `404` rather than `403` so a response does not confirm that an id exists.
@@ -38,7 +38,7 @@ and this project adheres to Semantic Versioning.
 
 ### Added
 - **Write-Side Field Masking Test Suite (`backend/__tests__/rbac-field-mask-write.test.js`):**
-  - Added 37 unit and mutation-verified integration tests verifying 403 Forbidden responses on attempted writes to masked scalar columns and nested custom fields, asserting database records remain untouched, verifying admin bypasses, and confirming merge override protections.
+  - Added 38 unit and mutation-verified integration tests verifying 403 Forbidden responses on attempted writes to masked scalar columns and nested custom fields, asserting database records remain untouched, verifying admin bypasses, and confirming merge override protections.
 - **Atomic Duplicate Merge Engine (`backend/services/merge.js` & `backend/routes/dataops.js`):**
   - Implemented transactional record merging for `contacts`, `companies` and `leads`, wrapped in a single database transaction (`BEGIN` … `COMMIT`, with `ROLLBACK` on any failure) and holding `SELECT … FOR UPDATE` row locks on both records, so a mid-merge failure can no longer leave a partially merged state behind.
   - Re-points every foreign key child reference from the duplicate id to the surviving primary id before the duplicate row is deleted. Candidate children are `activities`, `deals`, `tasks`, `tickets`, `quotes`, `contracts`, `orders`, `invoices` and `expenses`; the pointer columns actually present are resolved from `information_schema` at runtime rather than hardcoded, because the live schema deviates from the migrations — `tickets` carries no `contact_id`/`company_id` foreign key at all, only denormalized `contact`/`contact_email` display text that must not be rewritten.
