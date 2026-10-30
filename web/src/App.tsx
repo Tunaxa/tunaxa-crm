@@ -1,6 +1,7 @@
 import { DuplicateResolution } from "./components/DuplicateResolution";
 import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
+import { WebhooksPage } from "./pages/webhooks/WebhooksPage";
 
 import { useForm } from "react-hook-form";
 import {
@@ -1010,7 +1011,7 @@ function AppRoutes() {
               <Route path="/recordings" element={<RecordingsPage />} />
               <Route path="/inbox" element={<InboxPage />} />
               <Route path="/sequences" element={<SequencesPage />} />
-              <Route path="/webhooks" element={<WebhooksPage />} />
+              <Route path="/webhooks" element={<WebhooksPage inbound={<InboundWebhooksPage />} />} />
               <Route path="/campaigns" element={<CampaignsPage />} />
               <Route path="/email-lists" element={<EmailListsPage />} />
               <Route path="/landing-pages" element={<LandingPagesPage />} />
@@ -7967,7 +7968,7 @@ function FormEditor({
   );
 }
 
-function WebhooksPage() {
+function InboundWebhooksPage() {
   const { toast } = useApp();
   const { items, create, update, remove } =
     useResource<Row>("webhookEndpoints");
