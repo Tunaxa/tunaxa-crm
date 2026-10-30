@@ -142,8 +142,17 @@ function resolveOverrides(fieldOverrides, resource, columns) {
   const bag = {};
   const mapped = legacyToPg(supplied, resource, { partial: true });
   for (const [key, value] of Object.entries(mapped)) {
-    if (key === "custom_fields" || LOCKED_COLUMNS.has(key)) continue;
+    if (LOCKED_COLUMNS.has(key)) continue;
     if (value === undefined) continue;
+    if (key === "custom_fields") {
+      // legacyToPg folds unknown flat keys and an explicit `custom_fields`
+      // patch into this bag. It is a bag entry, not a column write, so it
+      // merges into the override bag rather than being skipped.
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        Object.assign(bag, value);
+      }
+      continue;
+    }
     if (columns.has(key)) scalar[key] = value;
     else bag[key] = value;
   }

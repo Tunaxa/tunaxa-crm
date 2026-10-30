@@ -195,12 +195,12 @@ describe("contacts repository", () => {
     // custom_fields is merged with the stored bag, not replaced, so a partial
     // update preserves overflow fields (see update()).
     expect(sql).toContain(
-      "first_name = $1, custom_fields = COALESCE(custom_fields, '{}'::jsonb) || $2",
+      "first_name = $1, custom_fields = COALESCE(custom_fields, '{}'::jsonb) || $2::jsonb",
     );
     expect(sql).toContain("WHERE id = $3");
     expect(sql).not.toContain("workspace_id = $");
     expect(sql).not.toContain("unknown = $");
-    expect(params).toEqual(["Grace", { verified: true }, "contact-1"]);
+    expect(params).toEqual(["Grace", '{"verified":true}', "contact-1"]);
   });
 
   it("returns null for an update with no allowed fields or no matching record", async () => {
