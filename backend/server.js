@@ -56,6 +56,7 @@ import registerQuoteRoutes from "./routes/quotes.js";
 import registerContactRoutes from "./routes/contacts.js";
 import registerGoalRoutes from "./routes/goals.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
+import { originGuard } from "./middleware/csrf.js";
 import {
   initReportSchedulerWorker,
   closeReportSchedulerQueue,
@@ -208,7 +209,11 @@ app.use(express.urlencoded({ extended: true }));
 
 const globalLimiter = createRateLimiter({
   windowMs: 60_000,
-  max: 120,
+  // Tunable because the bucket is per-process: a deployment fronted by several
+  // instances sees only its share of traffic, and a stricter-than-default value
+  // would then throttle legitimate users unevenly. Defaults to the previous
+  // hardcoded limit when unset.
+  max: Number(process.env.RATE_LIMIT_GLOBAL_MAX) || 120,
   prefix: "global",
 });
 app.use("/api", globalLimiter);
@@ -221,6 +226,11 @@ app.use(
     },
   }),
 );
+
+// Origin enforcement for state-changing API requests. Mounted at the root
+// rather than on "/api" so that req.path still carries the /api prefix the
+// exempt patterns match against. Must be registered before any route.
+app.use(originGuard());
 
 // V1 Dynamic Object API (PostgreSQL + JSONB) — registered BEFORE legacy routes
 registerV1ObjectRoutes(app);

@@ -64,6 +64,7 @@ async function findAllUncached({
   sortBy = "created_at:desc",
   q = "",
   stage = "",
+  workspaceId,
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
@@ -78,6 +79,12 @@ async function findAllUncached({
   const stageFilter = String(stage || "").trim().toLowerCase();
   const conditions = [];
   const params = [];
+  if (workspaceId !== undefined && workspaceId !== null) {
+    params.push(workspaceId);
+    conditions.push(
+      `(workspace_id = $${params.length} OR ($${params.length} = 'default' AND workspace_id IS NULL))`,
+    );
+  }
   if (searchTerm) {
     params.push(searchTerm);
     const p = `$${params.length}`;
@@ -115,8 +122,17 @@ async function findAllUncached({
   };
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM deals WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  // The workspace predicate lives in the WHERE clause, not in a post-filter: a
+  // record belonging to another tenant has to be indistinguishable from one
+  // that does not exist.
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM deals WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))"
+      : "SELECT * FROM deals WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
   return result.rows[0] || null;
 }
 
@@ -149,7 +165,7 @@ export async function create(data = {}) {
   return row;
 }
 
-export async function update(id, data = {}) {
+export async function update(id, data = {}, workspaceId) {
   const fields = UPDATE_FIELDS.filter(
     (field) =>
       Object.prototype.hasOwnProperty.call(data, field) &&
@@ -161,11 +177,13 @@ export async function update(id, data = {}) {
   const assignments = fields.map(
     (field, index) => `${field} = $${index + 1}`,
   );
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   values.push(id);
+  if (scoped) values.push(workspaceId);
   const result = await query(
     `UPDATE deals
      SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}
+     WHERE id = $${fields.length + 1}${scoped ? ` AND (workspace_id = $${fields.length + 2} OR ($${fields.length + 2} = 'default' AND workspace_id IS NULL))` : ''}
      RETURNING *`,
     values,
   );
@@ -174,10 +192,13 @@ export async function update(id, data = {}) {
   return row;
 }
 
-async function remove(id) {
+async function remove(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    "DELETE FROM deals WHERE id = $1 RETURNING id",
-    [id],
+    scoped
+      ? "DELETE FROM deals WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL)) RETURNING id"
+      : "DELETE FROM deals WHERE id = $1 RETURNING id",
+    scoped ? [id, workspaceId] : [id],
   );
   const deleted = result.rowCount > 0;
   if (deleted) await invalidateListCache("deals");

@@ -110,7 +110,10 @@ export async function findSavedReport(reportId, workspaceId) {
 export async function createSavedReport(data = {}, workspaceId = 'default') {
   const record = {
     ...data,
-    workspaceId: data.workspaceId || workspaceId || 'default',
+    // The explicit scope argument wins over anything in `data`. Honouring
+    // `data.workspaceId` first would let a caller that forwards a request body
+    // into `data` choose its own tenant.
+    workspaceId: workspaceId || data.workspaceId || 'default',
   };
 
   try {

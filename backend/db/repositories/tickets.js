@@ -63,6 +63,7 @@ export async function findAll({
   stage = "",
   priority = "",
   source = "",
+  workspaceId,
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
@@ -74,6 +75,12 @@ export async function findAll({
   const { column, direction } = getSort(sortBy);
   const conditions = [];
   const params = [];
+  if (workspaceId !== undefined && workspaceId !== null) {
+    params.push(workspaceId);
+    conditions.push(
+      `(workspace_id = $${params.length} OR ($${params.length} = 'default' AND workspace_id IS NULL))`,
+    );
+  }
   if (searchTerm) {
     params.push(searchTerm);
     const p = `$${params.length}`;
@@ -118,8 +125,17 @@ export async function findAll({
   };
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM tickets WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  // The workspace predicate lives in the WHERE clause, not in a post-filter: a
+  // record belonging to another tenant has to be indistinguishable from one
+  // that does not exist.
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM tickets WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))"
+      : "SELECT * FROM tickets WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
   return result.rows[0] || null;
 }
 
@@ -154,7 +170,7 @@ export async function create(data = {}) {
   return result.rows[0] || null;
 }
 
-export async function update(id, data = {}) {
+export async function update(id, data = {}, workspaceId) {
   const fields = UPDATE_FIELDS.filter(
     (field) =>
       Object.prototype.hasOwnProperty.call(data, field) &&
@@ -178,11 +194,13 @@ export async function update(id, data = {}) {
   const assignments = fields.map(
     (field, index) => `${field} = $${index + 1}`,
   );
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   values.push(id);
+  if (scoped) values.push(workspaceId);
   const result = await query(
     `UPDATE tickets
      SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}
+     WHERE id = $${fields.length + 1}${scoped ? ` AND (workspace_id = $${fields.length + 2} OR ($${fields.length + 2} = 'default' AND workspace_id IS NULL))` : ''}
      RETURNING *`,
     values,
   );
@@ -198,22 +216,32 @@ export async function update(id, data = {}) {
  * because jsonb array concatenation appends on the right, and the legacy
  * ordering is newest-first.
  */
-export async function addComment(id, comment) {
+export async function addComment(id, comment, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    `UPDATE tickets
-     SET comments = $2::jsonb || COALESCE(comments, '[]'::jsonb),
-         first_response_at = COALESCE(first_response_at, NOW())
-     WHERE id = $1
-     RETURNING *`,
-    [id, toJsonb([comment], "[]")],
+    scoped
+      ? `UPDATE tickets
+         SET comments = $3::jsonb || COALESCE(comments, '[]'::jsonb),
+             first_response_at = COALESCE(first_response_at, NOW())
+         WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))
+         RETURNING *`
+      : `UPDATE tickets
+         SET comments = $2::jsonb || COALESCE(comments, '[]'::jsonb),
+             first_response_at = COALESCE(first_response_at, NOW())
+         WHERE id = $1
+         RETURNING *`,
+    scoped ? [id, workspaceId, toJsonb([comment], "[]")] : [id, toJsonb([comment], "[]")],
   );
   return result.rows[0] || null;
 }
 
-async function remove(id) {
+async function remove(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    "DELETE FROM tickets WHERE id = $1 RETURNING id",
-    [id],
+    scoped
+      ? "DELETE FROM tickets WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL)) RETURNING id"
+      : "DELETE FROM tickets WHERE id = $1 RETURNING id",
+    scoped ? [id, workspaceId] : [id],
   );
   return result.rowCount > 0;
 }
