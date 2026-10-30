@@ -188,14 +188,16 @@ describe("companies repository", () => {
 
     expect(result).toBe(record);
     const [sql, params] = pg.query.mock.calls[0];
-    expect(sql).toContain("name = $1, employees = $2, custom_fields = $3");
+    expect(sql).toContain(
+      "name = $1, employees = $2, custom_fields = COALESCE(custom_fields, '{}'::jsonb) || $3::jsonb",
+    );
     expect(sql).toContain("WHERE id = $4");
     expect(sql).not.toContain("workspace_id = $");
     expect(sql).not.toContain("unknown = $");
     expect(params).toEqual([
       "Acme Corp",
       300,
-      { verified: true },
+      '{"verified":true}',
       "company-1",
     ]);
   });
