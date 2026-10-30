@@ -2619,20 +2619,41 @@ function RecordDetailPage({
 
   useEffect(() => {
     setMessages([]);
-    setEmailLoading(false); setEmailError(false);
-    if (!record?.email || tab !== "Emails") return;
+    setEmailLoading(false);
+    setEmailError(false);
+
+    const shouldLoadMessages =
+      resource === "contacts" || tab === "Emails";
+
+    if (!record?.email || !shouldLoadMessages) return;
+
     const controller = new AbortController();
-    setEmailLoading(true); setEmailError(false);
+    setEmailLoading(true);
     api<Row[] | { data: Row[] }>("/messages", { signal: controller.signal })
       .then((response) => {
         const items = Array.isArray(response) ? response : response.data;
         if (!Array.isArray(items)) throw new Error("Invalid message response");
-        if (!controller.signal.aborted) setMessages(items.filter((message) => message.to === record.email && (!message.channel || message.channel.toLowerCase() === "email")));
+
+        const contactEmail = String(record.email).trim().toLowerCase();
+        if (!controller.signal.aborted) {
+          setMessages(
+            items.filter(
+              (message) =>
+                String(message.to || "").trim().toLowerCase() === contactEmail &&
+                (!message.channel || String(message.channel).toLowerCase() === "email"),
+            ),
+          );
+        }
       })
-      .catch(() => { if (!controller.signal.aborted) setEmailError(true); })
-      .finally(() => { if (!controller.signal.aborted) setEmailLoading(false); });
+      .catch(() => {
+        if (!controller.signal.aborted) setEmailError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setEmailLoading(false);
+      });
+
     return () => controller.abort();
-  }, [record?.id, record?.email, tab, emailRetry]);
+  }, [record?.id, record?.email, resource, tab, emailRetry]);
 
   useEffect(() => {
     setRevisions([]);
