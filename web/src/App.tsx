@@ -4800,16 +4800,54 @@ function InboxPage() {
                         </Badge>
                       ) : null}
 
-                      {last.openedAt || last.clickedAt ? (
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            opacity: 0.7,
-                          }}
-                        >
-                          <Icon name="eye" /> Tracked
-                        </span>
-                      ) : null}
+                     {last.direction === "Outbound" || last.status === "Sent" ? (
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+      fontSize: "11px",
+      opacity: 0.8,
+    }}
+    title="Email sent"
+  >
+    <Icon name="mail" />
+    Sent
+  </span>
+) : null}
+
+{last.openedAt ? (
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+      fontSize: "11px",
+      opacity: 0.8,
+    }}
+    title={`Opened on ${new Date(last.openedAt).toLocaleString()}`}
+  >
+    <Icon name="eye" />
+    {last.openCount || 1}× ·{" "}
+    {new Date(last.openedAt).toLocaleString()}
+  </span>
+) : null}
+
+{last.clickedAt ? (
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+      fontSize: "11px",
+      opacity: 0.8,
+    }}
+    title={`Last click: ${new Date(last.clickedAt).toLocaleString()}`}
+  >
+    <Icon name="mouse-pointer-click" />
+    {last.clickCount || 1} clicks
+  </span>
+) : null}
                     </div>
                   </button>
                 );
@@ -4972,11 +5010,14 @@ function InboxPage() {
                           ) : null}
 
                           {message.openedAt ? (
-                            <span>
-                              <Icon name="eye" /> Opened{" "}
-                              {message.openCount || 1}×
-                            </span>
-                          ) : null}
+  <span
+    title={`First opened on ${new Date(message.openedAt).toLocaleString()}`}
+  >
+    <Icon name="eye" /> Email opened{" "}
+    {message.openCount || 1} times ·{" "}
+    {new Date(message.openedAt).toLocaleString()}
+  </span>
+) : null}
 
                           {message.clickedAt ? (
                             <span>
