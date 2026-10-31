@@ -41,7 +41,13 @@ export async function updateRecord(req, res, next) {
   if (PG_RESOURCES.has(resource)) {
     try {
       const repo = repoFor(resource);
+      const stored = await repo.findById(id);
+      if (!stored) return res.status(404).json({ error: "Record not found" });
+      const previous = pgToLegacy(stored, resource);
       const pgData = legacyToPg(data, resource);
+      if (pgData.custom_fields) {
+        pgData.custom_fields = { ...stored.custom_fields, ...pgData.custom_fields };
+      }
       coerceBuiltIns(resource, pgData);
       const previousRow = await repo.findById(id);
       if (!previousRow)
@@ -54,19 +60,15 @@ export async function updateRecord(req, res, next) {
       if (!row) return res.status(404).json({ error: "Record not found" });
 
       const item = pgToLegacy(row, resource);
-      // Revisions and the field-level audit trail live in the JSON store even
-      // for PG-backed records, so /api/revisions and /api/audit see them.
-      const revisionId = await mutateDb((db) => {
-        const revId = recordRevision(db, resource, previous, item, req.user);
-        db.audit.unshift(
-          auditEntry({
-            action: `Updated ${resource.slice(0, -1)}`,
-            actor: req.user.name,
-            req,
-            resourceId: id,
-          }),
-        );
-        return revId;
+      let revisionId = null;
+      await mutateDb((db) => {
+        revisionId = recordRevision(db, resource, previous, item, req.user);
+        db.audit.unshift(auditEntry({
+          action: `Updated ${resource.slice(0, -1)}`,
+          actor: req.user.name,
+          req,
+          resourceId: id,
+        }));
       });
       const event = updatedEvent(resource);
       if (event) triggerWorkflows(resource, event, item);

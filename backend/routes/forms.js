@@ -290,22 +290,22 @@ export default function registerFormRoutes(app) {
       // and first-seen page on the record the same way /api/web/identify does so
       // attribution survives on the lead itself, not just on the visit rows.
       if (vid) {
-        const attribution = await mutateDb(store => {
+        const visits = await mutateDb(store => {
           if (!store.webVisits) store.webVisits = [];
           const prior = store.webVisits.filter(v => v.vid === vid);
           prior.forEach(v => { v.recordId = legacyRecord.id; v.attributed = true; });
           store.pendingAttribution = (store.pendingAttribution || []).filter(p => p.vid !== vid);
-          return { count: prior.length, source: prior[0]?.page || '' };
+          return prior;
         });
-        if (attribution.count > 0) {
-          const updated = await repoFor(recordResource).update(
-            legacyRecord.id,
-            legacyToPg({
-              visitCount: (legacyRecord.visitCount || 0) + attribution.count,
-              attributionSource: legacyRecord.attributionSource || attribution.source,
-            }, recordResource)
-          );
-          if (updated) Object.assign(legacyRecord, pgToLegacy(updated, recordResource));
+        if (visits.length) {
+          const attribution = {
+            ...record.custom_fields,
+            firstVisitAt: legacyRecord.firstVisitAt || visits[visits.length - 1].createdAt,
+            lastVisitAt: now(),
+            visitCount: Number(legacyRecord.visitCount || 0) + visits.length,
+            attributionSource: visits[0].page || legacyRecord.attributionSource || '',
+          };
+          await repoFor(recordResource).update(record.id, { custom_fields: attribution });
         }
       }
 
