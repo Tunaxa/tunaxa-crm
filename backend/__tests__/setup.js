@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { setDbPath } from "../store.js";
+import { setDbPath, EMPTY_DB } from "../store.js";
 import { query } from "../db/pg.js";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -12,57 +12,6 @@ const workerId = (process.env.VITEST_POOL_ID || "1").replace(
   "_",
 );
 const testDbFile = path.join(testDbDir, `test-db-${workerId}.json`);
-
-const emptyDb = {
-  users: [],
-  sessions: [],
-  leads: [],
-  contacts: [],
-  companies: [],
-  deals: [],
-  tasks: [],
-  activities: [],
-  workflows: [],
-  calls: [],
-  recordings: [],
-  messages: [],
-  sequences: [],
-  team: [],
-  customFields: [],
-  audit: [],
-  lists: [],
-  tickets: [],
-  articles: [],
-  revisions: [],
-  webVisits: [],
-  chatConversations: [],
-  meetingLinks: [],
-  leadScoringRules: [],
-  stageGates: {},
-  forms: [],
-  executionQueue: [],
-  campaigns: [],
-  emailLists: [],
-  landingPages: [],
-  products: [],
-  orders: [],
-  invoices: [],
-  expenses: [],
-  employees: [],
-  leaveRequests: [],
-  attendance: [],
-  quotes: [],
-  contracts: [],
-  marketingEmails: [],
-  marketingEvents: [],
-  goals: [],
-  surveys: [],
-  surveyResponses: [],
-  webhookEndpoints: [],
-  webhookDeliveries: [],
-  settings: {},
-  meta: { seedVersion: 0 },
-};
 
 // null = not probed yet; true/false = cached for the life of this test file.
 let pgReachable = null;
@@ -88,7 +37,7 @@ function canReachPostgres(timeoutMs = 300) {
 
 export async function resetTestDb() {
   await fs.mkdir(testDbDir, { recursive: true });
-  await fs.writeFile(testDbFile, JSON.stringify(emptyDb, null, 2));
+  await fs.writeFile(testDbFile, JSON.stringify(EMPTY_DB, null, 2));
   setDbPath(testDbFile);
   // Resources served from Postgres (see migrations/004_contacts_leads.sql,
   // 005_core_entities.sql, 006_revenue_tables.sql and
@@ -103,8 +52,18 @@ export async function resetTestDb() {
     if (pgReachable === false) return;
   }
   try {
-    await query("TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses, workflow_runs CASCADE;");
+    await query(
+      "TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses, workflow_runs, goals CASCADE;",
+    );
     pgReachable = true;
+    // Migration 011 may not have been applied yet, and a 42P01 here must not
+    // be read as "Postgres is down" - that would silently disable the
+    // Postgres-backed assertions for the rest of the run.
+    try {
+      await query("TRUNCATE TABLE saved_reports CASCADE;");
+    } catch (error) {
+      if (error.code !== "42P01") throw error;
+    }
   } catch (error) {
     // ECONNREFUSED when no server is listening, 42P01 before 004/005 are applied.
     if (error.code === "ECONNREFUSED" || error.code === "42P01") {

@@ -49,10 +49,14 @@ export async function updateRecord(req, res, next) {
         pgData.custom_fields = { ...stored.custom_fields, ...pgData.custom_fields };
       }
       coerceBuiltIns(resource, pgData);
+      const previousRow = await repo.findById(id);
+      if (!previousRow)
+        return res.status(404).json({ error: "Record not found" });
+      const previous = pgToLegacy(previousRow, resource);
       const row =
         Object.keys(pgData).length > 0
           ? await repo.update(id, pgData)
-          : await repo.findById(id);
+          : previousRow;
       if (!row) return res.status(404).json({ error: "Record not found" });
 
       const item = pgToLegacy(row, resource);
@@ -68,7 +72,7 @@ export async function updateRecord(req, res, next) {
       });
       const event = updatedEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.updated", { resource, item });
+      broadcast("record.updated", { resource, item, revisionId }, req.user.workspaceId || "default");
       await cacheFlush(resource);
       return res.json(revisionId ? { ...item, revisionId } : item);
     } catch (err) {

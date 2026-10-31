@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 import { toJsonb } from "./json.js";
 
 const SORT_COLUMNS = new Set([
@@ -59,6 +60,7 @@ export async function findAll({
   deal_id = "",
   quote_id = "",
   contract_id = "",
+  workspaceId,
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
@@ -76,6 +78,12 @@ export async function findAll({
   ];
   const conditions = [];
   const params = [];
+  if (workspaceId !== undefined && workspaceId !== null) {
+    params.push(workspaceId);
+    conditions.push(
+      `(workspace_id = $${params.length} OR ($${params.length} = 'default' AND workspace_id IS NULL))`,
+    );
+  }
   if (searchTerm) {
     params.push(searchTerm);
     const p = `$${params.length}`;
@@ -115,8 +123,17 @@ export async function findAll({
   };
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM orders WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  // The workspace predicate lives in the WHERE clause, not in a post-filter: a
+  // record belonging to another tenant has to be indistinguishable from one
+  // that does not exist.
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM orders WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))"
+      : "SELECT * FROM orders WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
   return result.rows[0] || null;
 }
 
@@ -144,35 +161,29 @@ export async function create(data = {}) {
   return result.rows[0] || null;
 }
 
-export async function update(id, data = {}) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
+export async function update(id, data = {}, workspaceId) {
+  const statement = buildUpdateStatement({
+    id,
+    table: "orders",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields", "items"],
+    jsonbFallback: {"custom_fields":"{}", "items":"[]"},
+  });
+  if (!statement) return null;
 
-  const values = fields.map((field) =>
-    field === "items" ? toJsonb(data[field], []) : data[field],
-  );
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  values.push(id);
-  const result = await query(
-    `UPDATE orders
-     SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}
-     RETURNING *`,
-    values,
-  );
+  const result = await query(statement.sql, statement.values);
   return result.rows[0] || null;
 }
-
-async function remove(id) {
-  const result = await query("DELETE FROM orders WHERE id = $1 RETURNING id", [
-    id,
-  ]);
+async function remove(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "DELETE FROM orders WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL)) RETURNING id"
+      : "DELETE FROM orders WHERE id = $1 RETURNING id",
+    scoped ? [id, workspaceId] : [id],
+  );
   return result.rowCount > 0;
 }
 

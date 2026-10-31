@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { updateRecord } from "../services/resources.js";
+import { updatedEvent, eventFor } from "../services/workflows.js";
+import { recordRevision } from "../services/revisions.js";
 import { requireRole } from "../middleware/rbac.js";
 import {
   id,
@@ -10,16 +12,20 @@ import {
   auditEntry,
   coerceBuiltIns,
   coerceCustomFields,
+  partialDelta,
+  applyPartialUpdate,
   resources,
 } from "../helpers.js";
 import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
-import {
-  triggerWorkflows,
-  createdEvent,
-} from "../services/workflows.js";
+import { triggerWorkflows, createdEvent } from "../services/workflows.js";
 import { broadcast } from "./sse.js";
 import { cacheFlush } from "../services/cache.js";
-import { getFieldPermissions, applyFieldMasking } from "./permissions.js";
+import {
+  getFieldPermissions,
+  applyFieldMasking,
+  checkWriteFieldMask,
+  objectTypeOf,
+} from "./permissions.js";
 import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
 import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
@@ -78,7 +84,8 @@ const MAX_PG_PAGES = 50;
 function readPgFilters(query) {
   const filters = {};
   for (const key of PG_FILTER_KEYS) {
-    if (query[key] !== undefined && query[key] !== "") filters[key] = query[key];
+    if (query[key] !== undefined && query[key] !== "")
+      filters[key] = query[key];
   }
   // `completed` has to arrive as a real boolean: a non-empty string is truthy
   // in SQL, so the string "false" would filter for completed work.
@@ -96,23 +103,35 @@ function readPgFilters(query) {
  * `page`/`limit` gets exactly that, which is what makes `export.csv` and the
  * duplicate detector see the complete set.
  */
-async function pgFindAll(resource, query = {}) {
+async function pgFindAll(resource, query = {}, workspaceId = undefined) {
   const repo = repoFor(resource);
   const filters = readPgFilters(query);
   if (query.sortBy) filters.sortBy = query.sortBy;
+  // Tenant scoping is applied in SQL, not by filtering the returned rows: a
+  // post-filter would report a `total` that does not match the page and would
+  // silently return short pages.
+  if (workspaceId !== undefined && workspaceId !== null) {
+    filters.workspaceId = workspaceId;
+  }
 
   const hasPaging = query.page !== undefined || query.limit !== undefined;
   if (hasPaging) {
     filters.page = Number(query.page) || 1;
     filters.limit = Number(query.limit) || 20;
     const result = await repo.findAll(filters);
-    return result.data.map((row) => pgToLegacy(row, resource));
+    return result.data.map((row) =>
+      coerceBuiltIns(resource, pgToLegacy(row, resource)),
+    );
   }
 
   const rows = [];
   for (let page = 1; page <= MAX_PG_PAGES; page++) {
     const result = await repo.findAll({ ...filters, page, limit: 100 });
-    rows.push(...result.data.map((row) => pgToLegacy(row, resource)));
+    rows.push(
+      ...result.data.map((row) =>
+        coerceBuiltIns(resource, pgToLegacy(row, resource)),
+      ),
+    );
     if (result.data.length === 0 || rows.length >= result.total) break;
   }
   return rows;
@@ -125,6 +144,19 @@ const uploadDir = path.join(root, "..", "uploads");
 // always win. Stripped from the payload rather than re-pinned after the merge,
 // so there is a single mechanism to reason about.
 
+/**
+ * The tenant a request acts within.
+ *
+ * Mirrors the idiom already used by routes/goals.js so that a user record
+ * without an explicit workspace still resolves to the `default` tenant, which
+ * is also the column default in the migrations. Getting this wrong in either
+ * direction is a security bug: a wrong value leaks another tenant's rows, and
+ * an undefined value silently disables the scoping entirely.
+ */
+function tenantOf(req) {
+  return req.user?.workspaceId || req.user?.workspace_id || "default";
+}
+
 export default function registerResourceRoutes(app) {
   app.use("/api/:resource", async (req, res, next) => {
     if (!resources.has(req.params.resource) || !req.user) return next();
@@ -132,7 +164,7 @@ export default function registerResourceRoutes(app) {
     req.db = await readDb();
     req.fieldPerms = getFieldPermissions(
       req.db,
-      req.params.resource.replace(/s$/, ""),
+      objectTypeOf(req.params.resource),
       req.user.role,
     );
 
@@ -145,7 +177,7 @@ export default function registerResourceRoutes(app) {
     // ── PG path: every resource in PG_RESOURCES ────────────────────────────
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
-        const rows = await pgFindAll(req.params.resource, req.query);
+        const rows = await pgFindAll(req.params.resource, req.query, tenantOf(req));
         return res.json(rows);
       } catch (err) {
         return next(err);
@@ -156,10 +188,7 @@ export default function registerResourceRoutes(app) {
     const db = req.db || (await readDb());
 
     const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(
-      50,
-      Math.max(1, Number(req.query.limit) || 20),
-    );
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
     const start = (page - 1) * limit;
 
     let rows = db[req.params.resource] || [];
@@ -214,20 +243,23 @@ export default function registerResourceRoutes(app) {
 
       if (type === "email") {
         rows = rows.filter(
-          (item) =>
-            String(item.channel || "").toLowerCase() === "email",
+          (item) => String(item.channel || "").toLowerCase() === "email",
         );
       }
     }
 
     if (req.fieldPerms) {
-      rows = rows.map((item) =>
-        applyFieldMasking(item, req.fieldPerms),
-      );
+      rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
     }
 
-    // AXA-128: pagination for messages
-    if (req.params.resource === "messages") {
+    // AXA-128: pagination for messages. Only switch shapes when the caller
+    // actually asks to page: the long-standing `/api/messages` contract is a
+    // bare array, and callers that pass page/limit (the inbox UI) still get the
+    // paginated envelope.
+    if (
+      req.params.resource === "messages" &&
+      (req.query.page !== undefined || req.query.limit !== undefined)
+    ) {
       const total = rows.length;
       const paginatedRows = rows.slice(start, start + limit);
 
@@ -243,7 +275,6 @@ export default function registerResourceRoutes(app) {
     res.json(rows);
   });
 
-
   app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
@@ -252,7 +283,7 @@ export default function registerResourceRoutes(app) {
       try {
         // Already legacy-shaped by the time it gets here, so the header keeps
         // the same camelCase names the JSON-backed exports have always used.
-        rows = await pgFindAll(req.params.resource, {});
+        rows = await pgFindAll(req.params.resource, {}, tenantOf(req));
       } catch (err) {
         return next(err);
       }
@@ -266,9 +297,14 @@ export default function registerResourceRoutes(app) {
     const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
     // buildCsvRow indexes by column name, so the header is the same shape with
     // each column named after itself.
-    const header = Object.fromEntries(columns.map((column) => [column, column]));
+    const header = Object.fromEntries(
+      columns.map((column) => [column, column]),
+    );
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${req.params.resource}.csv"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${req.params.resource}.csv"`,
+    );
     res.write(`${buildCsvRow(columns, header)}\r\n`);
     for (const row of rows) {
       res.write(`${buildCsvRow(columns, row)}\r\n`);
@@ -284,9 +320,14 @@ export default function registerResourceRoutes(app) {
     if (PG_RESOURCES.has(req.params.resource)) {
       const repo = repoFor(req.params.resource);
       try {
-        const row = await repo.findById(req.params.id);
+        const row = await repo.findById(req.params.id, tenantOf(req));
         if (!row) return res.status(404).json({ error: "Record not found" });
-        return res.json(pgToLegacy(row, req.params.resource));
+        return res.json(
+          coerceBuiltIns(
+            req.params.resource,
+            pgToLegacy(row, req.params.resource),
+          ),
+        );
       } catch (err) {
         return next(err);
       }
@@ -301,17 +342,14 @@ export default function registerResourceRoutes(app) {
       return res.status(404).json({ error: "Record not found" });
     }
 
-    res.json(
-      req.fieldPerms
-        ? applyFieldMasking(item, req.fieldPerms)
-        : item,
-    );
+    res.json(req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item);
   });
 
   app.post(
     "/api/:resource",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
     validate(ResourceSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
@@ -323,6 +361,10 @@ export default function registerResourceRoutes(app) {
         const repo = repoFor(resource);
         try {
           const pgData = legacyToPg({ ...req.body }, resource);
+          // The workspace is server-derived. Honouring a client-supplied
+          // workspace_id would let any authenticated user create records inside
+          // another tenant.
+          pgData.workspace_id = tenantOf(req);
           // Coerce numeric built-ins (e.g. deals.value, companies.employees)
           coerceBuiltIns(resource, pgData);
           const row = await repo.create(pgData);
@@ -347,10 +389,7 @@ export default function registerResourceRoutes(app) {
 
         const record = {
           id: id(resource.slice(0, -1) || "item"),
-          ...coerceBuiltIns(
-            resource,
-            coerceCustomFields(db, resource, data),
-          ),
+          ...coerceBuiltIns(resource, coerceCustomFields(db, resource, data)),
           createdAt,
           updatedAt: createdAt,
         };
@@ -390,7 +429,11 @@ export default function registerResourceRoutes(app) {
 
       const event = createdEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.created", { resource, item }, req.user.workspaceId || "default");
+      broadcast(
+        "record.created",
+        { resource, item },
+        req.user.workspaceId || "default",
+      );
       cacheFlush(resource);
 
       res.status(201).json(item);
@@ -401,6 +444,9 @@ export default function registerResourceRoutes(app) {
     "/api/:resource/batch",
     auth,
     requireRole("admin", "member"),
+    // Per-element, not per-request: a batch is the obvious way to smuggle one
+    // masked field past a check that only inspects the first object.
+    checkWriteFieldMask(),
     validate(BatchSchema),
     async (req, res, next) => {
       const resource = req.params.resource;
@@ -414,6 +460,9 @@ export default function registerResourceRoutes(app) {
           const saved = await Promise.all(
             req.body.map(async (data) => {
               const pgData = legacyToPg({ ...data }, resource);
+              // Server-derived, same as the single-create path: a batch must not
+              // be a way around tenant assignment.
+              pgData.workspace_id = tenantOf(req);
               coerceBuiltIns(resource, pgData);
               const row = await repo.create(pgData);
               return pgToLegacy(row, resource);
@@ -454,7 +503,11 @@ export default function registerResourceRoutes(app) {
 
         return rows;
       });
-      broadcast("records.batch", { resource, count: saved.length }, req.user.workspaceId || "default");
+      broadcast(
+        "records.batch",
+        { resource, count: saved.length },
+        req.user.workspaceId || "default",
+      );
       cacheFlush(resource);
 
       res.status(201).json(saved);
@@ -465,6 +518,113 @@ export default function registerResourceRoutes(app) {
     "/api/:resource/:id",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
+    validate(ResourceSchema),
+    async (req, res, next) => {
+      const resource = req.params.resource;
+      if (!resources.has(resource)) return next();
+
+      // ── PG path ──────────────────────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = repoFor(resource);
+        try {
+          const pgData = legacyToPg({ ...req.body }, resource);
+          coerceBuiltIns(resource, pgData);
+          const workspaceId = tenantOf(req);
+          const previousRow = await repo.findById(req.params.id, workspaceId);
+          if (!previousRow)
+            return res.status(404).json({ error: "Record not found" });
+          const previous = pgToLegacy(previousRow, resource);
+          // An empty payload (only the id/timestamps were sent) must still
+          // return the record rather than 404: PUT keeps PATCH's merge
+          // semantics, and repo.update() bails on an empty field set.
+          const row =
+            Object.keys(pgData).length > 0
+              ? await repo.update(req.params.id, pgData, workspaceId)
+              : previousRow;
+          if (!row) return res.status(404).json({ error: "Record not found" });
+          const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
+          // Revisions and the field-level audit trail live in the JSON store
+          // even for PG-backed records, so the /api/revisions view sees them.
+          const revisionId = await mutateDb((db) => {
+            const revId = recordRevision(
+              db,
+              resource,
+              previous,
+              item,
+              req.user,
+            );
+            db.audit.unshift(
+              auditEntry({
+                action: `Updated ${resource.slice(0, -1)}`,
+                actor: req.user.name,
+                req,
+                resourceId: req.params.id,
+              }),
+            );
+            return revId;
+          });
+          if (revisionId) item.revisionId = revisionId;
+          const event = updatedEvent(resource);
+          if (event) triggerWorkflows(resource, event, item);
+          broadcast("record.updated", { resource, item });
+          cacheFlush(resource);
+          return res.json(item);
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
+      let previous = null;
+      let revisionId = null;
+      const item = await mutateDb((db) => {
+        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        if (index < 0) return null;
+        previous = { ...db[resource][index] };
+        const data = { ...req.body };
+        db[resource][index] = {
+          ...db[resource][index],
+          ...coerceBuiltIns(resource, coerceCustomFields(db, resource, data)),
+          id: db[resource][index].id,
+          updatedAt: now(),
+        };
+        revisionId = recordRevision(
+          db,
+          resource,
+          previous,
+          db[resource][index],
+          req.user,
+        );
+        db.audit.unshift(
+          auditEntry({
+            action: `Updated ${resource.slice(0, -1)}`,
+            actor: req.user.name,
+            req,
+            resourceId: req.params.id,
+          }),
+        );
+        return db[resource][index];
+      });
+      if (!item) return res.status(404).json({ error: "Record not found" });
+      const event =
+        eventFor(resource, previous, item) || updatedEvent(resource);
+      if (event) triggerWorkflows(resource, event, item);
+      broadcast("record.updated", { resource, item, revisionId });
+      cacheFlush(resource);
+      res.json(revisionId ? { ...item, revisionId } : item);
+    },
+    updateRecord,
+  );
+
+  app.patch(
+    "/api/:resource/:id",
+    auth,
+    requireRole("admin", "member"),
+    // This handler is registered before the partial-delta PATCH below, so it is
+    // the one Express reaches first. The mask has to run here or a masked field
+    // stays writable through the effective PATCH handler.
+    checkWriteFieldMask(),
     validate(ResourceSchema),
     updateRecord,
   );
@@ -473,8 +633,89 @@ export default function registerResourceRoutes(app) {
     "/api/:resource/:id",
     auth,
     requireRole("admin", "member"),
+    checkWriteFieldMask(),
     validate(ResourceSchema),
-    updateRecord,
+    async (req, res, next) => {
+      const resource = req.params.resource;
+      if (!resources.has(resource)) return next();
+
+      // The body is a delta, not a replacement. partialDelta() is what makes
+      // that true: it drops the server-owned fields (id, workspace,
+      // createdAt/updatedAt) and every key the body did not mention, so nothing
+      // downstream can read an absent key as "set it to null".
+      const delta = partialDelta(req.body);
+
+      // ── PG path ──────────────────────────────────────────────────────────
+      if (PG_RESOURCES.has(resource)) {
+        const repo = repoFor(resource);
+        try {
+          // `partial` skips the NOT NULL title fallback: that exists so a body
+          // carrying only an invoice number can still be inserted, and on a
+          // delta it would copy some other field over the stored title.
+          const pgData = legacyToPg(delta, resource, { partial: true });
+          coerceBuiltIns(resource, pgData);
+          const tenant = tenantOf(req);
+          // A PATCH with nothing in it is not a missing record. Read the row
+          // back so an inline editor that submits an unchanged field still gets
+          // the full state it expects to render.
+          const row =
+            Object.keys(pgData).length === 0
+              ? await repo.findById(req.params.id, tenant)
+              : await repo.update(req.params.id, pgData, tenant);
+          if (!row) return res.status(404).json({ error: "Record not found" });
+          const item = coerceBuiltIns(resource, pgToLegacy(row, resource));
+          const event = updatedEvent(resource);
+          if (event) triggerWorkflows(resource, event, item);
+          broadcast("record.updated", { resource, item });
+          cacheFlush(resource);
+          return res.json(item);
+        } catch (err) {
+          return next(err);
+        }
+      }
+
+      // ── Legacy JSON path ──────────────────────────────────────────────────
+      let previous = null;
+      let revisionId = null;
+      const item = await mutateDb((db) => {
+        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        if (index < 0) return null;
+        previous = { ...db[resource][index] };
+        const merged = applyPartialUpdate(
+          db[resource][index],
+          coerceBuiltIns(resource, coerceCustomFields(db, resource, delta)),
+        );
+        // Re-asserted rather than spread: the delta cannot carry them, but a
+        // stored record that is missing one of them keeps the value it had.
+        merged.id = db[resource][index].id;
+        if (db[resource][index].createdAt !== undefined) {
+          merged.createdAt = db[resource][index].createdAt;
+        }
+        merged.updatedAt = now();
+        db[resource][index] = merged;
+        revisionId = recordRevision(
+          db,
+          resource,
+          previous,
+          merged,
+          req.user,
+        );
+        db.audit.unshift(auditEntry({
+          action: `Updated ${resource.slice(0, -1)}`,
+          actor: req.user.name,
+          req,
+          resourceId: req.params.id,
+        }));
+        return merged;
+      });
+      if (!item) return res.status(404).json({ error: "Record not found" });
+      const event =
+        eventFor(resource, previous, item) || updatedEvent(resource);
+      if (event) triggerWorkflows(resource, event, item);
+      broadcast("record.updated", { resource, item, revisionId });
+      cacheFlush(resource);
+      res.json(revisionId ? { ...item, revisionId } : item);
+    },
   );
 
   app.delete(
@@ -505,9 +746,7 @@ export default function registerResourceRoutes(app) {
 
       // ── Legacy JSON path ──────────────────────────────────────────────────
       const result = await mutateDb((db) => {
-        const index = db[resource].findIndex(
-          (x) => x.id === req.params.id,
-        );
+        const index = db[resource].findIndex((x) => x.id === req.params.id);
 
         if (index < 0) return null;
 
@@ -523,11 +762,7 @@ export default function registerResourceRoutes(app) {
             (item) => item.callId === record.id,
           );
 
-          files.push(
-            ...linked
-              .map((item) => item.fileUrl)
-              .filter(Boolean),
-          );
+          files.push(...linked.map((item) => item.fileUrl).filter(Boolean));
 
           db.recordings = db.recordings.filter(
             (item) => item.callId !== record.id,
@@ -540,9 +775,7 @@ export default function registerResourceRoutes(app) {
           }
 
           if (record.callId) {
-            const call = db.calls.find(
-              (item) => item.callId === record.id,
-            );
+            const call = db.calls.find((item) => item.callId === record.id);
 
             if (call?.recordingId === record.id) {
               delete call.recordingId;
@@ -584,15 +817,16 @@ export default function registerResourceRoutes(app) {
             await fs.unlink(path.join(uploadDir, name));
           } catch (error) {
             if (process.env.NODE_ENV !== "production") {
-              console.warn(
-                "Failed to remove uploaded file",
-                error.message,
-              );
+              console.warn("Failed to remove uploaded file", error.message);
             }
           }
         }),
       );
-      broadcast("record.deleted", { resource, id: req.params.id }, req.user.workspaceId || "default");
+      broadcast(
+        "record.deleted",
+        { resource, id: req.params.id },
+        req.user.workspaceId || "default",
+      );
       cacheFlush(resource);
 
       res.json({ ok: true });

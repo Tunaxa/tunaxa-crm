@@ -35,6 +35,9 @@ export const PG_RESOURCES = new Set([
   "surveys",
   "surveyResponses",
   "survey_responses",
+  "goals",
+  "savedReports",
+  "saved_reports",
 ]);
 
 /**
@@ -681,6 +684,79 @@ export const RESOURCE_MAPPINGS = {
     },
     hidden: ["workspace_id", "custom_fields"],
   },
+  goals: {
+    columns: [
+      "workspace_id",
+      "name",
+      "type",
+      "target",
+      "period",
+      "assigned_to",
+      "assigned_type",
+      "start_date",
+      "end_date",
+      "status",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    toPg: {
+      metric: "type",
+      assignedTo: "assigned_to",
+      assignedType: "assigned_type",
+      startDate: "start_date",
+      endDate: "end_date",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    toLegacy: {
+      assigned_to: "assignedTo",
+      assigned_type: "assignedType",
+      start_date: "startDate",
+      end_date: "endDate",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "name",
+    titleFallbacks: ["name", "title"],
+  },
+  saved_reports: {
+    columns: [
+      "workspace_id",
+      "name",
+      "description",
+      "entity",
+      "query",
+      "schedule",
+      "schedule_enabled",
+      "last_sent_at",
+      "custom_fields",
+      "created_at",
+      "updated_at",
+    ],
+    // `query` holds the aggregation definition consumed by
+    // services/reports.js runReportQuery(); `schedule` holds the weekly email
+    // delivery config written by routes/reports.js. `scheduleEnabled` and
+    // `workspaceId` are spelled out because legacyToPg() otherwise routes them
+    // into the custom_fields bag instead of the indexed columns.
+    toPg: {
+      workspaceId: "workspace_id",
+      scheduleEnabled: "schedule_enabled",
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+      lastSentAt: "last_sent_at",
+    },
+    toLegacy: {
+      schedule_enabled: "scheduleEnabled",
+      last_sent_at: "lastSentAt",
+      created_at: "createdAt",
+      updated_at: "updatedAt",
+    },
+    hidden: ["workspace_id", "custom_fields"],
+    titleColumn: "name",
+    titleFallbacks: ["name", "title"],
+  },
 };
 
 /**
@@ -781,7 +857,10 @@ export function pgToLegacy(row, resource) {
   const out = {};
   for (const [key, value] of Object.entries(row)) {
     if (mapping.hidden.includes(key)) continue;
-    const legacyKey = Object.prototype.hasOwnProperty.call(mapping.toLegacy, key)
+    const legacyKey = Object.prototype.hasOwnProperty.call(
+      mapping.toLegacy,
+      key,
+    )
       ? mapping.toLegacy[key]
       : key;
     if (value == null && (key === "created_at" || key === "updated_at")) {
@@ -799,7 +878,8 @@ export function pgToLegacy(row, resource) {
   const extra = row.custom_fields;
   if (extra && typeof extra === "object" && !Array.isArray(extra)) {
     for (const [key, value] of Object.entries(extra)) {
-      if (!Object.prototype.hasOwnProperty.call(out, key)) setOwn(out, key, value);
+      if (!Object.prototype.hasOwnProperty.call(out, key))
+        setOwn(out, key, value);
     }
   }
 
@@ -839,6 +919,18 @@ function genericPgToLegacy(row) {
     const parts = [out.first_name, out.last_name].filter(Boolean);
     out.name = parts.join(" ") || out.first_name || "";
   }
+  // Contacts and leads predate RESOURCE_MAPPINGS, so they have no `columns`
+  // list of their own. Merge their custom_fields overflow bag back out the same
+  // way the mapped entities do, otherwise fields the legacy contract carries
+  // (a contact's `company`, a lead's `lifecycleStage`, ...) vanish on read.
+  const extra = out.custom_fields;
+  if (extra && typeof extra === "object" && !Array.isArray(extra)) {
+    for (const [key, value] of Object.entries(extra)) {
+      if (!Object.prototype.hasOwnProperty.call(out, key)) {
+        out[key] = value;
+      }
+    }
+  }
   return out;
 }
 
@@ -847,6 +939,11 @@ function genericPgToLegacy(row) {
  * Splits `name` into first_name / last_name for contacts and leads; routes
  * known camelCase keys to their column and everything else into the
  * custom_fields bag for the four core entities.
+ *
+ * `options.partial` marks the body as a PATCH delta. It only changes the NOT
+ * NULL title fallback; everything else about the translation is the same, so a
+ * partial write reaches the repository as the same shape a full write does and
+ * the repository can treat the two identically.
  */
 export function legacyToPg(body, resource) {
   if ((resource === "contacts" || resource === "leads") && "name" in (body || {})) {
@@ -855,7 +952,7 @@ export function legacyToPg(body, resource) {
     delete body.name;
   }
   const mapping = mappingFor(resource);
-  if (!mapping) return genericLegacyToPg(body);
+  if (!mapping) return genericLegacyToPg(body, resource);
 
   const out = {};
   const extra = {};
@@ -893,9 +990,14 @@ export function legacyToPg(body, resource) {
   // a legacy body keyed only on a number or a vendor would otherwise fail the
   // insert with 23502. Fall back through the candidate fields, in order, taking
   // the first one that carries a value.
-  applyTitleFallback(mapping, out, body);
+  //
+  // Skipped for a partial write. On a delta the fallback is actively harmful:
+  // PATCHing `{ description }` on a campaign would read `description` off the
+  // titleFallbacks list and write it over the stored `name`. The column is
+  // already filled in, so there is nothing to fall back for.
+  if (!options.partial) applyTitleFallback(mapping, out, body);
 
-  // Left unset when empty so a partial PUT does not wipe the stored bag.
+  // Left unset when empty so a partial write does not wipe the stored bag.
   if (Object.keys(extra).length) out.custom_fields = extra;
   return out;
 }
@@ -927,18 +1029,84 @@ function applyTitleFallback(mapping, out, body) {
   }
 }
 
-function genericLegacyToPg(body) {
-  const out = { ...body };
-  if ("name" in out) {
-    const parts = String(out.name || "")
+/**
+ * Column knowledge for the resources that predate RESOURCE_MAPPINGS (contacts
+ * and leads). Mirrors migrations/004_contacts_leads.sql. Any key outside this
+ * set is an overflow field and is stored in custom_fields, the same contract
+ * the mapped entities use; that is what lets legacy-only fields such as a
+ * contact's `company` or a lead's `lifecycleStage` survive the PG cutover.
+ */
+const GENERIC_COLUMNS = {
+  contacts: new Set([
+    "id",
+    "workspace_id",
+    "company_id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "title",
+    "owner_id",
+    "custom_fields",
+    "created_at",
+    "updated_at",
+  ]),
+  leads: new Set([
+    "id",
+    "workspace_id",
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "company_name",
+    "status",
+    "source",
+    "value",
+    "owner_id",
+    "custom_fields",
+    "created_at",
+    "updated_at",
+  ]),
+};
+
+function genericLegacyToPg(body, resource) {
+  const source = { ...(body || {}) };
+  const name = source.name;
+  delete source.name;
+
+  const columns = GENERIC_COLUMNS[resource] || null;
+  const out = {};
+  const extra = {};
+
+  for (const [key, value] of Object.entries(source)) {
+    // The database owns the id and both timestamps.
+    if (key === "id" || key === "createdAt" || key === "updatedAt") continue;
+    if (key === "custom_fields") {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        Object.assign(extra, value);
+      }
+      continue;
+    }
+    if (columns && !columns.has(key)) {
+      extra[key] = value;
+      continue;
+    }
+    out[key] = value;
+  }
+
+  // Reconstruct first_name / last_name from the legacy `name` field, matching
+  // the previous behaviour (an explicit first_name in the body is replaced).
+  if (name !== undefined) {
+    const parts = String(name || "")
       .trim()
       .split(/\s+/);
     out.first_name = parts[0] || "";
     out.last_name = parts.slice(1).join(" ") || undefined;
-    delete out.name;
   }
-  // Drop camelCase timestamp fields if accidentally sent in body
-  delete out.createdAt;
-  delete out.updatedAt;
+
+  // Left unset when empty so a partial update does not wipe the stored bag.
+  if (Object.keys(extra).length) {
+    out.custom_fields = extra;
+  }
   return out;
 }

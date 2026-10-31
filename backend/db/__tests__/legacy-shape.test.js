@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PG_RESOURCES, legacyToPg, pgToLegacy } from "../legacy-shape.js";
 
 describe("PG_RESOURCES", () => {
-  it("covers the core, revenue and 007 marketing/service resources", () => {
+  it("covers the core, revenue, 007 marketing/service and saved-report resources", () => {
     // snake_case aliases are listed alongside the camelCase names the API uses
     // so the backfill script and migration tooling can look resources up by table
     // name. Both spellings have to be present or one of those callers silently
@@ -19,11 +19,14 @@ describe("PG_RESOURCES", () => {
       "email_lists",
       "expenses",
       "forms",
+      "goals",
       "invoices",
       "leads",
       "orders",
       "products",
       "quotes",
+      "savedReports",
+      "saved_reports",
       "surveyResponses",
       "survey_responses",
       "surveys",

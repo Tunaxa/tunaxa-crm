@@ -1,4 +1,5 @@
 import { query } from "../pg.js";
+import { buildUpdateStatement } from "./update-builder.js";
 import { toJsonb } from "./json.js";
 
 const SORT_COLUMNS = new Set([
@@ -63,6 +64,7 @@ export async function findAll({
   stage = "",
   priority = "",
   source = "",
+  workspaceId,
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
@@ -74,6 +76,12 @@ export async function findAll({
   const { column, direction } = getSort(sortBy);
   const conditions = [];
   const params = [];
+  if (workspaceId !== undefined && workspaceId !== null) {
+    params.push(workspaceId);
+    conditions.push(
+      `(workspace_id = $${params.length} OR ($${params.length} = 'default' AND workspace_id IS NULL))`,
+    );
+  }
   if (searchTerm) {
     params.push(searchTerm);
     const p = `$${params.length}`;
@@ -118,8 +126,17 @@ export async function findAll({
   };
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM tickets WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  // The workspace predicate lives in the WHERE clause, not in a post-filter: a
+  // record belonging to another tenant has to be indistinguishable from one
+  // that does not exist.
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM tickets WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))"
+      : "SELECT * FROM tickets WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
   return result.rows[0] || null;
 }
 
@@ -154,41 +171,25 @@ export async function create(data = {}) {
   return result.rows[0] || null;
 }
 
-export async function update(id, data = {}) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
-
-  const JSONB_FIELDS = new Set(["comments", "custom_fields"]);
-  const values = fields.map((field) => {
-    if (JSONB_FIELDS.has(field)) return toJsonb(data[field], null);
-    // Same empty-string guard as create(): a client that sends "" means "no
-    // timestamp", not the year zero.
-    if (
-      (field === "first_response_at" || field === "resolved_at") &&
-      data[field] === ""
-    ) {
-      return null;
-    }
-    return data[field];
+export async function update(id, data = {}, workspaceId) {
+  const statement = buildUpdateStatement({
+    id,
+    table: "tickets",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields", "comments"],
+    jsonbFallback: {"custom_fields":"{}"},
+    serialize: (field, value) =>
+      (field === "first_response_at" || field === "resolved_at") && value === ""
+        ? null
+        : value,
   });
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  values.push(id);
-  const result = await query(
-    `UPDATE tickets
-     SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}
-     RETURNING *`,
-    values,
-  );
+  if (!statement) return null;
+
+  const result = await query(statement.sql, statement.values);
   return result.rows[0] || null;
 }
-
 /**
  * Append a comment, newest first, in a single statement.
  *
@@ -198,22 +199,32 @@ export async function update(id, data = {}) {
  * because jsonb array concatenation appends on the right, and the legacy
  * ordering is newest-first.
  */
-export async function addComment(id, comment) {
+export async function addComment(id, comment, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    `UPDATE tickets
-     SET comments = $2::jsonb || COALESCE(comments, '[]'::jsonb),
-         first_response_at = COALESCE(first_response_at, NOW())
-     WHERE id = $1
-     RETURNING *`,
-    [id, toJsonb([comment], "[]")],
+    scoped
+      ? `UPDATE tickets
+         SET comments = $3::jsonb || COALESCE(comments, '[]'::jsonb),
+             first_response_at = COALESCE(first_response_at, NOW())
+         WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))
+         RETURNING *`
+      : `UPDATE tickets
+         SET comments = $2::jsonb || COALESCE(comments, '[]'::jsonb),
+             first_response_at = COALESCE(first_response_at, NOW())
+         WHERE id = $1
+         RETURNING *`,
+    scoped ? [id, workspaceId, toJsonb([comment], "[]")] : [id, toJsonb([comment], "[]")],
   );
   return result.rows[0] || null;
 }
 
-async function remove(id) {
+async function remove(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    "DELETE FROM tickets WHERE id = $1 RETURNING id",
-    [id],
+    scoped
+      ? "DELETE FROM tickets WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL)) RETURNING id"
+      : "DELETE FROM tickets WHERE id = $1 RETURNING id",
+    scoped ? [id, workspaceId] : [id],
   );
   return result.rowCount > 0;
 }
