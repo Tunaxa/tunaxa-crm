@@ -945,7 +945,7 @@ function genericPgToLegacy(row) {
  * partial write reaches the repository as the same shape a full write does and
  * the repository can treat the two identically.
  */
-export function legacyToPg(body, resource) {
+export function legacyToPg(body, resource, options = {}) {
   if ((resource === "contacts" || resource === "leads") && "name" in (body || {})) {
     const parts = String(body.name || "").trim().split(/\s+/);
     body = { ...body, first_name: parts[0] || "", last_name: parts.slice(1).join(" ") };

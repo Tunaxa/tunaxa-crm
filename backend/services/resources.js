@@ -49,14 +49,14 @@ export async function updateRecord(req, res, next) {
         pgData.custom_fields = { ...stored.custom_fields, ...pgData.custom_fields };
       }
       coerceBuiltIns(resource, pgData);
-      const previousRow = await repo.findById(id);
-      if (!previousRow)
-        return res.status(404).json({ error: "Record not found" });
-      const previous = pgToLegacy(previousRow, resource);
+      // #321 added the `stored` read above but left this older second read in
+      // place, redeclaring `previous` in the same block. `stored` already holds
+      // the pre-update row, which is both the revision baseline and what an
+      // empty delta must return.
       const row =
         Object.keys(pgData).length > 0
           ? await repo.update(id, pgData)
-          : previousRow;
+          : stored;
       if (!row) return res.status(404).json({ error: "Record not found" });
 
       const item = pgToLegacy(row, resource);
