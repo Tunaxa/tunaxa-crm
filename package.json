@@ -9,6 +9,8 @@
     "migrate": "node run-migrations.js",
     "seed": "node backend/db/seed.js",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "typecheck": "tsc --noEmit -p web/tsconfig.json",
+    "check": "npm run lint && npm run typecheck",
     "migrate:data": "node scripts/migrate-json-to-pg.js",
     "build": "vite build --config web/vite.config.ts",
     "typecheck": "tsc --noEmit -p web",
