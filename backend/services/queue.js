@@ -92,8 +92,7 @@ export async function processExecutionQueue() {
         // Resolved before the mutateDb below: the repository read cannot run
         // inside the store snapshot, and the JSON fallback would re-enter the
         // store the callback already holds.
-        const snapshot = await readDb();
-        const record = (await findRecord(item.recordId, [item.resource], snapshot))?.record;
+        const record = await findRecord(item.resource, item.recordId);
         await mutateDb(async db => {
           if (item.recordId && !record) {
             const live = db.executionQueue.find(x => x.id === item.id);

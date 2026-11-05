@@ -731,7 +731,7 @@ export default function registerResourceRoutes(app) {
       if (PG_RESOURCES.has(resource)) {
         const repo = repoFor(resource);
         try {
-          const deleted = await repo.delete(req.params.id);
+          const deleted = await repo.delete(req.params.id, tenantOf(req));
           if (!deleted) return res.status(404).json({ error: "Record not found" });
           await mutateDb(db => {
             db.audit.unshift(auditEntry({ action: `Deleted ${resource.slice(0, -1)}`, actor: req.user.name, req, resourceId: req.params.id }));
