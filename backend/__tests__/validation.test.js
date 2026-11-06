@@ -116,7 +116,7 @@ describe("Dashboard", () => {
 });
 
 describe("Schema", () => {
-  it("GET /api/schema/leads returns fields", async () => {
+  it("GET /api/schema/leads returns fields with validation metadata", async () => {
     const res = await request(app)
       .get("/api/schema/leads")
       .set("Authorization", `Bearer ${token}`);
@@ -124,6 +124,42 @@ describe("Schema", () => {
     expect(res.body.object).toBe("leads");
     expect(Array.isArray(res.body.fields)).toBe(true);
     expect(res.body.fields.length).toBeGreaterThan(0);
+    for (const field of res.body.fields) {
+      expect(typeof field.required).toBe("boolean");
+      expect(typeof field.type).toBe("string");
+    }
+  });
+
+  it("GET /api/schema/leads includes built-in validation rules", async () => {
+    const res = await request(app)
+      .get("/api/schema/leads")
+      .set("Authorization", `Bearer ${token}`);
+    const byKey = Object.fromEntries(res.body.fields.map(f => [f.key, f]));
+    expect(byKey.name).toMatchObject({ required: true, type: "text", maxLength: 255 });
+    expect(byKey.email).toMatchObject({ required: false, type: "email", maxLength: 255 });
+    expect(byKey.phone).toMatchObject({ type: "tel", maxLength: 30 });
+    expect(byKey.company).toMatchObject({ required: false, type: "text", maxLength: 255 });
+    expect(byKey.value).toMatchObject({ type: "number" });
+  });
+
+  it("GET /api/schema/deals marks the title as a required text field", async () => {
+    const res = await request(app)
+      .get("/api/schema/deals")
+      .set("Authorization", `Bearer ${token}`);
+    const byKey = Object.fromEntries(res.body.fields.map(f => [f.key, f]));
+    expect(byKey.title).toMatchObject({ required: true, type: "text", maxLength: 255 });
+  });
+
+  it("GET /api/schema/leads includes custom field validation rules", async () => {
+    await request(app)
+      .post("/api/customFields")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ object: "Lead", key: "linkedin_url", name: "LinkedIn URL", type: "Text", required: true });
+    const res = await request(app)
+      .get("/api/schema/leads")
+      .set("Authorization", `Bearer ${token}`);
+    const custom = res.body.fields.find(f => f.key === "linkedin_url");
+    expect(custom).toMatchObject({ required: true, type: "text", maxLength: 255 });
   });
 
   it("GET /api/schema/unknown returns 404", async () => {
