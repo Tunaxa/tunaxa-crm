@@ -1,7 +1,7 @@
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/rbac.js";
-import { id, now } from "../helpers.js";
+import { id, now, coerceBuiltIns } from "../helpers.js";
 import { getSettings, DEFAULT_SETTINGS } from "../services/config.js";
 import { resetTransporter as resetEmailTransporter } from "../services/email.js";
 import { resetTransporter as resetSmtpTransporter } from "../services/smtp.js";
@@ -12,6 +12,23 @@ import { checkOllamaStatus } from "../services/ai.js";
 import { isAiConfigured, isTwilioConfigured } from "../services/config.js";
 import { cacheGet, cacheSet, cacheFlush } from "../services/cache.js";
 import { broadcast } from "./sse.js";
+import { repoFor } from "../db/repositories/index.js";
+import { PG_RESOURCES, pgToLegacy } from "../db/legacy-shape.js";
+import {
+  getFieldPermissions,
+  applyFieldMasking,
+  objectTypeOf,
+} from "./permissions.js";
+
+// Same idiom as tenantOf() in routes/resources.js, duplicated rather than
+// imported: a route module reaching into another route module is how the two
+// tenant checks drift apart. Server-derived, never taken from the body.
+const tenantOf = (req) =>
+  req.user?.workspaceId || req.user?.workspace_id || "default";
+
+// Cap per entity group so one noisy resource cannot crowd out the others in the
+// global search palette.
+const SEARCH_GROUP_LIMIT = 10;
 
 export default function registerSettingsRoutes(app) {
   app.get("/api/dashboard", auth, async (req, res) => {
@@ -78,13 +95,12 @@ export default function registerSettingsRoutes(app) {
     res.json(result);
   });
 
-  app.get("/api/search", auth, async (req, res) => {
+  app.get("/api/search", auth, async (req, res, next) => {
     const q = String(req.query.q || "")
       .toLowerCase()
       .trim();
-    if (!q) return res.json([]);
     const db = await readDb();
-    const map = [
+    const groups = [
       ["leads", "Lead", "/leads", ["name", "company", "email", "phone"]],
       [
         "contacts",
@@ -102,28 +118,60 @@ export default function registerSettingsRoutes(app) {
         ["title", "contact", "transcript"],
       ],
     ];
-    const out = [];
-    for (const [key, type, route, fields] of map) {
-      for (const item of db[key]) {
-        if (
-          fields.some((field) =>
-            String(item[field] || "")
-              .toLowerCase()
-              .includes(q),
-          )
-        )
-          out.push({
-            id: item.id,
-            type,
-            route,
-            name: item.name || item.title || item.email || type,
-            detail:
-              item.company || item.email || item.stage || item.status || "",
-          });
-        if (out.length >= 20) break;
+    // Results are returned grouped by entity type so the UI can render
+    // per-type sections. Every group key is always present, even when empty.
+    const out = Object.fromEntries(groups.map(([key]) => [key, []]));
+    if (q) {
+      try {
+        for (const [key, type, route, fields] of groups) {
+          // Field permissions still apply to search results: the palette must
+          // not expose a value the record endpoint would mask.
+          const fieldPerms = getFieldPermissions(
+            db,
+            objectTypeOf(key),
+            req.user.role,
+          );
+          let rows;
+          if (PG_RESOURCES.has(key)) {
+            // Contacts, leads, companies, deals and tasks live in Postgres.
+            // Reading db[key] here would always be empty, and omitting the
+            // tenant would leak another workspace's records.
+            const result = await repoFor(key).findAll({
+              q,
+              workspaceId: tenantOf(req),
+              page: 1,
+              limit: SEARCH_GROUP_LIMIT,
+            });
+            rows = result.data.map((row) =>
+              coerceBuiltIns(key, pgToLegacy(row, key)),
+            );
+          } else {
+            rows = (db[key] || []).filter((item) =>
+              fields.some((field) =>
+                String(item[field] ?? "")
+                  .toLowerCase()
+                  .includes(q),
+              ),
+            );
+          }
+          for (const row of rows) {
+            if (out[key].length >= SEARCH_GROUP_LIMIT) break;
+            const item = applyFieldMasking(row, fieldPerms);
+            out[key].push({
+              id: item.id,
+              type,
+              route,
+              name: item.name || item.title || item.email || type,
+              detail:
+                item.company || item.email || item.stage || item.status || "",
+            });
+          }
+        }
+      } catch (err) {
+        return next(err);
       }
     }
-    res.json(out.slice(0, 20));
+    res.json(out);
   });
 
   app.get("/api/settings", auth, async (req, res) => {
