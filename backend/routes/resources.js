@@ -168,27 +168,36 @@ function csvColumns(db, resource, firstRow) {
 }
 
 export default function registerResourceRoutes(app) {
-  app.use("/api/:resource", async (req, res, next) => {
-    if (!resources.has(req.params.resource) || !req.user) return next();
-
-    req.db = await readDb();
+  // Attach field-level permissions for the authenticated user. Must run AFTER
+  // `auth` so req.user is populated — otherwise masking is a silent no-op.
+  // It also loads req.db here (post-auth), matching HEAD's lazy-read timing so
+  // the store's serialized queue ordering for workflow triggers is preserved.
+  async function attachFieldPerms(req, res, next) {
+    if (!req.user || !resources.has(req.params.resource)) return next();
+    const db = req.db || (await readDb());
+    req.db = db;
     req.fieldPerms = getFieldPermissions(
       req.db,
       objectTypeOf(req.params.resource),
       req.user.role,
     );
-
     next();
-  });
+  }
 
-  app.get("/api/:resource", auth, async (req, res, next) => {
+  app.get("/api/:resource", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
     // ── PG path: every resource in PG_RESOURCES ────────────────────────────
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
         const rows = await pgFindAll(req.params.resource, req.query, tenantOf(req));
-        return res.json(rows);
+        // The PG driver returns legacy-shaped rows; mask them exactly like the
+        // JSON path below or post-auth field permissions are a no-op on reads.
+        return res.json(
+          req.fieldPerms
+            ? rows.map((item) => applyFieldMasking(item, req.fieldPerms))
+            : rows,
+        );
       } catch (err) {
         return next(err);
       }
@@ -282,10 +291,13 @@ export default function registerResourceRoutes(app) {
       });
     }
 
+    // Long-standing contract: a bare array. The paginated envelope is confined
+    // to /api/messages when page/limit are supplied (AXA-128) and to
+    // PG_RESOURCES clients, which never received this shape.
     res.json(rows);
   });
 
-  app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
+  app.get("/api/:resource/export.csv", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
     const db = req.db || (await readDb());
@@ -297,6 +309,9 @@ export default function registerResourceRoutes(app) {
         // the same camelCase names the JSON-backed exports have always used.
         // Tenant scoping is applied inside pgFindAll(), in SQL.
         rows = await pgFindAll(req.params.resource, {}, tenantOf(req));
+        if (req.fieldPerms) {
+          rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
+        }
       } catch (err) {
         return next(err);
       }
@@ -351,7 +366,8 @@ export default function registerResourceRoutes(app) {
       }
     }
   });
-  app.get("/api/:resource/:id", auth, async (req, res, next) => {
+
+  app.get("/api/:resource/:id", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
     // ── PG path ───────────────────────────────────────────────────────────
@@ -360,11 +376,12 @@ export default function registerResourceRoutes(app) {
       try {
         const row = await repo.findById(req.params.id, tenantOf(req));
         if (!row) return res.status(404).json({ error: "Record not found" });
+        const item = coerceBuiltIns(
+          req.params.resource,
+          pgToLegacy(row, req.params.resource),
+        );
         return res.json(
-          coerceBuiltIns(
-            req.params.resource,
-            pgToLegacy(row, req.params.resource),
-          ),
+          req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
         );
       } catch (err) {
         return next(err);

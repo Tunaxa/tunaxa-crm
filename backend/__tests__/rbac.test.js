@@ -277,3 +277,144 @@ describe("RBAC end-to-end verification", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("Field-level RBAC on writes (403 contract)", () => {
+  let ownerToken, memberToken;
+
+  beforeAll(async () => {
+    ownerToken = await login("owner@test.com");
+    memberToken = await login("member@test.com");
+  });
+
+  // leads/contacts live in Postgres on dev, so every assertion goes through the
+  // HTTP API. readDb() only ever holds the JSON-backed resources.
+  async function listLeads(token) {
+    const res = await request(app)
+      .get("/api/leads")
+      .set("Authorization", `Bearer ${token}`);
+    return Array.isArray(res.body) ? res.body : res.body.data || [];
+  }
+
+  it("owner can configure a hidden field for member", async () => {
+    const res = await request(app)
+      .put("/api/permissions/fields/lead")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ role: "member", hidden: ["phone"] });
+    expect(res.status).toBe(200);
+  });
+
+  it("POST with a hidden field is rejected with 403", async () => {
+    const res = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ name: "Stripped Lead", phone: "888-888-8888", value: 2500 });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("Forbidden: Cannot write to masked field(s)");
+    expect(res.body.maskedFields).toEqual(["phone"]);
+
+    const leads = await listLeads(ownerToken);
+    expect(leads.some((x) => x.name === "Stripped Lead")).toBe(false);
+  });
+
+  it("PUT with a hidden field is rejected and leaves the record unchanged", async () => {
+    const created = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ name: "Unchanged Lead", phone: "123-000-0000", value: 2500 });
+    expect(created.status).toBe(201);
+
+    const res = await request(app)
+      .put(`/api/leads/${created.body.id}`)
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ name: "Renamed Lead", phone: "999-999-9999", value: 5000 });
+    expect(res.status).toBe(403);
+    expect(res.body.maskedFields).toEqual(["phone"]);
+
+    const after = await request(app)
+      .get(`/api/leads/${created.body.id}`)
+      .set("Authorization", `Bearer ${ownerToken}`);
+    expect(after.status).toBe(200);
+    expect(after.body.name).toBe("Unchanged Lead");
+    expect(after.body.phone).toBe("123-000-0000");
+    expect(after.body.value).toBe(2500);
+  });
+
+  it("viewer cannot bypass masking to write through POST (403 first)", async () => {
+    const viewerToken = await login("viewer@test.com");
+    const res = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${viewerToken}`)
+      .send({ name: "Viewer Hack", phone: "777-777-7777" });
+    expect(res.status).toBe(403);
+
+    const leads = await listLeads(ownerToken);
+    expect(leads.some((x) => x.name === "Viewer Hack")).toBe(false);
+  });
+
+  it("batch POST with any masked field is rejected with 403", async () => {
+    const res = await request(app)
+      .post("/api/leads/batch")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send([
+        { name: "Batch One", phone: "111-111-1111" },
+        { name: "Batch Two", phone: "222-222-2222" },
+      ]);
+
+    expect(res.status).toBe(403);
+    expect(res.body.maskedFields).toEqual(["phone"]);
+
+    const leads = await listLeads(ownerToken);
+    expect(leads.some((x) => String(x.name).startsWith("Batch "))).toBe(false);
+  });
+
+  it("empty and null write bodies are handled safely (no 500)", async () => {
+    const res = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({});
+    expect([201, 400]).toContain(res.status);
+
+    const noBody = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${memberToken}`);
+    expect([201, 400]).toContain(noBody.status);
+  });
+
+  it("GET masks the hidden field for the affected role", async () => {
+    // Owner is not restricted for this config, so the value persists.
+    const created = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ name: "Masked Read", phone: "123-456-7890" });
+    expect(created.status).toBe(201);
+    expect(created.body.phone).toBe("123-456-7890");
+
+    // Collection read: PG-backed resources return a bare array, JSON-backed
+    // ones the paginated envelope.
+    const res = await request(app)
+      .get("/api/leads")
+      .set("Authorization", `Bearer ${memberToken}`);
+    expect(res.status).toBe(200);
+    const rows = Array.isArray(res.body) ? res.body : res.body.data || [];
+    const row = rows.find((x) => x.name === "Masked Read");
+    expect(row).toBeTruthy();
+    expect(row.phone).toBe("••••••");
+
+    // Single-record read: same post-auth attachment, same mask.
+    const one = await request(app)
+      .get(`/api/leads/${created.body.id}`)
+      .set("Authorization", `Bearer ${memberToken}`);
+    expect(one.status).toBe(200);
+    expect(one.body.phone).toBe("••••••");
+  });
+
+  it("member with no hidden config can still write phone on contacts", async () => {
+    const res = await request(app)
+      .post("/api/contacts")
+      .set("Authorization", `Bearer ${memberToken}`)
+      .send({ name: "Contact With Phone", phone: "444-444-4444" });
+    expect(res.status).toBe(201);
+    expect(res.body.phone).toBe("444-444-4444");
+  });
+});
