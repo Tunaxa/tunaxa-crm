@@ -20,6 +20,7 @@ const authLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 10, prefix: 
 // should not be able to lock itself out of signing in, and a brute-force run
 // against refresh should not consume login's allowance either.
 const refreshLimiter = createRateLimiter({ windowMs: 60_000, max: 30, prefix: 'refresh' });
+const inviteLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 10, prefix: 'invite' });
 
 const DEFAULT_PREFERENCES = { theme: 'light', sidebarCollapsed: false, tablePageSize: 25 };
 
@@ -114,7 +115,7 @@ export default function registerAuthRoutes(app) {
 
   // Public endpoint: accept a team invitation emailed to the user. No auth
   // middleware here — everything is validated against the invite token.
-  app.post('/api/auth/accept-invite', async (req, res) => {
+  app.post('/api/auth/accept-invite', inviteLimiter, async (req, res) => {
     const { token, name, password } = req.body || {};
     const cleanName = String(name || '').trim();
     const cleanPassword = String(password || '');
