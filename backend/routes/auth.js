@@ -38,6 +38,11 @@ const refreshLimiter = createRateLimiter({
   max: 30,
   prefix: "refresh",
 });
+const inviteLimiter = createRateLimiter({
+  windowMs: 15 * 60_000,
+  max: 10,
+  prefix: "invite",
+});
 
 const DEFAULT_PREFERENCES = {
   theme: "light",
@@ -212,7 +217,7 @@ export default function registerAuthRoutes(app) {
 
   // Public endpoint: accept a team invitation emailed to the user. No auth
   // middleware here — everything is validated against the invite token.
-  app.post("/api/auth/accept-invite", async (req, res) => {
+  app.post("/api/auth/accept-invite", inviteLimiter, async (req, res) => {
     const { token, name, password } = req.body || {};
     const cleanName = String(name || "").trim();
     const cleanPassword = String(password || "");
@@ -575,14 +580,12 @@ export default function registerAuthRoutes(app) {
       text: `Click the link below to accept your invitation:\n\n${link}`,
       html: `<p>Click the link below to accept your invitation:</p><p><a href="${link}">${link}</a></p>`,
     });
-    res
-      .status(201)
-      .json({
-        ok: true,
-        id: invite.id,
-        email: invite.email,
-        expiresAt: invite.expiresAt,
-      });
+    res.status(201).json({
+      ok: true,
+      id: invite.id,
+      email: invite.email,
+      expiresAt: invite.expiresAt,
+    });
   });
 
   app.delete("/api/users/:id", auth, requireAdmin, async (req, res) => {
