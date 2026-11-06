@@ -1,5 +1,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { updateRecord } from "../services/resources.js";
@@ -7,6 +9,8 @@ import { updatedEvent, eventFor } from "../services/workflows.js";
 import { recordRevision } from "../services/revisions.js";
 import { requireRole } from "../middleware/rbac.js";
 import {
+  BUILT_IN_FIELDS,
+  OBJECT_MAP,
   id,
   now,
   auditEntry,
@@ -29,22 +33,6 @@ import {
 import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
 import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
-
-/**
- * Build the CSV representation of a single row, quoting every cell.
- */
-function buildCsvRow(columns, row) {
-  const cell = (value) => {
-    const text =
-      value == null
-        ? ""
-        : typeof value === "object"
-          ? JSON.stringify(value)
-          : String(value);
-    return `"${text.replace(/"/g, '""')}"`;
-  };
-  return columns.map((col) => cell(row[col])).join(",");
-}
 
 // Query params that are filters rather than paging controls. The legacy JSON
 // path applied these in JS after loading the whole file; forwarding them to the
@@ -196,28 +184,59 @@ const DEFAULT_SEARCH_FIELDS = [
   "contact",
 ];
 
-export default function registerResourceRoutes(app) {
-  app.use("/api/:resource", async (req, res, next) => {
-    if (!resources.has(req.params.resource) || !req.user) return next();
+// Build the CSV header column order without scanning the whole dataset:
+// prefer the first record's keys (already field-masked), and fall back to the
+// built-in + custom field definitions so an empty dataset still gets a header.
+function csvColumns(db, resource, firstRow) {
+  if (firstRow && Object.keys(firstRow).length > 0) {
+    return Object.keys(firstRow);
+  }
 
-    req.db = await readDb();
+  const builtIn = (BUILT_IN_FIELDS[resource] || []).map((field) => field.key);
+  const object = OBJECT_MAP[resource];
+  const custom = object
+    ? (db.customFields || [])
+        .filter(
+          (field) =>
+            String(field.object || "").toLowerCase() === object.toLowerCase(),
+        )
+        .map((field) => field.key)
+    : [];
+
+  return [...new Set([...builtIn, ...custom])];
+}
+
+export default function registerResourceRoutes(app) {
+  // Attach field-level permissions for the authenticated user. Must run AFTER
+  // `auth` so req.user is populated — otherwise masking is a silent no-op.
+  // It also loads req.db here (post-auth), matching HEAD's lazy-read timing so
+  // the store's serialized queue ordering for workflow triggers is preserved.
+  async function attachFieldPerms(req, res, next) {
+    if (!req.user || !resources.has(req.params.resource)) return next();
+    const db = req.db || (await readDb());
+    req.db = db;
     req.fieldPerms = getFieldPermissions(
       req.db,
       objectTypeOf(req.params.resource),
       req.user.role,
     );
-
     next();
-  });
+  }
 
-  app.get("/api/:resource", auth, async (req, res, next) => {
+  app.get("/api/:resource", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
     // ── PG path: every resource in PG_RESOURCES ────────────────────────────
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
         const rows = await pgFindAll(req.params.resource, req.query, tenantOf(req));
-        return res.json(rows);
+        // The PG driver returns legacy-shaped rows; mask them exactly like the
+        // JSON path below or post-auth field permissions are a no-op on reads.
+        return res.json(
+          req.fieldPerms
+            ? rows.map((item) => applyFieldMasking(item, req.fieldPerms))
+            : rows,
+        );
       } catch (err) {
         return next(err);
       }
@@ -315,48 +334,83 @@ export default function registerResourceRoutes(app) {
       });
     }
 
+    // Long-standing contract: a bare array. The paginated envelope is confined
+    // to /api/messages when page/limit are supplied (AXA-128) and to
+    // PG_RESOURCES clients, which never received this shape.
     res.json(rows);
   });
 
-  app.get("/api/:resource/export.csv", auth, async (req, res, next) => {
+  app.get("/api/:resource/export.csv", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
+
+    const db = req.db || (await readDb());
 
     let rows;
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
         // Already legacy-shaped by the time it gets here, so the header keeps
         // the same camelCase names the JSON-backed exports have always used.
+        // Tenant scoping is applied inside pgFindAll(), in SQL.
         rows = await pgFindAll(req.params.resource, {}, tenantOf(req));
+        if (req.fieldPerms) {
+          rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
+        }
       } catch (err) {
         return next(err);
       }
     } else {
-      const db = req.db || (await readDb());
-      rows = (db[req.params.resource] || []).map((item) =>
-        req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
-      );
+      rows = db[req.params.resource] || [];
     }
 
-    const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
-    // buildCsvRow indexes by column name, so the header is the same shape with
-    // each column named after itself.
-    const header = Object.fromEntries(
-      columns.map((column) => [column, column]),
-    );
+    // Field masking is applied lazily, once per row, as it is written.
+    const mask = req.fieldPerms
+      ? (item) => applyFieldMasking(item, req.fieldPerms)
+      : (item) => item;
+
+    const cell = (value) => {
+      const text =
+        value == null
+          ? ""
+          : typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value);
+
+      return `"${text.replace(/"/g, '""')}"`;
+    };
+
+    // Extract the header from the first record only (already field-masked),
+    // falling back to the schema definitions when the dataset is empty.
+    const firstRow = rows.length > 0 ? mask(rows[0]) : undefined;
+    const columns = csvColumns(db, req.params.resource, firstRow);
+
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="${req.params.resource}.csv"`,
     );
-    res.write(`${buildCsvRow(columns, header)}\r\n`);
-    for (const row of rows) {
-      res.write(`${buildCsvRow(columns, row)}\r\n`);
+
+    // Stream rows one at a time instead of materializing the whole CSV:
+    // each chunk is field-masked on the fly as it passes through the pipeline.
+    function* csvLines() {
+      yield `${columns.map((column) => cell(column)).join(",")}\r\n`;
+
+      for (const item of rows) {
+        const row = mask(item);
+        yield `${columns.map((column) => cell(row[column])).join(",")}\r\n`;
+      }
     }
 
-    res.end();
+    try {
+      await pipeline(Readable.from(csvLines()), res);
+    } catch (error) {
+      // A client that disconnects mid-download is normal, not a server fault.
+      if (error?.code !== "EPIPE" && error?.code !== "ECONNRESET") {
+        throw error;
+      }
+    }
   });
 
-  app.get("/api/:resource/:id", auth, async (req, res, next) => {
+  app.get("/api/:resource/:id", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
     // ── PG path ───────────────────────────────────────────────────────────
@@ -365,11 +419,12 @@ export default function registerResourceRoutes(app) {
       try {
         const row = await repo.findById(req.params.id, tenantOf(req));
         if (!row) return res.status(404).json({ error: "Record not found" });
+        const item = coerceBuiltIns(
+          req.params.resource,
+          pgToLegacy(row, req.params.resource),
+        );
         return res.json(
-          coerceBuiltIns(
-            req.params.resource,
-            pgToLegacy(row, req.params.resource),
-          ),
+          req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item,
         );
       } catch (err) {
         return next(err);

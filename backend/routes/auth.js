@@ -19,6 +19,26 @@ const authLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 10, prefix: 
 // against refresh should not consume login's allowance either.
 const refreshLimiter = createRateLimiter({ windowMs: 60_000, max: 30, prefix: 'refresh' });
 
+const DEFAULT_PREFERENCES = { theme: 'light', sidebarCollapsed: false, tablePageSize: 25 };
+
+function normalizePageSize(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : DEFAULT_PREFERENCES.tablePageSize;
+}
+
+// Canonical stored shape uses `tablePageSize`; `pageSize` is the legacy alias the
+// frontend (web/src/App.tsx) still sends/expects, mapped on the wire.
+function toResponsePreferences(stored = {}) {
+  const tablePageSize = normalizePageSize(stored.tablePageSize);
+  return {
+    theme: stored.theme === 'dark' ? 'dark' : 'light',
+    sidebarCollapsed: typeof stored.sidebarCollapsed === 'boolean' ? stored.sidebarCollapsed : false,
+    tablePageSize,
+    pageSize: tablePageSize,
+  };
+}
+
 export default function registerAuthRoutes(app) {
   app.get('/api/health', (req, res) => res.json({ ok: true }));
 
@@ -55,7 +75,7 @@ export default function registerAuthRoutes(app) {
       next.sessions.push({ token, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
       next.audit.unshift({ id: id('audit'), action: 'Signed in', actor: user.name, createdAt: now() });
     });
-    res.json({ token, user: publicUser(user) });
+    res.json({ token, user: publicUser({ ...user, preferences: toResponsePreferences(db.settings?.userPreferences?.[user.id]) }) });
   });
 
   // Exchanges a still-valid session token for a freshly minted one.
@@ -119,42 +139,57 @@ export default function registerAuthRoutes(app) {
     }
   });
 
-  app.get('/api/auth/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
-    app.get('/api/users/me/preferences', auth, async (req, res) => {
+  app.get('/api/auth/me', auth, async (req, res) => {
+    const db = await readDb();
+    const user = db.users.find(u => u.id === req.user.id);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    res.json({ user: publicUser({ ...user, preferences: toResponsePreferences(db.settings?.userPreferences?.[user.id]) }) });
+  });
+
+  app.get('/api/users/me/preferences', auth, async (req, res) => {
     const db = await readDb();
     const user = db.users.find(u => u.id === req.user.id);
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json({
-      preferences: user.preferences || {
-        theme: 'light',
-        sidebarCollapsed: false,
-        pageSize: 25,
-      },
+      preferences: toResponsePreferences(db.settings?.userPreferences?.[req.user.id]),
     });
   });
 
   app.put('/api/users/me/preferences', auth, async (req, res) => {
-    const { theme, sidebarCollapsed, pageSize } = req.body;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { theme, sidebarCollapsed } = body;
+    const pageSize = body.tablePageSize ?? body.pageSize;
+
+    if (theme !== undefined && theme !== 'light' && theme !== 'dark') {
+      return res.status(400).json({ error: 'theme must be "light" or "dark"' });
+    }
+    if (sidebarCollapsed !== undefined && typeof sidebarCollapsed !== 'boolean') {
+      return res.status(400).json({ error: 'sidebarCollapsed must be a boolean' });
+    }
+    if (pageSize !== undefined && (typeof pageSize !== 'number' || !Number.isFinite(pageSize) || pageSize <= 0)) {
+      return res.status(400).json({ error: 'page size must be a positive number' });
+    }
 
     const result = await mutateDb(db => {
       const user = db.users.find(u => u.id === req.user.id);
       if (!user) return null;
 
-      user.preferences = {
-        ...(user.preferences || {}),
-        ...(theme === 'light' || theme === 'dark' ? { theme } : {}),
-        ...(typeof sidebarCollapsed === 'boolean' ? { sidebarCollapsed } : {}),
-        ...(Number.isInteger(pageSize) && pageSize > 0 ? { pageSize } : {}),
-      };
+      db.settings = db.settings || {};
+      db.settings.userPreferences = db.settings.userPreferences || {};
+      const next = { ...(db.settings.userPreferences[req.user.id] || {}) };
+      if (theme === 'light' || theme === 'dark') next.theme = theme;
+      if (typeof sidebarCollapsed === 'boolean') next.sidebarCollapsed = sidebarCollapsed;
+      if (typeof pageSize === 'number' && Number.isFinite(pageSize) && pageSize > 0) next.tablePageSize = pageSize;
+      db.settings.userPreferences[req.user.id] = next;
 
-      return user.preferences;
+      return next;
     });
 
     if (!result) return res.status(404).json({ error: 'User not found' });
 
-    res.json({ preferences: result });
+    res.json({ preferences: toResponsePreferences(result) });
   });
 
   app.post('/api/auth/events-token', auth, async (req, res) => {
