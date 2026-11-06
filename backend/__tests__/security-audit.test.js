@@ -57,9 +57,10 @@ const acme = () => ({ Authorization: `Bearer ${tokens.acme}` });
 const globex = () => ({ Authorization: `Bearer ${tokens.globex}` });
 
 /**
- * List endpoints are not uniform: the generic CRUD returns a bare array, while
- * the dedicated form and ticket routes return `{ data, total }`. Normalize so
- * the isolation assertions read the same either way.
+ * List endpoints are not uniform: the dedicated form, ticket and goal routes
+ * have their own shapes, while the generic CRUD route returns
+ * `{ data, total, page, limit }`. Normalize so the isolation assertions read
+ * the same either way.
  */
 function rowsOf(res) {
   const body = res.body;
@@ -108,10 +109,10 @@ describe("A03 SQL injection resistance", () => {
         .query({ q: payload })
         .set(acme());
       expect(res.status, `q=${payload}`).toBe(200);
-      expect(Array.isArray(res.body)).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
       // "%' OR 1=1 --" would be a tautology if interpolated; a literal match
       // finds nothing.
-      expect(res.body.length, `q=${payload}`).toBe(0);
+      expect(res.body.data.length, `q=${payload}`).toBe(0);
     }
   });
 
@@ -416,10 +417,10 @@ describe("A01 Insecure direct object references", () => {
   it("hides other tenants' rows from list endpoints", async () => {
     const res = await request(app).get("/api/deals").set(globex());
     expect(res.status).toBe(200);
-    expect(res.body.some((d) => d.id === dealId)).toBe(false);
+    expect(rowsOf(res).some((d) => d.id === dealId)).toBe(false);
 
     const mine = await request(app).get("/api/deals").set(acme());
-    expect(mine.body.some((d) => d.id === dealId)).toBe(true);
+    expect(rowsOf(mine).some((d) => d.id === dealId)).toBe(true);
   });
 
   it("hides other tenants' rows from CSV export", async () => {

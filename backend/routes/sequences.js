@@ -2,7 +2,7 @@ import { readDb, mutateDb } from '../store.js';
 import { findRecord } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { getSettings, isEmailConfigured } from '../services/config.js';
 import { sendEmail } from '../services/smtp.js';
 import { broadcast } from './sse.js';
@@ -33,7 +33,7 @@ function checkExitRules(record, sequence) {
 export default function registerSequenceRoutes(app) {
   app.get('/api/sequences', auth, async (req, res) => {
     const db = await readDb();
-    res.json({ data: db.sequences || [], total: (db.sequences || []).length });
+    res.json(paginateAndSort(db.sequences || [], req.query));
   });
 
   app.post('/api/sequences', auth, requireRole('admin', 'member'), checkWriteFieldMask('sequence'), async (req, res) => {

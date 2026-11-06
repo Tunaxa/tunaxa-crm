@@ -32,7 +32,8 @@ function crud(resource, singular, payload) {
         .get(`/api/${resource}`)
         .set("Authorization", `Bearer ${token}`);
       expect(res.status).toBe(200);
-      expect(res.body.length).toBeGreaterThanOrEqual(1);
+      const items = Array.isArray(res.body) ? res.body : res.body.data;
+      expect(items.length).toBeGreaterThanOrEqual(1);
     });
     it("PUT updates a record", async () => {
       const res = await request(app)
@@ -167,7 +168,7 @@ describe("Duplicate management", () => {
     const list = await request(app)
       .get("/api/contacts")
       .set("Authorization", `Bearer ${token}`);
-    expect(list.body.filter((c) => c.email === "jane@test.com").length).toBe(1);
+    expect(list.body.data.filter((c) => c.email === "jane@test.com").length).toBe(1);
   });
 
   it("groups fuzzy company name matches", async () => {

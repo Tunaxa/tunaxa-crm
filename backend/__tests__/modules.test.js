@@ -58,8 +58,8 @@ describe("New module CRUD", () => {
       .get("/api/products?q=Starter")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.length).toBe(1);
-    expect(res.body[0].price).toBe(49.99);
+    expect(res.body.data.length).toBe(1);
+    expect(res.body.data[0].price).toBe(49.99);
   });
 
   it("POST /api/employees coerces salary string to number", async () => {
@@ -94,7 +94,7 @@ describe("New module CRUD", () => {
     const list = await request(app)
       .get("/api/products")
       .set("Authorization", `Bearer ${token}`);
-    expect(list.body.find((x) => x.id === productId)).toBeUndefined();
+    expect(list.body.data.find((x) => x.id === productId)).toBeUndefined();
   });
 });
 

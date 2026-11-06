@@ -14,7 +14,7 @@ let token;
 async function waitForTasks(match) {
   for (let attempt = 0; attempt < 40; attempt++) {
     const res = await request(app).get('/api/tasks').set('Authorization', `Bearer ${token}`);
-    if (res.status === 200 && res.body.some(match)) return true;
+    if (res.status === 200 && res.body.data.some(match)) return true;
     await new Promise(r => setTimeout(r, 50));
   }
   return false;
@@ -116,7 +116,7 @@ describe('Workflows actually fire on module events', () => {
     let created = null;
     for (let attempt = 0; attempt < 40 && !created; attempt++) {
       const res = await request(app).get('/api/messages').set('Authorization', `Bearer ${token}`);
-        created = res.status === 200 ? res.body.find(m => m.subject === 'Invoice reminder') : null;
+        created = res.status === 200 ? res.body.data.find(m => m.subject === 'Invoice reminder') : null;
       if (!created) await new Promise(r => setTimeout(r, 50));
     }
     expect(created).toBeTruthy();
