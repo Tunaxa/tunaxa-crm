@@ -21,38 +21,45 @@ const authLimiter = createRateLimiter({ windowMs: 15 * 60_000, max: 10, prefix: 
 // against refresh should not consume login's allowance either.
 const refreshLimiter = createRateLimiter({ windowMs: 60_000, max: 30, prefix: 'refresh' });
 
+const DEFAULT_PREFERENCES = { theme: 'light', sidebarCollapsed: false, tablePageSize: 25 };
+
+function normalizePageSize(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? value
+    : DEFAULT_PREFERENCES.tablePageSize;
+}
+
+// Canonical stored shape uses `tablePageSize`; `pageSize` is the legacy alias the
+// frontend (web/src/App.tsx) still sends/expects, mapped on the wire.
+function toResponsePreferences(stored = {}) {
+  const tablePageSize = normalizePageSize(stored.tablePageSize);
+  return {
+    theme: stored.theme === 'dark' ? 'dark' : 'light',
+    sidebarCollapsed: typeof stored.sidebarCollapsed === 'boolean' ? stored.sidebarCollapsed : false,
+    tablePageSize,
+    pageSize: tablePageSize,
+  };
+}
+
 // ReDoS-safe email validation for invite flows. Runs in pure string logic
-// with NO regular expression over attacker-controlled input, so there is
-// nothing the engine can backtrack on (the previous /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-// was flagged by CodeQL for polynomial backtracking). Enforcement rules:
-//   - length is capped first: overall <= 254 and local part <= 64 (RFC 5321)
-//   - exactly one '@' with non-empty local and domain parts
-//   - no whitespace/control characters anywhere
-//   - no leading, trailing, or consecutive dots
-//   - the domain ends in a dot-separated TLD of 2+ ASCII letters
+// with no regular expression over attacker-controlled input.
 function isValidInviteEmail(email) {
-  if (typeof email !== 'string' || email.length === 0 || email.length > 254) {
-    return false;
-  }
+  if (typeof email !== 'string' || email.length === 0 || email.length > 254) return false;
 
   const at = email.indexOf('@');
-  if (at < 1 || at !== email.lastIndexOf('@')) return false; // single '@', non-empty local part
+  if (at < 1 || at !== email.lastIndexOf('@')) return false;
 
   const local = email.slice(0, at);
   const domain = email.slice(at + 1);
   if (local.length > 64 || domain.length === 0) return false;
 
-  // Reject whitespace and control characters anywhere (linear scan, no regex).
   for (let i = 0; i < email.length; i++) {
     const code = email.charCodeAt(i);
     if (code <= 32 || code === 127) return false;
   }
 
-  // No leading, trailing, or consecutive dots.
   if (email[0] === '.' || email[email.length - 1] === '.' || email.includes('..')) return false;
 
-  // The domain must contain a dot, and the TLD after the last dot must be
-  // 2+ ASCII letters (e.g. .com, .io).
   const lastDot = domain.lastIndexOf('.');
   if (lastDot < 1 || lastDot === domain.length - 1) return false;
   const tld = domain.slice(lastDot + 1);
@@ -102,7 +109,7 @@ export default function registerAuthRoutes(app) {
       next.sessions.push({ token, userId: user.id, createdAt: now(), expiresAt: sessionExpiresAt() });
       next.audit.unshift({ id: id('audit'), action: 'Signed in', actor: user.name, createdAt: now() });
     });
-    res.json({ token, user: publicUser(user) });
+    res.json({ token, user: publicUser({ ...user, preferences: toResponsePreferences(db.settings?.userPreferences?.[user.id]) }) });
   });
 
   // Public endpoint: accept a team invitation emailed to the user. No auth
@@ -227,42 +234,57 @@ export default function registerAuthRoutes(app) {
     }
   });
 
-  app.get('/api/auth/me', auth, (req, res) => res.json({ user: publicUser(req.user) }));
-    app.get('/api/users/me/preferences', auth, async (req, res) => {
+  app.get('/api/auth/me', auth, async (req, res) => {
+    const db = await readDb();
+    const user = db.users.find(u => u.id === req.user.id);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    res.json({ user: publicUser({ ...user, preferences: toResponsePreferences(db.settings?.userPreferences?.[user.id]) }) });
+  });
+
+  app.get('/api/users/me/preferences', auth, async (req, res) => {
     const db = await readDb();
     const user = db.users.find(u => u.id === req.user.id);
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     res.json({
-      preferences: user.preferences || {
-        theme: 'light',
-        sidebarCollapsed: false,
-        pageSize: 25,
-      },
+      preferences: toResponsePreferences(db.settings?.userPreferences?.[req.user.id]),
     });
   });
 
   app.put('/api/users/me/preferences', auth, async (req, res) => {
-    const { theme, sidebarCollapsed, pageSize } = req.body;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { theme, sidebarCollapsed } = body;
+    const pageSize = body.tablePageSize ?? body.pageSize;
+
+    if (theme !== undefined && theme !== 'light' && theme !== 'dark') {
+      return res.status(400).json({ error: 'theme must be "light" or "dark"' });
+    }
+    if (sidebarCollapsed !== undefined && typeof sidebarCollapsed !== 'boolean') {
+      return res.status(400).json({ error: 'sidebarCollapsed must be a boolean' });
+    }
+    if (pageSize !== undefined && (typeof pageSize !== 'number' || !Number.isFinite(pageSize) || pageSize <= 0)) {
+      return res.status(400).json({ error: 'page size must be a positive number' });
+    }
 
     const result = await mutateDb(db => {
       const user = db.users.find(u => u.id === req.user.id);
       if (!user) return null;
 
-      user.preferences = {
-        ...(user.preferences || {}),
-        ...(theme === 'light' || theme === 'dark' ? { theme } : {}),
-        ...(typeof sidebarCollapsed === 'boolean' ? { sidebarCollapsed } : {}),
-        ...(Number.isInteger(pageSize) && pageSize > 0 ? { pageSize } : {}),
-      };
+      db.settings = db.settings || {};
+      db.settings.userPreferences = db.settings.userPreferences || {};
+      const next = { ...(db.settings.userPreferences[req.user.id] || {}) };
+      if (theme === 'light' || theme === 'dark') next.theme = theme;
+      if (typeof sidebarCollapsed === 'boolean') next.sidebarCollapsed = sidebarCollapsed;
+      if (typeof pageSize === 'number' && Number.isFinite(pageSize) && pageSize > 0) next.tablePageSize = pageSize;
+      db.settings.userPreferences[req.user.id] = next;
 
-      return user.preferences;
+      return next;
     });
 
     if (!result) return res.status(404).json({ error: 'User not found' });
 
-    res.json({ preferences: result });
+    res.json({ preferences: toResponsePreferences(result) });
   });
 
   app.post('/api/auth/events-token', auth, async (req, res) => {
