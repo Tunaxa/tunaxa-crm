@@ -223,6 +223,16 @@ export default function registerResourceRoutes(app) {
     next();
   }
 
+  /**
+   * GET /api/:resource
+   * Protected. Lists records of a registered resource.
+   * PostgreSQL-backed resources are read through their repository (tenant-scoped
+   * in SQL, field-masked after auth); JSON-store resources are filtered in memory.
+   * Query params: page, limit (1-50), q, plus resource-specific filters such as
+   * type/recordId/contact (activities) and type (messages).
+   * Response: 200 [{ record }]; /api/messages additionally returns
+   * { items, total, page, limit, hasMore } when page or limit is supplied.
+   */
   app.get("/api/:resource", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
@@ -340,6 +350,13 @@ export default function registerResourceRoutes(app) {
     res.json(rows);
   });
 
+  /**
+   * GET /api/:resource/export.csv
+   * Protected. Streams all records of a resource as a CSV attachment, applying
+   * field-masking permissions per row as it streams. PostgreSQL-backed
+   * resources are tenant-scoped in SQL.
+   * Response: 200 text/csv attachment
+   */
   app.get("/api/:resource/export.csv", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
@@ -410,6 +427,13 @@ export default function registerResourceRoutes(app) {
     }
   });
 
+  /**
+   * GET /api/:resource/:id
+   * Protected. Returns a single record by id (PostgreSQL-backed resources are
+   * tenant-scoped in SQL) and applies field masking.
+   * Path param: :id - record id
+   * Response: 200 { record } | 404 { error }
+   */
   app.get("/api/:resource/:id", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
@@ -443,6 +467,14 @@ export default function registerResourceRoutes(app) {
     res.json(req.fieldPerms ? applyFieldMasking(item, req.fieldPerms) : item);
   });
 
+  /**
+   * POST /api/:resource
+   * Admin/member. Creates a single record (coerces built-in + custom fields),
+   * records an audit entry, and fires workflow triggers/SSE events. Masked
+   * fields are rejected by checkWriteFieldMask.
+   * Body (ResourceSchema): record fields
+   * Response: 201 { record }
+   */
   app.post(
     "/api/:resource",
     auth,
@@ -538,6 +570,13 @@ export default function registerResourceRoutes(app) {
     },
   );
 
+  /**
+   * POST /api/:resource/batch
+   * Admin/member. Bulk-imports an array of records for a resource with one
+   * combined audit entry; every element is checked against write field masks.
+   * Body (BatchSchema): [{ record fields }]
+   * Response: 201 [{ record }]
+   */
   app.post(
     "/api/:resource/batch",
     auth,
@@ -612,6 +651,15 @@ export default function registerResourceRoutes(app) {
     },
   );
 
+  /**
+   * PUT /api/:resource/:id
+   * Admin/member. Replaces fields on an existing record, records a revision and
+   * audit entry, and fires workflow triggers/SSE events. PostgreSQL-backed
+   * records are tenant-scoped in SQL.
+   * Path param: :id - record id
+   * Body (ResourceSchema): record fields to update
+   * Response: 200 { record, revisionId? } | 404 { error }
+   */
   app.put(
     "/api/:resource/:id",
     auth,
@@ -816,6 +864,15 @@ export default function registerResourceRoutes(app) {
     },
   );
 
+  /**
+   * DELETE /api/:resource/:id
+   * Admin/member. Deletes a record plus any derived data (calls: linked
+   * activities/recordings; recordings: linked media; messages: linked
+   * activities) and cleans up uploaded files. PostgreSQL-backed records are
+   * tenant-scoped in SQL.
+   * Path param: :id - record id
+   * Response: 200 { ok: true } | 404 { error }
+   */
   app.delete(
     "/api/:resource/:id",
     auth,

@@ -6,6 +6,12 @@ import { id, now } from '../helpers.js';
 import { broadcast } from './sse.js';
 
 export default function registerExecutionRoutes(app) {
+  /**
+   * GET /api/executions
+   * Protected. Lists queued workflow executions, optionally filtered by status.
+   * Query params: status - 'pending'|'processing'|'done'|'failed', limit (max 500)
+   * Response: 200 { data: [{ execution }], total: number }
+   */
   app.get('/api/executions', auth, async (req, res) => {
     const db = await readDb();
     const { status, limit = 50 } = req.query;
@@ -15,6 +21,11 @@ export default function registerExecutionRoutes(app) {
     res.json({ data: rows, total: (db.executionQueue || []).length });
   });
 
+  /**
+   * POST /api/executions/process
+   * Admin/member. Manually drains all due queued actions.
+   * Response: 200 { executed: number }
+   */
   // Manually drain due queued actions
   app.post('/api/executions/process', auth, requireRole('admin', 'member'), async (req, res) => {
     const result = await processExecutionQueue();
@@ -22,12 +33,23 @@ export default function registerExecutionRoutes(app) {
     res.json(result);
   });
 
+  /**
+   * POST /api/executions/:id/retry
+   * Admin/member. Re-queues a failed execution for another run.
+   * Path param: :id - execution id
+   * Response: 200 { execution } | 404 { error }
+   */
   app.post('/api/executions/:id/retry', auth, requireRole('admin', 'member'), async (req, res) => {
     const item = await retryExecution(req.params.id);
     if (!item) return res.status(404).json({ error: 'Queued execution not found' });
     res.json(item);
   });
 
+  /**
+   * DELETE /api/executions
+   * Admin/member. Clears finished items (done/failed) from the queue.
+   * Response: 200 { ok: true }
+   */
   // Clear finished items (done/failed)
   app.delete('/api/executions', auth, requireRole('admin', 'member'), async (req, res) => {
     await mutateDb(db => {
@@ -39,6 +61,13 @@ export default function registerExecutionRoutes(app) {
     res.json({ ok: true });
   });
 
+  /**
+   * POST /api/executions
+   * Admin/member. Queues a one-off execution (used by the visual builder
+   * "Run now" for delay nodes).
+   * Body: { flowId?, resource, recordId?, action: { type, ... }, dueAt?, flowName? }
+   * Response: 201 { execution } | 400 { error }
+   */
   // Queue a one-off execution (used by the visual builder "Run now" for delay nodes)
   app.post('/api/executions', auth, requireRole('admin', 'member'), async (req, res) => {
     const { flowId, resource, recordId, action, dueAt } = req.body || {};
