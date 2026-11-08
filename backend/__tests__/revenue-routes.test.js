@@ -143,8 +143,8 @@ describe('Category filter reaches the repository', () => {
 
     const res = await auth(request(app).get('/api/products?category=Hardware'));
     expect(res.status).toBe(200);
-    expect(res.body.map((r) => r.id)).toContain(hardware.body.id);
-    expect(res.body.map((r) => r.id)).not.toContain(software.body.id);
+    expect(res.body.data.map((r) => r.id)).toContain(hardware.body.id);
+    expect(res.body.data.map((r) => r.id)).not.toContain(software.body.id);
   });
 
   it('filters expenses by category', async () => {
@@ -165,8 +165,8 @@ describe('Category filter reaches the repository', () => {
 
     const res = await auth(request(app).get('/api/expenses?category=Travel'));
     expect(res.status).toBe(200);
-    expect(res.body.map((r) => r.id)).toContain(travel.body.id);
-    expect(res.body.map((r) => r.id)).not.toContain(hosting.body.id);
+    expect(res.body.data.map((r) => r.id)).toContain(travel.body.id);
+    expect(res.body.data.map((r) => r.id)).not.toContain(hosting.body.id);
   });
 });
 
@@ -184,9 +184,10 @@ describe('Pagination is clamped', () => {
 
     const res = await auth(request(app).get('/api/products?limit=1000'));
     expect(res.status).toBe(200);
-    // A bare array means pgFindAll() took the single-page branch.
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(100);
+    // The list contract caps a page at 100 rows.
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBe(100);
+    expect(res.body.limit).toBe(100);
   });
 });
 

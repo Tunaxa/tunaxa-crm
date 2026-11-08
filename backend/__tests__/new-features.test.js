@@ -31,19 +31,19 @@ describe("Audit Log", () => {
 
     const res = await request(app).get("/api/audit?limit=1").set(auth());
     expect(res.status).toBe(200);
-    expect(res.body.items[0]).toMatchObject({
+    expect(res.body.data[0]).toMatchObject({
       action: "Created lead",
       actor: "Test User",
       userAgent,
       resourceId: created.body.id,
     });
-    expect(res.body.items[0].ip).toBeTruthy();
+    expect(res.body.data[0].ip).toBeTruthy();
   });
 
   it("GET /api/audit lists audit entries", async () => {
     const res = await request(app).get("/api/audit").set(auth());
     expect(res.status).toBe(200);
-    expect(res.body.items).toBeDefined();
+    expect(res.body.data).toBeDefined();
     expect(res.body.total).toBeGreaterThanOrEqual(0);
   });
 
@@ -65,7 +65,7 @@ describe("Audit Log", () => {
   it("GET /api/audit limits results", async () => {
     const res = await request(app).get("/api/audit?limit=5").set(auth());
     expect(res.status).toBe(200);
-    expect(res.body.items.length).toBeLessThanOrEqual(5);
+    expect(res.body.data.length).toBeLessThanOrEqual(5);
   });
 });
 
@@ -73,8 +73,8 @@ describe("Users & RBAC", () => {
   it("GET /api/users lists users", async () => {
     const res = await request(app).get("/api/users").set(auth());
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(1);
   });
 
   it("POST /api/users creates a new user", async () => {
@@ -101,7 +101,7 @@ describe("Users & RBAC", () => {
 
   it("PATCH /api/users/:id/role changes role", async () => {
     const list = await request(app).get("/api/users").set(auth());
-    const user = list.body.find((u) => u.email === "member@test.com");
+    const user = list.body.data.find((u) => u.email === "member@test.com");
     const res = await request(app)
       .patch(`/api/users/${user.id}/role`)
       .set(auth())
@@ -112,7 +112,7 @@ describe("Users & RBAC", () => {
 
   it("PATCH /api/users/:id/role rejects invalid role", async () => {
     const list = await request(app).get("/api/users").set(auth());
-    const user = list.body.find((u) => u.email === "member@test.com");
+    const user = list.body.data.find((u) => u.email === "member@test.com");
     const res = await request(app)
       .patch(`/api/users/${user.id}/role`)
       .set(auth())
@@ -122,14 +122,14 @@ describe("Users & RBAC", () => {
 
   it("DELETE /api/users/:id removes user", async () => {
     const list = await request(app).get("/api/users").set(auth());
-    const user = list.body.find((u) => u.email === "member@test.com");
+    const user = list.body.data.find((u) => u.email === "member@test.com");
     const res = await request(app).delete(`/api/users/${user.id}`).set(auth());
     expect(res.status).toBe(200);
   });
 
   it("DELETE /api/users/:id cannot delete self", async () => {
     const list = await request(app).get("/api/users").set(auth());
-    const self = list.body.find((u) => u.email === "test@test.com");
+    const self = list.body.data.find((u) => u.email === "test@test.com");
     const res = await request(app).delete(`/api/users/${self.id}`).set(auth());
     expect(res.status).toBe(400);
   });
