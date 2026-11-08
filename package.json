@@ -14,8 +14,8 @@
     "typecheck": "tsc --noEmit -p web",
     "preview": "vite preview --config web/vite.config.ts --host 127.0.0.1 --port 4173 --open",
     "start": "node start.js",
-    "test": "vitest run --fileParallelism=false",
-    "test:watch": "vitest --fileParallelism=false"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.9.0",
