@@ -84,21 +84,124 @@ describe("Settings", () => {
   });
 });
 
+const EMPTY_SEARCH_GROUPS = {
+  leads: [],
+  contacts: [],
+  companies: [],
+  deals: [],
+  tasks: [],
+  recordings: [],
+};
+
 describe("Search", () => {
-  it("GET /api/search with empty q returns empty", async () => {
+  it("GET /api/search with empty q returns empty groups", async () => {
     const res = await request(app)
       .get("/api/search?q=")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toEqual(EMPTY_SEARCH_GROUPS);
   });
 
-  it("GET /api/search without q returns empty", async () => {
+  it("GET /api/search without q returns empty groups", async () => {
     const res = await request(app)
       .get("/api/search")
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toEqual(EMPTY_SEARCH_GROUPS);
+  });
+
+  it("GET /api/search groups results by entity type", async () => {
+    await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Nova Industries",
+        company: "Nova",
+        email: "nova@example.com",
+      })
+      .expect(201);
+    await request(app)
+      .post("/api/contacts")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        name: "Nova Employee",
+        company: "Nova",
+        email: "nova-emp@example.com",
+      })
+      .expect(201);
+    await request(app)
+      .post("/api/companies")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Nova Holdings", industry: "Nova", country: "US" })
+      .expect(201);
+
+    const res = await request(app)
+      .get("/api/search?q=Nova")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    for (const key of Object.keys(EMPTY_SEARCH_GROUPS))
+      expect(Array.isArray(res.body[key])).toBe(true);
+    expect(res.body.leads.length).toBeGreaterThan(0);
+    expect(res.body.contacts.length).toBeGreaterThan(0);
+    expect(res.body.companies.length).toBeGreaterThan(0);
+    expect(res.body.leads[0]).toMatchObject({ type: "Lead", route: "/leads" });
+    expect(res.body.contacts[0]).toMatchObject({
+      type: "Contact",
+      route: "/contacts",
+    });
+    expect(res.body.companies[0]).toMatchObject({
+      type: "Company",
+      route: "/companies",
+    });
+  });
+
+  it("GET /api/search matches only configured fields", async () => {
+    const created = await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Quiet Zed", email: "zed@example.com", status: "zz-hidden" })
+      .expect(201);
+    // The marker lives in a field (status) that is not part of the search spec.
+    expect(created.body.status).toBe("zz-hidden");
+
+    const res = await request(app)
+      .get("/api/search?q=zz-hidden")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.leads).toEqual([]);
+
+    const byName = await request(app)
+      .get("/api/search?q=zed")
+      .set("Authorization", `Bearer ${token}`);
+    expect(byName.status).toBe(200);
+    expect(byName.body.leads.length).toBe(1);
+    expect(byName.body.leads[0].name).toBe("Quiet Zed");
+  });
+
+  it("GET /api/leads?q= filters leads by meaningful fields", async () => {
+    await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Zed Zielinski", email: "zed@example.com" })
+      .expect(201);
+    await request(app)
+      .post("/api/leads")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Ruth Ramos", email: "ruth@example.com" })
+      .expect(201);
+
+    const byName = await request(app)
+      .get("/api/leads?q=Zielinski")
+      .set("Authorization", `Bearer ${token}`);
+    expect(byName.status).toBe(200);
+    expect(byName.body.data).toHaveLength(1);
+    expect(byName.body.data[0].name).toBe("Zed Zielinski");
+
+    const byStatus = await request(app)
+      .get("/api/leads?q=zz-hidden")
+      .set("Authorization", `Bearer ${token}`);
+    expect(byStatus.status).toBe(200);
+    expect(byStatus.body.data).toHaveLength(0);
   });
 });
 
@@ -116,7 +219,7 @@ describe("Dashboard", () => {
 });
 
 describe("Schema", () => {
-  it("GET /api/schema/leads returns fields", async () => {
+  it("GET /api/schema/leads returns fields with validation metadata", async () => {
     const res = await request(app)
       .get("/api/schema/leads")
       .set("Authorization", `Bearer ${token}`);
@@ -124,6 +227,42 @@ describe("Schema", () => {
     expect(res.body.object).toBe("leads");
     expect(Array.isArray(res.body.fields)).toBe(true);
     expect(res.body.fields.length).toBeGreaterThan(0);
+    for (const field of res.body.fields) {
+      expect(typeof field.required).toBe("boolean");
+      expect(typeof field.type).toBe("string");
+    }
+  });
+
+  it("GET /api/schema/leads includes built-in validation rules", async () => {
+    const res = await request(app)
+      .get("/api/schema/leads")
+      .set("Authorization", `Bearer ${token}`);
+    const byKey = Object.fromEntries(res.body.fields.map(f => [f.key, f]));
+    expect(byKey.name).toMatchObject({ required: true, type: "text", maxLength: 255 });
+    expect(byKey.email).toMatchObject({ required: false, type: "email", maxLength: 255 });
+    expect(byKey.phone).toMatchObject({ type: "tel", maxLength: 30 });
+    expect(byKey.company).toMatchObject({ required: false, type: "text", maxLength: 255 });
+    expect(byKey.value).toMatchObject({ type: "number" });
+  });
+
+  it("GET /api/schema/deals marks the title as a required text field", async () => {
+    const res = await request(app)
+      .get("/api/schema/deals")
+      .set("Authorization", `Bearer ${token}`);
+    const byKey = Object.fromEntries(res.body.fields.map(f => [f.key, f]));
+    expect(byKey.title).toMatchObject({ required: true, type: "text", maxLength: 255 });
+  });
+
+  it("GET /api/schema/leads includes custom field validation rules", async () => {
+    await request(app)
+      .post("/api/customFields")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ object: "Lead", key: "linkedin_url", name: "LinkedIn URL", type: "Text", required: true });
+    const res = await request(app)
+      .get("/api/schema/leads")
+      .set("Authorization", `Bearer ${token}`);
+    const custom = res.body.fields.find(f => f.key === "linkedin_url");
+    expect(custom).toMatchObject({ required: true, type: "text", maxLength: 255 });
   });
 
   it("GET /api/schema/unknown returns 404", async () => {

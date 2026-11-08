@@ -16,6 +16,7 @@ import {
   YAxis,
 } from "recharts";
 import {
+  Fragment,
   lazy,
   Suspense,
   useEffect,
@@ -1236,16 +1237,53 @@ function QuickCreate({ onClose }: { onClose: () => void }) {
   );
 }
 
+type SearchResult = {
+  id: string;
+  type: string;
+  route: string;
+  name: string;
+  detail?: string;
+};
+
+type SearchGroups = {
+  leads: SearchResult[];
+  contacts: SearchResult[];
+  companies: SearchResult[];
+  deals: SearchResult[];
+  tasks: SearchResult[];
+  recordings: SearchResult[];
+};
+
+const EMPTY_SEARCH_GROUPS: SearchGroups = {
+  leads: [],
+  contacts: [],
+  companies: [],
+  deals: [],
+  tasks: [],
+  recordings: [],
+};
+
+const SEARCH_GROUPS: { key: keyof SearchGroups; label: string }[] = [
+  { key: "leads", label: "Leads" },
+  { key: "contacts", label: "Contacts" },
+  { key: "companies", label: "Companies" },
+  { key: "deals", label: "Deals" },
+  { key: "tasks", label: "Tasks" },
+  { key: "recordings", label: "Recordings" },
+];
+
 function GlobalSearch({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<Row[]>([]);
+  const [results, setResults] = useState<SearchGroups>(EMPTY_SEARCH_GROUPS);
   useEffect(() => {
     const timer = window.setTimeout(
       () =>
         q.trim()
-          ? api<Row[]>(`/search?q=${encodeURIComponent(q)}`).then(setResults)
-          : setResults([]),
+          ? api<SearchGroups>(`/search?q=${encodeURIComponent(q)}`).then(
+              setResults,
+            )
+          : setResults(EMPTY_SEARCH_GROUPS),
       180,
     );
     return () => window.clearTimeout(timer);
@@ -1277,42 +1315,51 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
               title="Search your workspace"
               text="Start typing to search stored CRM records."
             />
-          ) : results.length ? (
-            results.map((item) => (
-              <button
-                key={`${item.type}-${item.id}`}
-                onClick={() => {
-                  navigate(item.route);
-                  onClose();
-                }}
-              >
-                <span>
-                  <Icon
-                    name={
-                      item.type === "Deal"
-                        ? "pipeline"
-                        : item.type === "Company"
-                          ? "companies"
-                          : item.type === "Contact"
-                            ? "contacts"
-                            : item.type === "Task"
-                              ? "tasks"
-                              : item.type === "Recording"
-                                ? "recording"
-                                : "lead"
-                    }
-                  />
-                </span>
-                <div>
-                  <b>{item.name}</b>
-                  <small>
-                    {item.type}
-                    {item.detail ? ` · ${item.detail}` : ""}
-                  </small>
-                </div>
-                <Icon name="arrowRight" />
-              </button>
-            ))
+          ) : SEARCH_GROUPS.some(({ key }) => results[key].length) ? (
+            SEARCH_GROUPS.map(({ key, label }) => {
+              const items = results[key];
+              if (!items.length) return null;
+              return (
+                <Fragment key={key}>
+                  <small>{label}</small>
+                  {items.map((item) => (
+                    <button
+                      key={`${item.type}-${item.id}`}
+                      onClick={() => {
+                        navigate(item.route);
+                        onClose();
+                      }}
+                    >
+                      <span>
+                        <Icon
+                          name={
+                            item.type === "Deal"
+                              ? "pipeline"
+                              : item.type === "Company"
+                                ? "companies"
+                                : item.type === "Contact"
+                                  ? "contacts"
+                                  : item.type === "Task"
+                                    ? "tasks"
+                                    : item.type === "Recording"
+                                      ? "recording"
+                                      : "lead"
+                          }
+                        />
+                      </span>
+                      <div>
+                        <b>{item.name}</b>
+                        <small>
+                          {item.type}
+                          {item.detail ? ` · ${item.detail}` : ""}
+                        </small>
+                      </div>
+                      <Icon name="arrowRight" />
+                    </button>
+                  ))}
+                </Fragment>
+              );
+            })
           ) : (
             <Empty
               icon="search"
@@ -4465,8 +4512,8 @@ function InboxPage() {
   }, [page]);
 
   useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
+    api<{ data: Row[] }>("/templates")
+      .then((result) => setTemplates(result.data))
       .catch(() => {});
   }, []);
 
@@ -6146,7 +6193,7 @@ function ForecastPage() {
       .then(([dealResult, pipelineResult]) => {
         const dealItems = Array.isArray(dealResult)
           ? dealResult
-          : dealResult?.items || [];
+          : dealResult?.data || dealResult?.items || [];
         setDeals(dealItems);
 
         const pipelineItems = Array.isArray(pipelineResult)
@@ -6614,8 +6661,8 @@ function AuditPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api<{ items: Row[] }>("/audit")
-      .then((result) => setItems(result.items))
+    api<{ data: Row[] }>("/audit")
+      .then((result) => setItems(result.data))
       .catch((error) => toast((error as Error).message, "error"))
       .finally(() => setLoading(false));
   }, [toast]);
@@ -7189,8 +7236,8 @@ function TemplatesManager() {
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
 
   useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
+    api<{ data: Row[] }>("/templates")
+      .then((result) => setTemplates(result.data))
       .catch(() => {});
   }, []);
 

@@ -1,7 +1,7 @@
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { broadcast } from './sse.js';
 import { checkWriteFieldMask } from './permissions.js';
 import { repoFor } from '../db/repositories/index.js';
@@ -75,8 +75,10 @@ export default function registerTicketRoutes(app) {
         if (req.query[key]) filters[key] = req.query[key];
       }
       const tickets = (await loadTickets(filters, workspaceId)).map(t => ({ ...t, sla: slaStatus(t, sla) }));
+      // Stage counts describe the whole filtered board, not just the page that
+      // is being returned, so compute them before pagination slices the rows.
       const stages = TICKET_STAGES.map(stage => ({ stage, count: tickets.filter(t => t.stage === stage).length }));
-      res.json({ data: tickets, stages, sla, total: tickets.length });
+      res.json({ ...paginateAndSort(tickets, req.query), stages, sla });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }

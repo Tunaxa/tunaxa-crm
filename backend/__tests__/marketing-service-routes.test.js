@@ -80,8 +80,8 @@ describe('campaigns and email lists read Postgres', () => {
     // if the list route is served by the repository.
     const list = await auth(request(app).get('/api/campaigns'));
     expect(list.status).toBe(200);
-    expect(list.body).toHaveLength(1);
-    expect(list.body[0].id).toBe(res.body.id);
+    expect(list.body.data).toHaveLength(1);
+    expect(list.body.data[0].id).toBe(res.body.id);
   });
 
   it('GET /api/campaigns filters by status and channel in SQL', async () => {
@@ -92,12 +92,12 @@ describe('campaigns and email lists read Postgres', () => {
     });
 
     const active = await auth(request(app).get('/api/campaigns?status=Active'));
-    expect(active.body).toHaveLength(1);
-    expect(active.body[0].name).toBe('Spring Launch');
+    expect(active.body.data).toHaveLength(1);
+    expect(active.body.data[0].name).toBe('Spring Launch');
 
     const sms = await auth(request(app).get('/api/campaigns?channel=SMS'));
-    expect(sms.body).toHaveLength(1);
-    expect(sms.body[0].name).toBe('Draft Campaign');
+    expect(sms.body.data).toHaveLength(1);
+    expect(sms.body.data[0].name).toBe('Draft Campaign');
   });
 
   it('GET /api/marketing/summary aggregates the Postgres rows, not the JSON store', async () => {
@@ -173,10 +173,10 @@ describe('surveys and survey responses read Postgres', () => {
 
   it('GET /api/surveyResponses filters by survey name case-insensitively', async () => {
     const match = await auth(request(app).get('/api/surveyResponses?survey=nps'));
-    expect(match.body).toHaveLength(1);
+    expect(match.body.data).toHaveLength(1);
 
     const miss = await auth(request(app).get('/api/surveyResponses?survey=CSAT'));
-    expect(miss.body).toHaveLength(0);
+    expect(miss.body.data).toHaveLength(0);
   });
 });
 
