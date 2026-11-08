@@ -290,6 +290,14 @@ export default function registerResourceRoutes(app) {
           req.query,
           tenantOf(req),
         );
+        // pgList() returns the canonical list envelope, so mask the page before
+        // it leaves the route; otherwise post-auth field permissions are a
+        // silent no-op on PG-backed collections.
+        if (req.fieldPerms) {
+          payload.data = payload.data.map((item) =>
+            applyFieldMasking(item, req.fieldPerms),
+          );
+        }
         return res.json(payload);
       } catch (err) {
         return next(err);
