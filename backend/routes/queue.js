@@ -2,7 +2,8 @@ import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { processExecutionQueue, retryExecution, findRecord } from '../services/queue.js';
-import { id, now } from '../helpers.js';
+import { getWebhookQueue } from '../services/webhookQueue.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { broadcast } from './sse.js';
 
 export default function registerExecutionRoutes(app) {
@@ -14,11 +15,10 @@ export default function registerExecutionRoutes(app) {
    */
   app.get('/api/executions', auth, async (req, res) => {
     const db = await readDb();
-    const { status, limit = 50 } = req.query;
+    const { status } = req.query;
     let rows = db.executionQueue || [];
     if (status) rows = rows.filter(item => item.status === status);
-    rows = rows.slice(0, Math.min(Number(limit) || 50, 500));
-    res.json({ data: rows, total: (db.executionQueue || []).length });
+    res.json(paginateAndSort(rows, req.query));
   });
 
   /**
@@ -68,6 +68,40 @@ export default function registerExecutionRoutes(app) {
    * Body: { flowId?, resource, recordId?, action: { type, ... }, dueAt?, flowName? }
    * Response: 201 { execution } | 400 { error }
    */
+  // BullMQ observability (webhooks queue) — admin only
+  app.get('/api/queue/status', auth, requireRole('admin'), async (req, res) => {
+    try {
+      const queue = getWebhookQueue();
+      if (!queue) {
+        return res.json({
+          waiting: 0,
+          active: 0,
+          failed: 0,
+          failedJobs: [],
+          error: 'Redis/BullMQ not configured',
+        });
+      }
+
+      const counts = await queue.getJobCounts('wait', 'active', 'failed');
+      const failedJobs = await queue.getFailed(0, 9);
+
+      res.json({
+        waiting: counts.wait ?? 0,
+        active: counts.active ?? 0,
+        failed: counts.failed ?? 0,
+        failedJobs: failedJobs.map((job) => ({
+          id: job.id,
+          name: job.name,
+          failedReason: job.failedReason,
+          timestamp: job.timestamp,
+        })),
+      });
+    } catch (err) {
+      console.error('[queue] status check failed:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Queue a one-off execution (used by the visual builder "Run now" for delay nodes)
   app.post('/api/executions', auth, requireRole('admin', 'member'), async (req, res) => {
     const { flowId, resource, recordId, action, dueAt } = req.body || {};

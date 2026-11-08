@@ -51,10 +51,40 @@ export const verifyPassword = (password, stored) => {
 export const CUSTOM_TYPE_MAP = { Text: 'text', Number: 'number', Date: 'date', Dropdown: 'select', MultiSelect: 'multiSelect', Checkbox: 'checkbox', Currency: 'currency', File: 'file', Textarea: 'textarea', Percent: 'number' };
 export const OBJECT_MAP = { leads: 'Lead', contacts: 'Contact', companies: 'Company', deals: 'Deal' };
 export const BUILT_IN_FIELDS = {
-  leads: [{ key: 'name', label: 'Lead name' }, { key: 'company', label: 'Company' }, { key: 'email', label: 'Email' }, { key: 'phone', label: 'Phone' }, { key: 'source', label: 'Source' }, { key: 'status', label: 'Status' }, { key: 'owner', label: 'Owner' }, { key: 'value', label: 'Estimated value' }],
-  contacts: [{ key: 'name', label: 'Contact name' }, { key: 'role', label: 'Job title' }, { key: 'company', label: 'Company' }, { key: 'email', label: 'Email' }, { key: 'phone', label: 'Phone' }, { key: 'owner', label: 'Owner' }],
-  companies: [{ key: 'name', label: 'Company name' }, { key: 'industry', label: 'Industry' }, { key: 'website', label: 'Website' }, { key: 'country', label: 'Country' }, { key: 'employees', label: 'Employees' }, { key: 'owner', label: 'Owner' }],
-  deals: [{ key: 'title', label: 'Deal name' }, { key: 'company', label: 'Company' }, { key: 'value', label: 'Value' }, { key: 'stage', label: 'Stage' }, { key: 'owner', label: 'Owner' }, { key: 'closeDate', label: 'Close date' }]
+  leads: [
+    { key: 'name', label: 'Lead name', required: true, type: 'text', maxLength: 255 },
+    { key: 'company', label: 'Company', required: false, type: 'text', maxLength: 255 },
+    { key: 'email', label: 'Email', required: false, type: 'email', maxLength: 255 },
+    { key: 'phone', label: 'Phone', required: false, type: 'tel', maxLength: 30 },
+    { key: 'source', label: 'Source', required: false, type: 'text', maxLength: 100 },
+    { key: 'status', label: 'Status', required: false, type: 'text', maxLength: 100 },
+    { key: 'owner', label: 'Owner', required: false, type: 'text', maxLength: 255 },
+    { key: 'value', label: 'Estimated value', required: false, type: 'number' }
+  ],
+  contacts: [
+    { key: 'name', label: 'Contact name', required: true, type: 'text', maxLength: 255 },
+    { key: 'role', label: 'Job title', required: false, type: 'text', maxLength: 100 },
+    { key: 'company', label: 'Company', required: false, type: 'text', maxLength: 255 },
+    { key: 'email', label: 'Email', required: false, type: 'email', maxLength: 255 },
+    { key: 'phone', label: 'Phone', required: false, type: 'tel', maxLength: 30 },
+    { key: 'owner', label: 'Owner', required: false, type: 'text', maxLength: 255 }
+  ],
+  companies: [
+    { key: 'name', label: 'Company name', required: true, type: 'text', maxLength: 255 },
+    { key: 'industry', label: 'Industry', required: false, type: 'text', maxLength: 100 },
+    { key: 'website', label: 'Website', required: false, type: 'text', maxLength: 255 },
+    { key: 'country', label: 'Country', required: false, type: 'text', maxLength: 100 },
+    { key: 'employees', label: 'Employees', required: false, type: 'number' },
+    { key: 'owner', label: 'Owner', required: false, type: 'text', maxLength: 255 }
+  ],
+  deals: [
+    { key: 'title', label: 'Deal name', required: true, type: 'text', maxLength: 255 },
+    { key: 'company', label: 'Company', required: false, type: 'text', maxLength: 255 },
+    { key: 'value', label: 'Value', required: false, type: 'number' },
+    { key: 'stage', label: 'Stage', required: false, type: 'text', maxLength: 100 },
+    { key: 'owner', label: 'Owner', required: false, type: 'text', maxLength: 255 },
+    { key: 'closeDate', label: 'Close date', required: false, type: 'date', maxLength: 20 }
+  ]
 };
 
 export const NUMERIC_BUILT_INS = {
@@ -123,6 +153,20 @@ export function coerceCustomFields(db, resource, data) {
   return data;
 }
 
+const STRING_LIKE_TYPES = new Set(['text', 'email', 'tel', 'url', 'textarea']);
+
+// Guarantee a predictable validation shape for the schema endpoint consumed by
+// frontend auto-generated forms: required: boolean, type: string, and, for
+// string-like inputs, maxLength: number (defaults to 255, 2000 for textareas).
+export function normalizeFieldSpec(spec = {}) {
+  const type = spec.type || 'text';
+  const normalized = { ...spec, required: spec.required === true, type };
+  if (STRING_LIKE_TYPES.has(type)) {
+    normalized.maxLength = Number(spec.maxLength) || (type === 'textarea' ? 2000 : 255);
+  }
+  return normalized;
+}
+
 export function customFieldSpecs(db, resource) {
   const object = OBJECT_MAP[resource];
   if (!object) return [];
@@ -130,8 +174,10 @@ export function customFieldSpecs(db, resource) {
     .filter(field => String(field.object || '').toLowerCase() === object.toLowerCase())
     .map(field => {
       const spec = { key: field.key, label: field.name || field.key, type: CUSTOM_TYPE_MAP[field.type] || 'text', required: Boolean(field.required) };
+      const configuredMaxLength = Number(field.maxLength);
+      if (Number.isFinite(configuredMaxLength) && configuredMaxLength > 0) spec.maxLength = configuredMaxLength;
       if (field.type === 'Dropdown' && field.options) spec.options = String(field.options).split(',').map(x => x.trim()).filter(Boolean);
-      return spec;
+      return normalizeFieldSpec(spec);
     });
 }
 
@@ -293,3 +339,68 @@ export const resources = new Set([
   // `GET /api/forms/:id` and answer them as an unknown permalink.
   'webhookEndpoints','webhookDeliveries'
 ]);
+
+// Normalize a value so mixed types can be compared safely: numbers/booleans
+// and ISO date strings compare numerically, everything else falls back to a
+// case-insensitive string comparison.
+const toSortValue = value => {
+  if (typeof value === 'number') return { kind: 'number', value };
+  if (typeof value === 'boolean') return { kind: 'number', value: value ? 1 : 0 };
+  if (value instanceof Date) return { kind: 'number', value: value.getTime() };
+  if (typeof value === 'string' && value.trim() !== '') {
+    if (!Number.isNaN(Number(value))) return { kind: 'number', value: Number(value) };
+    const time = Date.parse(value);
+    if (!Number.isNaN(time)) return { kind: 'number', value: time };
+    return { kind: 'string', value: value.toLowerCase() };
+  }
+  return { kind: 'string', value: String(value ?? '').toLowerCase() };
+};
+
+const compareValues = (a, b) => {
+  if (a === b) return 0;
+  if (a === null || a === undefined) return 1; // missing values sort last
+  if (b === null || b === undefined) return -1;
+  const left = toSortValue(a);
+  const right = toSortValue(b);
+  if (left.kind === 'number' && right.kind === 'number') return left.value - right.value;
+  if (left.kind === 'string' && right.kind === 'string') {
+    return left.value < right.value ? -1 : left.value > right.value ? 1 : 0;
+  }
+  return String(left.value).localeCompare(String(right.value));
+};
+
+/**
+ * Apply the standard list contract to an in-memory collection:
+ *   ?q=        case-insensitive substring match over the serialized record
+ *   ?sortBy=   field to sort by (default "createdAt")
+ *   ?sortDir=  "asc" | "desc" (default "desc")
+ *   ?page=     page number, 1-based (default 1)
+ *   ?limit=    page size, 1..100 (default 25)
+ *
+ * Always returns { data, total, page, limit }. Route-specific filters should
+ * be applied to `items` before calling this helper.
+ */
+export const paginateAndSort = (items = [], query = {}) => {
+  const rows = Array.isArray(items) ? items : [];
+
+  const q = String(query.q || '').toLowerCase().trim();
+  let filtered = q
+    ? rows.filter(item => JSON.stringify(item).toLowerCase().includes(q))
+    : rows;
+
+  const sortBy = String(query.sortBy || 'createdAt');
+  const sortDir = String(query.sortDir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
+  const direction = sortDir === 1 ? 1 : -1;
+
+  filtered = [...filtered].sort((a, b) => {
+    const av = a ? a[sortBy] : undefined;
+    const bv = b ? b[sortBy] : undefined;
+    return direction * compareValues(av, bv);
+  });
+
+  const page = Math.max(1, parseInt(String(query.page), 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(String(query.limit), 10) || 25));
+  const start = (page - 1) * limit;
+
+  return { data: filtered.slice(start, start + limit), total: filtered.length, page, limit };
+};

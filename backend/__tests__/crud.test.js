@@ -33,15 +33,18 @@ describe('Generic CRUD - leads', () => {
   it('GET /api/leads lists leads', async () => {
     const res = await request(app).get('/api/leads').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.page).toBe(1);
+    expect(res.body.limit).toBeGreaterThanOrEqual(1);
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
   });
 
   it('GET /api/leads?q=Acme filters', async () => {
     const res = await request(app).get('/api/leads?q=Acme').set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body.length).toBe(1);
-    expect(res.body[0].name).toBe('Acme Corp');
+    expect(res.body.data.length).toBe(1);
+    expect(res.body.data[0].name).toBe('Acme Corp');
   });
 
   it('GET /api/leads paginates and sorts', async () => {
@@ -49,7 +52,9 @@ describe('Generic CRUD - leads', () => {
       .get('/api/leads?page=1&limit=1&sortBy=name&sortDir=asc')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.page).toBe(1);
+    expect(res.body.limit).toBe(1);
   });
 
   it('GET /api/leads/export.csv streams a CSV', async () => {
@@ -93,7 +98,7 @@ describe('Generic CRUD - leads', () => {
     expect(res.status).toBe(200);
 
     const list = await request(app).get('/api/leads').set('Authorization', `Bearer ${token}`);
-    expect(list.body.find(x => x.id === leadId)).toBeUndefined();
+    expect(list.body.data.find(x => x.id === leadId)).toBeUndefined();
   });
 
   it('PUT /api/leads/:id returns 404 for missing', async () => {
@@ -148,21 +153,21 @@ describe('Activity timeline filters', () => {
       .query({ contact, type: 'Email' })
       .set('Authorization', `Bearer ${token}`);
     expect(email.status).toBe(200);
-    expect(email.body.map((item) => item.title)).toEqual(['Email event']);
+    expect(email.body.data.map((item) => item.title)).toEqual(['Email event']);
 
     const system = await request(app)
       .get('/api/activities')
       .query({ contact, type: 'System' })
       .set('Authorization', `Bearer ${token}`);
     expect(system.status).toBe(200);
-    expect(system.body.map((item) => item.title)).toEqual(['Lifecycle event']);
+    expect(system.body.data.map((item) => item.title)).toEqual(['Lifecycle event']);
 
     const all = await request(app)
       .get('/api/activities')
       .query({ contact })
       .set('Authorization', `Bearer ${token}`);
     expect(all.status).toBe(200);
-    expect(all.body).toHaveLength(5);
+    expect(all.body.data).toHaveLength(5);
   });
 });
 

@@ -19,6 +19,7 @@ import {
   partialDelta,
   applyPartialUpdate,
   resources,
+  paginateAndSort,
 } from "../helpers.js";
 import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
 import { triggerWorkflows, createdEvent } from "../services/workflows.js";
@@ -123,6 +124,61 @@ async function pgFindAll(resource, query = {}, workspaceId = undefined) {
     if (result.data.length === 0 || rows.length >= result.total) break;
   }
   return rows;
+}
+
+// The public list contract is camelCase with a separate ?sortDir=, while the PG
+// repositories sort with a whitelisted `column:direction` string. Translate
+// here so `?sortBy=createdAt&sortDir=asc` works identically on both storage
+// paths instead of silently falling back to `created_at DESC`.
+const PG_SORT_ALIASES = {
+  createdAt: "created_at",
+  updatedAt: "updated_at",
+};
+
+function pgSortBy(query = {}) {
+  const sortBy = String(query.sortBy || "createdAt");
+  const sortDir =
+    String(query.sortDir || "desc").toLowerCase() === "asc" ? "asc" : "desc";
+  const column = PG_SORT_ALIASES[sortBy] || sortBy;
+  return `${column}:${sortDir}`;
+}
+
+/**
+ * Fetch one page of a PG resource in the canonical list envelope.
+ *
+ * `total` comes from the repository's COUNT, so it is the size of the filtered
+ * set rather than the size of the page. Tenant scoping and filters stay in SQL
+ * via `readPgFilters` + `workspaceId`.
+ */
+async function pgList(resource, query = {}, workspaceId = undefined) {
+  const repo = repoFor(resource);
+  if (!repo || typeof repo.findAll !== "function") {
+    const error = new Error(`No repository registered for ${resource}`);
+    error.status = 500;
+    throw error;
+  }
+
+  const filters = readPgFilters(query);
+  filters.sortBy = pgSortBy(query);
+  if (workspaceId !== undefined && workspaceId !== null) {
+    filters.workspaceId = workspaceId;
+  }
+
+  const page = Math.max(1, parseInt(String(query.page), 10) || 1);
+  const limit = Math.min(
+    100,
+    Math.max(1, parseInt(String(query.limit), 10) || 25),
+  );
+
+  const result = await repo.findAll({ ...filters, page, limit });
+  return {
+    data: result.data.map((row) =>
+      coerceBuiltIns(resource, pgToLegacy(row, resource)),
+    ),
+    total: result.total,
+    page,
+    limit,
+  };
 }
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -239,14 +295,20 @@ export default function registerResourceRoutes(app) {
     // ── PG path: every resource in PG_RESOURCES ────────────────────────────
     if (PG_RESOURCES.has(req.params.resource)) {
       try {
-        const rows = await pgFindAll(req.params.resource, req.query, tenantOf(req));
-        // The PG driver returns legacy-shaped rows; mask them exactly like the
-        // JSON path below or post-auth field permissions are a no-op on reads.
-        return res.json(
-          req.fieldPerms
-            ? rows.map((item) => applyFieldMasking(item, req.fieldPerms))
-            : rows,
+        const payload = await pgList(
+          req.params.resource,
+          req.query,
+          tenantOf(req),
         );
+        // pgList() returns the canonical list envelope, so mask the page before
+        // it leaves the route; otherwise post-auth field permissions are a
+        // silent no-op on PG-backed collections.
+        if (req.fieldPerms) {
+          payload.data = payload.data.map((item) =>
+            applyFieldMasking(item, req.fieldPerms),
+          );
+        }
+        return res.json(payload);
       } catch (err) {
         return next(err);
       }
@@ -254,10 +316,6 @@ export default function registerResourceRoutes(app) {
 
     // ── Legacy JSON path: all other resources ──────────────────────────────
     const db = req.db || (await readDb());
-
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
-    const start = (page - 1) * limit;
 
     let rows = db[req.params.resource] || [];
 
@@ -324,30 +382,7 @@ export default function registerResourceRoutes(app) {
       rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
     }
 
-    // AXA-128: pagination for messages. Only switch shapes when the caller
-    // actually asks to page: the long-standing `/api/messages` contract is a
-    // bare array, and callers that pass page/limit (the inbox UI) still get the
-    // paginated envelope.
-    if (
-      req.params.resource === "messages" &&
-      (req.query.page !== undefined || req.query.limit !== undefined)
-    ) {
-      const total = rows.length;
-      const paginatedRows = rows.slice(start, start + limit);
-
-      return res.json({
-        items: paginatedRows,
-        total,
-        page,
-        limit,
-        hasMore: start + limit < total,
-      });
-    }
-
-    // Long-standing contract: a bare array. The paginated envelope is confined
-    // to /api/messages when page/limit are supplied (AXA-128) and to
-    // PG_RESOURCES clients, which never received this shape.
-    res.json(rows);
+    res.json(paginateAndSort(rows, req.query));
   });
 
   /**
