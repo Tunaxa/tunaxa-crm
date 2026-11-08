@@ -75,13 +75,30 @@ function isValidInviteEmail(email) {
 }
 
 export default function registerAuthRoutes(app) {
+  /**
+   * GET /api/health
+   * Public liveness probe for uptime checks and infrastructure.
+   * Response: 200 { ok: true }
+   */
   app.get('/api/health', (req, res) => res.json({ ok: true }));
 
+  /**
+   * GET /api/auth/status
+   * Public. Reports whether the workspace has been provisioned yet.
+   * Response: 200 { needsSetup: boolean }
+   */
   app.get('/api/auth/status', async (req, res) => {
     const db = await readDb();
     res.json({ needsSetup: db.users.length === 0 });
   });
 
+  /**
+   * POST /api/auth/setup
+   * Public (rate-limited). Creates the initial Owner account and workspace on a
+   * fresh install. Returns a session token.
+   * Body (SetupSchema): { name: string, email: string, password: string }
+   * Response: 200 { token: string, user: {...} } | 409 { error } if already configured
+   */
   app.post('/api/auth/setup', authLimiter, validate(SetupSchema), async (req, res) => {
     const { name, email, password } = req.body;
     const result = await mutateDb(db => {
@@ -99,6 +116,12 @@ export default function registerAuthRoutes(app) {
     res.json(result);
   });
 
+  /**
+   * POST /api/auth/login
+   * Public (rate-limited). Authenticates an existing user and issues a session token.
+   * Body (LoginSchema): { email: string, password: string }
+   * Response: 200 { token: string, user: {...} } | 401 { error } on bad credentials
+   */
   app.post('/api/auth/login', authLimiter, validate(LoginSchema), async (req, res) => {
     const { email, password } = req.body;
     const db = await readDb();
@@ -113,6 +136,14 @@ export default function registerAuthRoutes(app) {
     res.json({ token, user: publicUser({ ...user, preferences: toResponsePreferences(db.settings?.userPreferences?.[user.id]) }) });
   });
 
+  /**
+   * POST /api/auth/refresh
+   * Public (rate-limited by refreshLimiter). Rotates a still-valid session
+   * token for a freshly minted one and revokes the presented token.
+   * Token sources: body.refreshToken, body.token, x-refresh-token header, or
+   * Authorization: Bearer <token>.
+   * Response: 200 { token: string, user: { ... } } | 400/401 { error }
+   */
   // Public endpoint: accept a team invitation emailed to the user. No auth
   // middleware here — everything is validated against the invite token.
   app.post('/api/auth/accept-invite', inviteLimiter, async (req, res) => {
@@ -235,6 +266,12 @@ export default function registerAuthRoutes(app) {
     }
   });
 
+  /**
+   * GET /api/auth/me
+   * Protected. Returns the currently authenticated user's public shape with
+   * their stored UI preferences.
+   * Response: 200 { user: { id, name, email, role, preferences } } | 401 { error }
+   */
   app.get('/api/auth/me', auth, async (req, res) => {
     const db = await readDb();
     const user = db.users.find(u => u.id === req.user.id);
@@ -242,6 +279,11 @@ export default function registerAuthRoutes(app) {
     res.json({ user: publicUser({ ...user, preferences: toResponsePreferences(db.settings?.userPreferences?.[user.id]) }) });
   });
 
+  /**
+   * GET /api/users/me/preferences
+   * Protected. Returns the current user's UI preferences.
+   * Response: 200 { preferences: { theme, sidebarCollapsed, pageSize } } | 404 { error }
+   */
   app.get('/api/users/me/preferences', auth, async (req, res) => {
     const db = await readDb();
     const user = db.users.find(u => u.id === req.user.id);
@@ -253,6 +295,12 @@ export default function registerAuthRoutes(app) {
     });
   });
 
+  /**
+   * PUT /api/users/me/preferences
+   * Protected. Merges the current user's UI preferences.
+   * Body: { theme?: 'light'|'dark', sidebarCollapsed?: boolean, pageSize?: number }
+   * Response: 200 { preferences: {...} } | 404 { error }
+   */
   app.put('/api/users/me/preferences', auth, async (req, res) => {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const { theme, sidebarCollapsed } = body;
@@ -288,6 +336,12 @@ export default function registerAuthRoutes(app) {
     res.json({ preferences: toResponsePreferences(result) });
   });
 
+  /**
+   * POST /api/auth/events-token
+   * Protected. Issues a short-lived session token used to authenticate the SSE
+   * event stream.
+   * Response: 200 { token: string, expiresAt: ISO string }
+   */
   app.post('/api/auth/events-token', auth, async (req, res) => {
     const sseLifetimeMs = 120_000;
     const token = crypto.randomBytes(32).toString('hex');
@@ -303,21 +357,43 @@ export default function registerAuthRoutes(app) {
     res.json({ token, expiresAt: new Date(Date.now() + sseLifetimeMs).toISOString() });
   });
 
+  /**
+   * POST /api/auth/logout
+   * Protected. Invalidates the current session token.
+   * Response: 200 { ok: true }
+   */
   app.post('/api/auth/logout', auth, async (req, res) => {
     await mutateDb(db => { db.sessions = db.sessions.filter(x => x.token !== req.token); });
     res.json({ ok: true });
   });
 
+  /**
+   * POST /api/auth/logout-all
+   * Protected. Invalidates every session belonging to the current user.
+   * Response: 200 { ok: true }
+   */
   app.post('/api/auth/logout-all', auth, async (req, res) => {
     await mutateDb(db => { db.sessions = db.sessions.filter(x => x.userId !== req.user.id); });
     res.json({ ok: true });
   });
 
+  /**
+   * GET /api/users
+   * Protected. Lists all workspace users in public shape.
+   * Response: 200 [{ id, name, email, role, preferences }]
+   */
   app.get('/api/users', auth, async (req, res) => {
     const db = await readDb();
     res.json(paginateAndSort(db.users.map(u => publicUser(u)), req.query));
   });
 
+  /**
+   * PATCH /api/users/:id/role
+   * Admin-only. Changes a user's role (admin | member | viewer).
+   * Path param: :id - user id
+   * Body: { role: 'admin'|'member'|'viewer' }
+   * Response: 200 { user public shape } | 400/404 { error }
+   */
   app.patch('/api/users/:id/role', auth, requireAdmin, async (req, res) => {
     const { role } = req.body;
     if (!['admin', 'member', 'viewer'].includes(role)) return res.status(400).json({ error: 'Role must be admin, member, or viewer' });
@@ -334,6 +410,12 @@ export default function registerAuthRoutes(app) {
     res.json(saved);
   });
 
+  /**
+   * POST /api/users
+   * Admin-only. Creates a new member user and team entry directly.
+   * Body (SetupSchema): { name: string, email: string, password: string }
+   * Response: 201 { user public shape } | 409 { error } if email exists
+   */
   app.post('/api/users', auth, requireAdmin, validate(SetupSchema), async (req, res) => {
     const { name, email, password } = req.body;
     const saved = await mutateDb(db => {
@@ -349,6 +431,12 @@ export default function registerAuthRoutes(app) {
     res.status(201).json(saved);
   });
 
+  /**
+   * DELETE /api/users/:id
+   * Admin-only. Removes a user, their team entry and all their sessions.
+   * Path param: :id - user id (cannot be the caller's own id).
+   * Response: 200 { ok: true } | 400/404 { error }
+   */
   // Admin-only: generate a secure, emailed invitation instead of creating the
   // user account directly. The accept link embeds a one-time token.
   app.post('/api/users/invite', auth, requireAdmin, async (req, res) => {
