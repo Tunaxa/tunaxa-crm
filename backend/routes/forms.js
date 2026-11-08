@@ -360,17 +360,22 @@ export default function registerFormRoutes(app) {
     const workspaceId = req.user?.workspaceId || req.user?.workspace_id || DEFAULT_WORKSPACE;
     try {
       const repo = repoFor('forms');
-      const filters = { workspaceId };
+      const page = Math.max(1, parseInt(String(req.query.page), 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 25));
+      const sortDir = String(req.query.sortDir || 'desc').toLowerCase() === 'asc' ? 'asc' : 'desc';
+      const sortBy = String(req.query.sortBy || 'createdAt');
+      const sortColumn = sortBy === 'createdAt' ? 'created_at' : sortBy === 'updatedAt' ? 'updated_at' : sortBy;
+      const filters = { workspaceId, page, limit, sortBy: `${sortColumn}:${sortDir}` };
       if (req.query.q) filters.q = req.query.q;
       if (req.query.enabled !== undefined && req.query.enabled !== '') {
         filters.enabled = req.query.enabled === 'true';
       }
-      if (req.query.page !== undefined) filters.page = Number(req.query.page) || 1;
-      if (req.query.limit !== undefined) filters.limit = Number(req.query.limit) || 20;
       const result = await repo.findAll(filters);
       res.json({
         data: result.data.map(row => pgToLegacy(row, 'forms')),
-        total: result.total
+        total: result.total,
+        page,
+        limit,
       });
     } catch (error) {
       res.status(500).json({ error: error.message });

@@ -128,7 +128,7 @@ describe('Visual Workflow Builder (node-based branching)', () => {
     await sleep(80);
     const res = await request(app).get('/api/activities').set(auth());
     expect(res.status).toBe(200);
-    const activity = res.body.find(a => a.workflowId === workflowId && a.title === 'High value lead');
+    const activity = res.body.data.find(a => a.workflowId === workflowId && a.title === 'High value lead');
     expect(activity).toBeTruthy();
   });
 
@@ -138,7 +138,7 @@ describe('Visual Workflow Builder (node-based branching)', () => {
     await sleep(80);
     const res = await request(app).get('/api/activities').set(auth());
     expect(res.status).toBe(200);
-    const activity = res.body.find(a => a.workflowId === workflowId && a.title === 'Low value lead');
+    const activity = res.body.data.find(a => a.workflowId === workflowId && a.title === 'Low value lead');
     expect(activity).toBeTruthy();
   });
 });
@@ -168,7 +168,7 @@ describe('Execution Queue', () => {
     // Queued task actions now land in Postgres, so read them back over the API
     // rather than the legacy JSON snapshot.
     const tasks = await request(app).get('/api/tasks').set(auth());
-    const task = tasks.body.find(t => t.title === 'Queued follow-up call');
+    const task = tasks.body.data.find(t => t.title === 'Queued follow-up call');
     expect(task).toBeTruthy();
     expect(task.workflowId).toBe('');
     const queued = await request(app).get('/api/executions').set(auth());
