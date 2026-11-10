@@ -198,6 +198,7 @@ and this project adheres to Semantic Versioning.
   - Added 11 unit and integration tests covering queue fallback, immediate 201 response on upload, worker background processing, transcript persistence, SSE event delivery, failure handling, and async route modes.
 
 ### Changed
+- Configuration normalization: established canonical port defaults (API: 3001, Vite: 5173) and synchronized environment documentation across README and runtime configs.
 - **Dependencies (`package.json`):**
   - Moved `@vitejs/plugin-react` from `dependencies` to `devDependencies`. The plugin declares `vite` as a peer dependency, so listing it as a production dependency caused npm to resolve Vite — and transitively Rollup and Esbuild — into the production graph, where `npm prune --omit=dev` is required to keep them. The production image now carries 228 packages instead of 253.
 - **Test Database Setup (`backend/__tests__/setup.js`):**

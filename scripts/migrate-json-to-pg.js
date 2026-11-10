@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 import crypto from "node:crypto";
+import { loadEnvFile } from "../backend/runtime.js";
 import { readDb } from "../backend/store.js";
 import { getPool, closePool } from "../backend/db/pg.js";
+
+// Applied before any connection is opened; see backend/db/migrate.js.
+loadEnvFile();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NAMESPACE = "tunaxa-crm";

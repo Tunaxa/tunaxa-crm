@@ -1,7 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadEnvFile } from "../runtime.js";
 import { closePool, getPool } from "./pg.js";
+
+// Applied before any connection is opened. `getPool()` reads `process.env` at
+// call time, so this makes a bare `node backend/db/migrate.js` work exactly
+// like `npm run migrate` without any extra flags.
+loadEnvFile();
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(root, "migrations");
