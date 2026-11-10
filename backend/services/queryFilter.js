@@ -7,9 +7,21 @@
 //   { "$and": [ <condition>, ... ] }
 //   { "$or":  [ <condition>, ... ] }
 //
-// "$and"/"$or" and "AND"/"OR" are accepted interchangeably. Groups nest to
-// any depth. Anything that fails validation raises FilterError, which the
-// list handler turns into a 400.
+// "$and"/"$or" and "AND"/"OR" are accepted interchangeably. Nesting is bounded
+// by MAX_FILTER_DEPTH and the total number of nodes by MAX_FILTER_NODES, so a
+// hostile payload cannot exhaust the stack or the event loop. Anything that
+// fails validation raises FilterError, which the list handler turns into a 400.
+
+// Hard ceilings on adversarial payloads. The query string is already bounded by
+// the HTTP header limit, but these stop a small payload from causing deep
+// recursion (RangeError / 500) or a pathological number of comparisons per row.
+export const MAX_FILTER_DEPTH = 10;
+export const MAX_FILTER_NODES = 100;
+
+// Field names that are never meaningful record properties. The filter engine
+// only reads `record[field]`, so this is defence in depth: rejecting them here
+// keeps a future write path or merge helper from inheriting a prototype key.
+const BANNED_FIELDS = new Set(["__proto__", "constructor", "prototype"]);
 
 export const FILTER_OPERATORS = [
   "eq",
@@ -129,6 +141,11 @@ const validateCondition = (condition, path) => {
   if (typeof field !== "string" || field.trim() === "")
     throw new FilterError(`${path}.field must be a non-empty string`);
 
+  if (BANNED_FIELDS.has(field))
+    throw new FilterError(
+      `Field "${field}" is not allowed in filter criteria`,
+    );
+
   if (typeof operator !== "string" || operator.trim() === "")
     throw new FilterError(`${path}.operator must be a non-empty string`);
 
@@ -141,7 +158,18 @@ const validateCondition = (condition, path) => {
     throw new FilterError(`${path}.value is required for operator "${operator}"`);
 };
 
-const validateNode = (node, path) => {
+const validateNode = (node, path, depth = 0, counter = { nodes: 0 }) => {
+  if (depth > MAX_FILTER_DEPTH)
+    throw new FilterError(
+      `filters exceeds the maximum depth of ${MAX_FILTER_DEPTH}`,
+    );
+
+  counter.nodes += 1;
+  if (counter.nodes > MAX_FILTER_NODES)
+    throw new FilterError(
+      `filters exceeds the maximum of ${MAX_FILTER_NODES} conditions`,
+    );
+
   if (!isPlainObject(node))
     throw new FilterError(`${path} must be an object`);
 
@@ -174,7 +202,7 @@ const validateNode = (node, path) => {
       throw new FilterError(`${path}.${key} must contain at least one condition`);
 
     branches.forEach((branch, index) =>
-      validateNode(branch, `${path}.${key}[${index}]`),
+      validateNode(branch, `${path}.${key}[${index}]`, depth + 1, counter),
     );
 
     return;
@@ -204,25 +232,29 @@ export const parseFilters = raw => {
   return parsed;
 };
 
-export const matchesFilter = (record, node) => {
+export const matchesFilter = (record, node, depth = 0) => {
+  // Defence in depth for direct callers: parseFilters() already enforces this,
+  // but matchesFilter is exported and must not recurse without a ceiling.
+  if (depth > MAX_FILTER_DEPTH)
+    throw new FilterError(
+      `filters exceeds the maximum depth of ${MAX_FILTER_DEPTH}`,
+    );
+
   const key = Object.keys(node).find(k => LOGICAL_KEYS.includes(k));
 
   if (key) {
     const branches = node[key];
 
     return key === "$or" || key === "OR"
-      ? branches.some(branch => matchesFilter(record, branch))
-      : branches.every(branch => matchesFilter(record, branch));
+      ? branches.some(branch => matchesFilter(record, branch, depth + 1))
+      : branches.every(branch => matchesFilter(record, branch, depth + 1));
   }
 
   if (
     !Object.prototype.hasOwnProperty.call(OPERATOR_FNS, node.operator) ||
     typeof OPERATOR_FNS[node.operator] !== "function"
   ) {
-    throw Object.assign(
-      new Error("Invalid or unsupported operator: " + node.operator),
-      { status: 400 },
-    );
+    throw new FilterError("Invalid or unsupported operator: " + node.operator);
   }
 
   return OPERATOR_FNS[node.operator](record, node.field, node.value);
