@@ -1,12 +1,7 @@
 import { query } from "../pg.js";
-import {
-  cacheFlush,
-  cacheGet,
-  cacheSet,
-  hashParams,
-} from "../../services/cache.js";
+import { cachedList, invalidateListCache } from "./cache.js";
+import { buildUpdateStatement } from "./update-builder.js";
 
-const RESOURCE = "companies";
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
@@ -14,8 +9,19 @@ const SORT_COLUMNS = new Set([
   "domain",
   "industry",
   "size",
+  "employees",
 ]);
-const UPDATE_FIELDS = ["name", "domain", "industry", "size", "custom_fields"];
+const UPDATE_FIELDS = [
+  "name",
+  "domain",
+  "industry",
+  "website",
+  "country",
+  "size",
+  "employees",
+  "owner",
+  "custom_fields",
+];
 
 function validatePositiveInteger(value, name) {
   if (!Number.isInteger(value) || value <= 0) {
@@ -46,17 +52,17 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll(params = {}) {
-  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
-  const cached = await cacheGet(cacheKey);
-  if (cached) return cached;
+export function findAll(options = {}) {
+  return cachedList("companies", options, () => findAllUncached(options));
+}
 
-  const {
-    page = 1,
-    limit = 20,
-    sortBy = "created_at:desc",
-    q = "",
-  } = params;
+async function findAllUncached({
+  page = 1,
+  limit = 20,
+  sortBy = "created_at:desc",
+  q = "",
+  workspaceId,
+} = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -65,94 +71,116 @@ export async function findAll(params = {}) {
   const offset = (normalizedPage - 1) * normalizedLimit;
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
-  const whereClause = searchTerm
-    ? "WHERE (name ILIKE $1 OR domain ILIKE $1 OR industry ILIKE $1)"
-    : "";
+  // Built as an ordered condition list rather than a fixed `$1` string so the
+  // workspace predicate can be appended without renumbering by hand.
+  const conditions = [];
+  const params = [];
+  if (workspaceId !== undefined && workspaceId !== null) {
+    params.push(workspaceId);
+    conditions.push(
+      `(workspace_id = $${params.length} OR ($${params.length} = 'default' AND workspace_id IS NULL))`,
+    );
+  }
+  if (searchTerm) {
+    params.push(searchTerm);
+    const p = `$${params.length}`;
+    conditions.push(
+      `(name ILIKE ${p} OR domain ILIKE ${p} OR industry ILIKE ${p} OR website ILIKE ${p} OR country ILIKE ${p})`,
+    );
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
      FROM companies
      ${whereClause}`,
-    searchTerm ? [searchTerm] : [],
+    [...params],
   );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
+  const params2 = [...params, normalizedLimit, offset];
   const dataResult = await query(
     `SELECT *
      FROM companies
      ${whereClause}
      ORDER BY ${column} ${direction}
-     LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
-    searchTerm
-      ? [searchTerm, normalizedLimit, offset]
-      : [normalizedLimit, offset],
+     LIMIT $${params2.length - 1} OFFSET $${params2.length}`,
+    params2,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const result = {
+  return {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-  await cacheSet(cacheKey, result, 60);
-  return result;
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM companies WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  // The workspace predicate lives in the WHERE clause, not in a post-filter: a
+  // record belonging to another tenant has to be indistinguishable from one
+  // that does not exist.
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM companies WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL))"
+      : "SELECT * FROM companies WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
   return result.rows[0] || null;
 }
 
 export async function create(data = {}) {
   const result = await query(
     `INSERT INTO companies (
-       workspace_id, name, domain, industry, size, custom_fields
-     ) VALUES ($1, $2, $3, $4, $5, $6)
+       workspace_id, name, domain, industry, website, country, size,
+       employees, owner, custom_fields
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
     [
       data.workspace_id,
       data.name,
       data.domain,
       data.industry,
+      data.website,
+      data.country,
       data.size,
+      data.employees,
+      data.owner,
       data.custom_fields ?? {},
     ],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("companies");
+  return row;
 }
 
-export async function update(id, data = {}) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
+export async function update(id, data = {}, workspaceId) {
+  const statement = buildUpdateStatement({
+    id,
+    table: "companies",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields"],
+    jsonbFallback: {"custom_fields":"{}"},
+  });
+  if (!statement) return null;
 
-  const values = fields.map((field) => data[field]);
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  values.push(id);
-  const result = await query(
-    `UPDATE companies
-     SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}
-     RETURNING *`,
-    values,
-  );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const result = await query(statement.sql, statement.values);
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("companies");
+  return row;
 }
-
-async function remove(id) {
+async function remove(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    "DELETE FROM companies WHERE id = $1 RETURNING id",
-    [id],
+    scoped
+      ? "DELETE FROM companies WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL)) RETURNING id"
+      : "DELETE FROM companies WHERE id = $1 RETURNING id",
+    scoped ? [id, workspaceId] : [id],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("companies");
+  return deleted;
 }
 
 export { remove as delete };

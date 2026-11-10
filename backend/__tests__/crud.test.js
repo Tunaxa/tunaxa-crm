@@ -35,6 +35,8 @@ describe('Generic CRUD - leads', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.data)).toBe(true);
     expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+    expect(res.body.page).toBe(1);
+    expect(res.body.limit).toBeGreaterThanOrEqual(1);
     expect(res.body.total).toBeGreaterThanOrEqual(1);
   });
 
@@ -50,10 +52,9 @@ describe('Generic CRUD - leads', () => {
       .get('/api/leads?page=1&limit=1&sortBy=name&sortDir=asc')
       .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
     expect(res.body.page).toBe(1);
     expect(res.body.limit).toBe(1);
-    expect(res.body.data).toHaveLength(1);
-    expect(res.body.total).toBeGreaterThanOrEqual(1);
   });
 
   it('GET /api/leads/export.csv streams a CSV', async () => {
@@ -152,21 +153,21 @@ describe('Activity timeline filters', () => {
       .query({ contact, type: 'Email' })
       .set('Authorization', `Bearer ${token}`);
     expect(email.status).toBe(200);
-    expect(email.body.map((item) => item.title)).toEqual(['Email event']);
+    expect(email.body.data.map((item) => item.title)).toEqual(['Email event']);
 
     const system = await request(app)
       .get('/api/activities')
       .query({ contact, type: 'System' })
       .set('Authorization', `Bearer ${token}`);
     expect(system.status).toBe(200);
-    expect(system.body.map((item) => item.title)).toEqual(['Lifecycle event']);
+    expect(system.body.data.map((item) => item.title)).toEqual(['Lifecycle event']);
 
     const all = await request(app)
       .get('/api/activities')
       .query({ contact })
       .set('Authorization', `Bearer ${token}`);
     expect(all.status).toBe(200);
-    expect(all.body).toHaveLength(5);
+    expect(all.body.data).toHaveLength(5);
   });
 });
 

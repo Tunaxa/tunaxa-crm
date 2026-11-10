@@ -1,12 +1,7 @@
 import { query } from "../pg.js";
-import {
-  cacheFlush,
-  cacheGet,
-  cacheSet,
-  hashParams,
-} from "../../services/cache.js";
+import { cachedList, invalidateListCache } from "./cache.js";
+import { buildUpdateStatement } from "./update-builder.js";
 
-const RESOURCE = "contacts";
 const SORT_COLUMNS = new Set([
   "created_at",
   "updated_at",
@@ -56,17 +51,17 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
-export async function findAll(params = {}) {
-  const cacheKey = `${RESOURCE}:list:${hashParams(params)}`;
-  const cached = await cacheGet(cacheKey);
-  if (cached) return cached;
+export function findAll(options = {}) {
+  return cachedList("contacts", options, () => findAllUncached(options));
+}
 
-  const {
-    page = 1,
-    limit = 20,
-    sortBy = "created_at:desc",
-    q = "",
-  } = params;
+async function findAllUncached({
+  page = 1,
+  limit = 20,
+  sortBy = "created_at:desc",
+  q = "",
+  workspaceId,
+} = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
   const normalizedLimit = Math.min(
     validatePositiveInteger(limit, "limit"),
@@ -75,41 +70,75 @@ export async function findAll(params = {}) {
   const offset = (normalizedPage - 1) * normalizedLimit;
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
-  const whereClause = searchTerm
-    ? "WHERE (first_name ILIKE $1 OR last_name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1 OR title ILIKE $1)"
-    : "";
+  // Ordered condition list so the workspace predicate can be prepended without
+  // renumbering the search placeholders by hand.
+  const conditions = [];
+  const params = [];
+  if (workspaceId !== undefined && workspaceId !== null) {
+    params.push(workspaceId);
+    conditions.push(
+      `(workspace_id = $${params.length} OR ($${params.length} = 'default' AND workspace_id IS NULL))`,
+    );
+  }
+  if (searchTerm) {
+    params.push(searchTerm);
+    const p = `$${params.length}`;
+    conditions.push(
+      `(first_name ILIKE ${p} OR last_name ILIKE ${p} OR email ILIKE ${p} OR phone ILIKE ${p} OR title ILIKE ${p})`,
+    );
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const countResult = await query(
     `SELECT COUNT(*)::int AS total
      FROM contacts
      ${whereClause}`,
-    searchTerm ? [searchTerm] : [],
+    [...params],
   );
-  const limitParameter = searchTerm ? 2 : 1;
-  const offsetParameter = searchTerm ? 3 : 2;
+  const params2 = [...params, normalizedLimit, offset];
   const dataResult = await query(
     `SELECT *
      FROM contacts
      ${whereClause}
      ORDER BY ${column} ${direction}
-     LIMIT $${limitParameter} OFFSET $${offsetParameter}`,
-    searchTerm
-      ? [searchTerm, normalizedLimit, offset]
-      : [normalizedLimit, offset],
+     LIMIT $${params2.length - 1} OFFSET $${params2.length}`,
+    params2,
   );
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const result = {
+  return {
     data: dataResult.rows,
     total,
     page: normalizedPage,
     limit: normalizedLimit,
     totalPages: Math.ceil(total / normalizedLimit),
   };
-  await cacheSet(cacheKey, result, 60);
-  return result;
 }
 
-export async function findById(id) {
-  const result = await query("SELECT * FROM contacts WHERE id = $1", [id]);
+export async function findById(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM contacts WHERE id = $1 AND workspace_id = $2"
+      : "SELECT * FROM contacts WHERE id = $1",
+    scoped ? [id, workspaceId] : [id],
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Exact, case-insensitive email lookup. See the identical helper in leads.js
+ * for why findAll({ q }) cannot be used and why the newest match wins. Pass
+ * `workspaceId` for lookups driven by an anonymous form submission.
+ */
+export async function findByEmail(email, workspaceId) {
+  const value = String(email || "").trim();
+  if (!value) return null;
+  const scoped = workspaceId !== undefined && workspaceId !== null;
+  const result = await query(
+    scoped
+      ? "SELECT * FROM contacts WHERE LOWER(COALESCE(email, '')) = LOWER($1) AND workspace_id = $2 ORDER BY created_at DESC LIMIT 1"
+      : "SELECT * FROM contacts WHERE LOWER(COALESCE(email, '')) = LOWER($1) ORDER BY created_at DESC LIMIT 1",
+    scoped ? [value, workspaceId] : [value],
+  );
   return result.rows[0] || null;
 }
 
@@ -132,41 +161,39 @@ export async function create(data = {}) {
       data.custom_fields ?? {},
     ],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("contacts");
+  return row;
 }
 
-export async function update(id, data = {}) {
-  const fields = UPDATE_FIELDS.filter(
-    (field) =>
-      Object.prototype.hasOwnProperty.call(data, field) &&
-      data[field] !== undefined,
-  );
-  if (fields.length === 0) return null;
+export async function update(id, data = {}, workspaceId) {
+  const statement = buildUpdateStatement({
+    id,
+    table: "contacts",
+    allowedFields: UPDATE_FIELDS,
+    data,
+    workspaceId,
+    jsonbFields: ["custom_fields"],
+    jsonbFallback: {"custom_fields":"{}"},
+  });
+  if (!statement) return null;
 
-  const values = fields.map((field) => data[field]);
-  const assignments = fields.map(
-    (field, index) => `${field} = $${index + 1}`,
-  );
-  values.push(id);
-  const result = await query(
-    `UPDATE contacts
-     SET ${assignments.join(", ")}
-     WHERE id = $${fields.length + 1}
-     RETURNING *`,
-    values,
-  );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rows[0] || null;
+  const result = await query(statement.sql, statement.values);
+  const row = result.rows[0] || null;
+  if (row) await invalidateListCache("contacts");
+  return row;
 }
-
-async function remove(id) {
+async function remove(id, workspaceId) {
+  const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
-    "DELETE FROM contacts WHERE id = $1 RETURNING id",
-    [id],
+    scoped
+      ? "DELETE FROM contacts WHERE id = $1 AND (workspace_id = $2 OR ($2 = 'default' AND workspace_id IS NULL)) RETURNING id"
+      : "DELETE FROM contacts WHERE id = $1 RETURNING id",
+    scoped ? [id, workspaceId] : [id],
   );
-  await cacheFlush(`${RESOURCE}:list:*`);
-  return result.rowCount > 0;
+  const deleted = result.rowCount > 0;
+  if (deleted) await invalidateListCache("contacts");
+  return deleted;
 }
 
 export { remove as delete };

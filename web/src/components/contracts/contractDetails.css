@@ -1,0 +1,12 @@
+.contract-signature-image {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+  max-height: 220px;
+  object-fit: contain;
+  margin-top: 20px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}

@@ -1,4 +1,5 @@
 import { mutateDb } from '../store.js';
+import { getApiBaseUrl } from '../runtime.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
@@ -12,7 +13,7 @@ import { createRateLimiter } from '../services/rateLimit.js';
 const providerLimiter = createRateLimiter({ windowMs: 60_000, max: 30, prefix: 'provider' });
 
 function injectTracking(body, messageId, publicBaseUrl) {
-  const baseUrl = publicBaseUrl || 'http://127.0.0.1:3001';
+  const baseUrl = publicBaseUrl || getApiBaseUrl();
   const pixel = `<img src="${baseUrl}/api/tracking/open/${messageId}" width="1" height="1" style="display:none" alt="" />`;
   let html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#33475b">${body.replace(/\n/g, '<br>')}</div>${pixel}`;
   html = html.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${baseUrl}/api/tracking/click/${messageId}?url=${encodeURIComponent(url)}">${url}</a>`);

@@ -3,17 +3,138 @@ import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
 import { now } from '../helpers.js';
 import { cacheFlush } from '../services/cache.js';
+import { broadcast } from './sse.js';
 import { createRateLimiter } from '../services/rateLimit.js';
+import { mergeRecords, MergeError, MERGE_RESOURCES } from '../services/merge.js';
+import { checkWriteFieldMask } from './permissions.js';
+import { findDuplicateScan, DEDUP_RESOURCES } from '../services/dedup.js';
 import Fuse from 'fuse.js';
+import { repoFor } from '../db/repositories/index.js';
+import { PG_RESOURCES, pgToLegacy, legacyToPg } from '../db/legacy-shape.js';
+import { transaction } from '../db/pg.js';
 
 const norm = value => String(value || '').trim().toLowerCase();
-const emailEquals = (record, email) => norm(record.customerEmail) === email || norm(record.email) === email || norm(record.contact) === email;
+// `contactEmail` is how a ticket records the requester's address, so the portal
+// needs it to match at all: without it the tickets section of a customer's
+// portal is always empty. None of the other portal resources carry that field,
+// so widening the check only affects tickets.
+const emailEquals = (record, email) =>
+  norm(record.customerEmail) === email ||
+  norm(record.email) === email ||
+  norm(record.contactEmail) === email ||
+  norm(record.contact) === email;
+
+// Same idiom as tenantOf() in routes/resources.js, duplicated rather than
+// imported: a route module reaching into another route module is how the two
+// tenant checks drift apart. Server-derived, never taken from the body - a
+// client-supplied workspace would let any authenticated user read or merge
+// another tenant's records.
+const tenantOf = req => req.user?.workspaceId || req.user?.workspace_id || 'default';
+
+// Contacts, leads, companies, deals, tasks, activities, the six revenue
+// resources and the six 007 marketing/service resources are served from
+// Postgres rather than the JSON store (see
+// migrations/004_contacts_leads.sql, 005_core_entities.sql,
+// 006_revenue_tables.sql and 007_marketing_service_tables.sql), so anything
+// that reads a whole resource has to go through the same repositories the write
+// path uses. Reading them from readDb() would consult an empty JSON store and
+// silently report zero rows while the records plainly exist in the database.
+async function loadRows(resource) {
+  if (!PG_RESOURCES.has(resource)) {
+    const db = await readDb();
+    return db[resource] || [];
+  }
+  const repo = repoFor(resource);
+  const rows = [];
+  // findAll() caps a single page at 100 rows, so page through the whole result
+  // set. Stopping after one page would quietly drop duplicates beyond it.
+  for (let page = 1; ; page++) {
+    const result = await repo.findAll({ page, limit: 100 });
+    rows.push(...result.data.map(row => pgToLegacy(row, resource)));
+    if (result.data.length === 0 || rows.length >= result.total) break;
+  }
+  return rows;
+}
 
 export default function registerDataOpsRoutes(app) {
+  // ── Fuzzy duplicate detection (confidence-scored candidates) ───────────────
+  // Registered ahead of routes/resources.js so it wins over the generic
+  // `/api/:resource/:id` read for the literal `duplicates` segment. Anything
+  // this engine does not handle calls next() and falls through unchanged.
+  app.get('/api/:resource/duplicates', auth, async (req, res, next) => {
+    const resource = req.params.resource;
+    if (!DEDUP_RESOURCES.has(resource)) return next();
+
+    // A threshold of 0 would report every pair in the tenant, and a negative
+    // limit is meaningless: both are clamped rather than rejected so a UI that
+    // sends an empty slider value degrades instead of erroring.
+    const threshold = Math.min(Math.max(Number(req.query.threshold ?? 0.65) || 0, 0), 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
+
+    try {
+      const scan = await findDuplicateScan({
+        resource,
+        workspaceId: tenantOf(req),
+        threshold,
+        limit,
+      });
+      res.json({
+        resource,
+        threshold,
+        limit,
+        total: scan.duplicates.length,
+        scanned: scan.scanned,
+        scoredPairs: scan.scoredPairs,
+        exhaustive: scan.exhaustive,
+        duplicates: scan.duplicates,
+      });
+    } catch (err) {
+      return next(err);
+    }
+  });
+
+  // ── Atomic merge ──────────────────────────────────────────────────────────
+  // One transaction: lock both rows, re-point every child pointer, update the
+  // survivor, delete the duplicate, log the merge. See services/merge.js for
+  // why none of those steps may be split up.
+  app.post('/api/:resource/merge', auth, requireRole('admin', 'member'), checkWriteFieldMask(null, (req) => req.body?.fieldOverrides ?? {}), async (req, res, next) => {
+    const resource = req.params.resource;
+    if (!MERGE_RESOURCES.has(resource)) return next();
+
+    const { primaryId, secondaryId, fieldOverrides, dryRun } = req.body || {};
+    try {
+      const result = await mergeRecords({
+        resource,
+        primaryId,
+        secondaryId,
+        fieldOverrides,
+        workspaceId: tenantOf(req),
+        dryRun: dryRun === true,
+        actor: req.user?.name || req.user?.email || null,
+      });
+      // A dry run rolled back, so nothing changed and nothing should be
+      // broadcast or evicted from the cache.
+      if (!result.dryRun) {
+        cacheFlush(resource);
+        broadcast('record.updated', { resource, item: result.mergedRecord });
+      }
+      res.json(result);
+    } catch (err) {
+      // MergeError carries the status its failure means: 400 for a malformed
+      // request, 404 for a row that is missing *or* owned by another tenant
+      // (the two are deliberately indistinguishable), 409 for a mid-transaction
+      // conflict. Anything else is a genuine fault and goes to the error
+      // handler.
+      if (err instanceof MergeError) {
+        return res.status(err.status).json({ error: err.message, code: err.code });
+      }
+      return next(err);
+    }
+  });
+
   app.get('/api/duplicates', auth, requireRole('admin', 'member'), async (req, res) => {
     const resource = req.query.resource === 'companies' ? 'companies' : 'contacts';
-    const db = await readDb();
-    const rows = db[resource] || [];
+    const rows = await loadRows(resource);
     const keyOf = row => norm(resource === 'companies' ? row.name : (row.email || row.name));
     const fuzzyKeyOf = row => {
       if (resource !== 'companies' && row.email) return norm(String(row.email).split('@')[0]);
@@ -156,6 +277,37 @@ export default function registerDataOpsRoutes(app) {
     if (!keepId || !mergeIds.length) return res.status(400).json({ error: 'keepId and at least one mergeId are required' });
     if (mergeIds.includes(keepId)) return res.status(400).json({ error: 'keepId and mergeIds must be distinct' });
     if (new Set(mergeIds).size !== mergeIds.length) return res.status(400).json({ error: 'mergeIds must be unique' });
+    if (PG_RESOURCES.has(resource)) {
+      const table = resource === 'contacts' ? 'contacts' : 'companies';
+      const writable = table === 'contacts'
+        ? ['workspace_id', 'company_id', 'first_name', 'last_name', 'email', 'phone', 'title', 'owner_id', 'custom_fields']
+        : ['workspace_id', 'name', 'domain', 'industry', 'website', 'country', 'size', 'employees', 'owner', 'custom_fields'];
+      // All participants are locked and checked before either update or delete.
+      const result = await transaction(async client => {
+        const { rows } = await client.query(`SELECT * FROM ${table} WHERE id = ANY($1::text[]) FOR UPDATE`, [[keepId, ...mergeIds]]);
+        if (rows.length !== mergeIds.length + 1) return null;
+        const original = rows.find(row => row.id === keepId);
+        const keep = pgToLegacy(original, resource);
+        for (const mergeId of mergeIds) {
+          const merge = pgToLegacy(rows.find(row => row.id === mergeId), resource);
+          for (const [key, value] of Object.entries(merge)) {
+            if (['id', 'createdAt', 'updatedAt'].includes(key)) continue;
+            if ((keep[key] === undefined || keep[key] === null || keep[key] === '') && value !== undefined && value !== '') keep[key] = value;
+          }
+        }
+        const data = legacyToPg(keep, resource);
+        const fields = writable.filter(key => Object.hasOwn(data, key));
+        const values = fields.map(key => data[key]);
+        const assignments = fields.map((key, index) => `"${key}" = $${index + 1}`);
+        values.push(keepId);
+        const updated = await client.query(`UPDATE ${table} SET ${assignments.join(', ')}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`, values);
+        await client.query(`DELETE FROM ${table} WHERE id = ANY($1::text[])`, [mergeIds]);
+        return pgToLegacy(updated.rows[0], resource);
+      });
+      if (!result) return res.status(404).json({ error: 'One or both records not found' });
+      await cacheFlush(`${resource}:list:*`);
+      return res.json(result);
+    }
     const result = await mutateDb(db => {
       const rows = db[resource] || [];
       const keep = rows.find(r => r.id === keepId);
@@ -177,18 +329,36 @@ export default function registerDataOpsRoutes(app) {
     res.json(result.keep);
   });
 
-  app.post('/api/portal/access', createRateLimiter({ windowMs: 60_000, max: 25, prefix: 'portal' }), async (req, res) => {
+  app.post('/api/portal/access', createRateLimiter({ windowMs: 60_000, max: 25, prefix: 'portal' }), async (req, res, next) => {
     const email = norm(req.body?.email);
     if (!email) return res.status(400).json({ error: 'Email is required' });
-    const db = await readDb();
-    const contact = (db.contacts || []).find(c => norm(c.email) === email) || null;
-    const pick = rows => (rows || []).filter(r => emailEquals(r, email));
-    res.json({
-      customer: { email, name: contact?.name || email },
-      quotes: pick(db.quotes),
-      contracts: pick(db.contracts),
-      invoices: pick(db.invoices),
-      tickets: pick(db.tickets)
-    });
+    try {
+      // Every read goes through loadRows so the portal reflects the same
+      // source of truth as the write path. Reading these arrays out of db.json
+      // would return empty lists as soon as records are created, because these
+      // resources are written to Postgres: contacts and leads in
+      // 004_contacts_leads.sql, the revenue tables in 006_revenue_tables.sql,
+      // and tickets in 007_marketing_service_tables.sql. loadRows picks the
+      // right source per resource from PG_RESOURCES, so the portal covers
+      // tickets with no change beyond adding the resource to that set.
+      const [contactRows, quoteRows, contractRows, invoiceRows, ticketRows] = await Promise.all([
+        loadRows('contacts'),
+        loadRows('quotes'),
+        loadRows('contracts'),
+        loadRows('invoices'),
+        loadRows('tickets'),
+      ]);
+      const pick = rows => rows.filter(r => emailEquals(r, email));
+      const contact = contactRows.find(c => norm(c.email) === email) || null;
+      res.json({
+        customer: { email, name: contact?.name || email },
+        quotes: pick(quoteRows),
+        contracts: pick(contractRows),
+        invoices: pick(invoiceRows),
+        tickets: pick(ticketRows)
+      });
+    } catch (err) {
+      return next(err);
+    }
   });
 }
