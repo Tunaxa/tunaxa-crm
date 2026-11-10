@@ -7,6 +7,7 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Security
+- Authentication security: implemented SHA-256 hashed refresh tokens, single-use rotation, reuse detection with automatic session invalidation, and global logout-all.
 - Security hardening: tightened Helmet CSP headers with `script-src-attr` restrictions and an explicit image allow-list, and enhanced the Origin/Referer CSRF guard with null-origin and `Sec-Fetch-Site: cross-site` protections.
 - File upload security: dependency-free magic-bytes signature verification rejecting executables and spoofed MIME types.
 - Server-Sent Events isolation: enforced purpose-scoped SSE token authentication and restricted broadcasts to explicit workspace and user rooms.
