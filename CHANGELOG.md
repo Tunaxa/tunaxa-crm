@@ -8,6 +8,7 @@ and this project adheres to Semantic Versioning.
 
 ### Security
 - File upload security: dependency-free magic-bytes signature verification rejecting executables and spoofed MIME types.
+- Server-Sent Events isolation: enforced purpose-scoped SSE token authentication and restricted broadcasts to explicit workspace and user rooms.
 - **RBAC Field-Masking on Write (`backend/routes/permissions.js` & route handlers):**
   - Implemented write-side field-mask validation engine preventing unauthorized users from writing, updating, or clearing masked attributes via `POST`, `PUT`, `PATCH`, and batch endpoints.
   - Added `normalizeFieldKey` folding keys to snake_case so casing variations (`firstName`, `first_name`, `First Name`) cannot bypass field permission masks.
