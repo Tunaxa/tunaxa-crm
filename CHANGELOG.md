@@ -8,6 +8,8 @@ and this project adheres to Semantic Versioning.
 
 ### Security
 - Security hardening: tightened Helmet CSP headers with `script-src-attr` restrictions and an explicit image allow-list, and enhanced the Origin/Referer CSRF guard with null-origin and `Sec-Fetch-Site: cross-site` protections.
+- File upload security: dependency-free magic-bytes signature verification rejecting executables and spoofed MIME types.
+- Server-Sent Events isolation: enforced purpose-scoped SSE token authentication and restricted broadcasts to explicit workspace and user rooms.
 - **RBAC Field-Masking on Write (`backend/routes/permissions.js` & route handlers):**
   - Implemented write-side field-mask validation engine preventing unauthorized users from writing, updating, or clearing masked attributes via `POST`, `PUT`, `PATCH`, and batch endpoints.
   - Added `normalizeFieldKey` folding keys to snake_case so casing variations (`firstName`, `first_name`, `First Name`) cannot bypass field permission masks.
@@ -351,6 +353,7 @@ and this project adheres to Semantic Versioning.
 
 ### Fixed
 
+- Upload endpoints rate limiting: applied shared IP-based rate limiting across all upload routes.
 - Test harness stability: isolated test database paths and ensured serial execution configurations for Windows environments.
 - **Stale Repository SQL Assertions (`backend/db/repositories/__tests__/`):**
   - Four repository tests (`contacts`, `companies`, `leads`, `email-lists`) asserted on the pre-merge `custom_fields = $n` overwrite form and on a structured object in the bound parameters, so they failed against the JSONB merge rewrite introduced with the atomic duplicate merge engine. Both expectations now assert the merge expression `COALESCE(custom_fields, '{}'::jsonb) || $n::jsonb` and the serialized JSON parameter that the `::jsonb` cast requires. Assertions were tightened to name the merge explicitly rather than loosened to a substring that would match either form.
