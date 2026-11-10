@@ -24,6 +24,9 @@
 //   - Same-origin is always allowed, compared against the request's own Host (and
 //     scheme, where determinable) so the app works on any hostname it is
 //     deployed behind without config.
+//   - `Sec-Fetch-Site: cross-site` and the opaque `null` origin are rejected
+//     outright on unsafe methods. Both are browser signals that the request is
+//     cross-origin, and neither can be a trusted deployment origin.
 //   - Everything else must match an explicitly allowed origin.
 //
 // The exempt list exists because this API deliberately exposes a public,
@@ -38,7 +41,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 // Paths that are anonymous and/or intentionally reachable from other sites.
 // Matched against req.path (no query string) and anchored at the start.
-const EXEMPT_PATTERNS = [
+export const EXEMPT_PATTERNS = [
   /^\/api\/twilio\//, // Twilio voice/status/recording callbacks
   /^\/api\/hooks\//, // webhook receiver, authenticated by the path token
   /^\/api\/web\//, // tracking pixel: fires from any site and any email client
@@ -152,8 +155,24 @@ export function originGuard(options = {}) {
     if (SAFE_METHODS.has(req.method)) return next();
     if (isExemptPath(req.path)) return next();
 
+    // Fetch Metadata defence in depth: a browser that labels an unsafe request
+    // as cross-site is attempting CSRF, even when Origin is absent or spoofable.
+    // same-origin / same-site / none pass through to the origin check below.
+    const secFetchSite = req.get ? req.get("sec-fetch-site") : null;
+    if (secFetchSite && String(secFetchSite).trim().toLowerCase() === "cross-site") {
+      return res.status(403).json({ error: "Cross-origin request forbidden" });
+    }
+
     const origin = req.headers.origin;
     const referer = req.headers.referer;
+
+    // The opaque `null` origin comes from sandboxed iframes, file:// documents
+    // and some redirects. Treating it as "missing" would let those contexts
+    // drive authenticated writes, so reject it before the fallback below.
+    if (typeof origin === "string" && origin.trim().toLowerCase() === "null") {
+      return res.status(403).json({ error: "Cross-origin request forbidden" });
+    }
+
     const presented = origin || referer;
 
     // No Origin and no Referer: a non-browser client. Nothing to forge.
