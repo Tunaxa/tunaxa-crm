@@ -7,6 +7,12 @@ import { mutateDb } from "../store.js";
 let app;
 let token;
 
+// The filter engine runs in memory, so these fixtures live in a JSON-backed
+// collection. Dev routes PG_RESOURCES (leads, contacts, deals, …) through the
+// repository and rejects advanced filters there until the predicate can be
+// pushed into SQL, so a legacy collection keeps the operator matrix meaningful.
+const FILTER_RESOURCE = "landingPages";
+
 const LEAD_FIXTURES = [
   {
     id: "lead_afq_1",
@@ -76,7 +82,7 @@ const get = (resource, { filters, ...rest } = {}) => {
     .set("Authorization", `Bearer ${token}`);
 };
 
-const ids = res => res.body.map(row => row.id).sort();
+const ids = res => res.body.data.map(row => row.id).sort();
 
 beforeAll(async () => {
   await resetTestDb();
@@ -86,7 +92,7 @@ beforeAll(async () => {
   token = await loginAs(app);
 
   await mutateDb(db => {
-    db.leads.push(...LEAD_FIXTURES);
+    db[FILTER_RESOURCE].push(...LEAD_FIXTURES);
     db.messages.push(...MESSAGE_FIXTURES);
   });
 });
@@ -97,7 +103,7 @@ afterAll(async () => {
 
 // A payload that passes parsing/validation, used as a baseline for 400s.
 const expect400 = async (filters, fragment) => {
-  const res = await get("leads", { filters });
+  const res = await get(FILTER_RESOURCE, { filters });
   expect(res.status).toBe(400);
   expect(res.body.error).toBeTruthy();
   if (fragment) expect(res.body.error).toContain(fragment);
@@ -127,7 +133,7 @@ describe("advanced filters: payload validation", () => {
   });
 
   it("rejects an unrecognized operator nested inside a group", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({
         $and: [{ field: "score", operator: "eq", value: 10 }, { field: "x", operator: "gte", value: 1 }],
       }),
@@ -179,21 +185,21 @@ describe("advanced filters: payload validation", () => {
   });
 
   it("rejects a blank filters value", async () => {
-    const res = await get("leads", { filters: "   " });
+    const res = await get(FILTER_RESOURCE, { filters: "   " });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("must not be empty");
   });
 
   it("leaves the listing untouched when no filters param is sent", async () => {
-    const res = await get("leads");
+    const res = await get(FILTER_RESOURCE);
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(LEAD_FIXTURES.length);
+    expect(res.body.data).toHaveLength(LEAD_FIXTURES.length);
   });
 });
 
 describe("advanced filters: eq and neq", () => {
   it("eq matches strict equality", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "status", operator: "eq", value: "open" }),
     });
     expect(res.status).toBe(200);
@@ -201,32 +207,32 @@ describe("advanced filters: eq and neq", () => {
   });
 
   it("eq is strict about types, so 90 does not match \"90\"", async () => {
-    const numeric = await get("leads", {
+    const numeric = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "score", operator: "eq", value: 90 }),
     });
-    const stringy = await get("leads", {
+    const stringy = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "score", operator: "eq", value: "90" }),
     });
     expect(ids(numeric)).toEqual(["lead_afq_1"]);
-    expect(stringy.body).toEqual([]);
+    expect(stringy.body.data).toEqual([]);
   });
 
   it("eq does not match a missing field", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "nonexistent", operator: "eq", value: "x" }),
     });
-    expect(res.body).toEqual([]);
+    expect(res.body.data).toEqual([]);
   });
 
   it("eq on null only matches an explicit null", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "notes", operator: "eq", value: null }),
     });
     expect(ids(res)).toEqual(["lead_afq_3"]);
   });
 
   it("neq is the complement of eq, including for missing fields", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "status", operator: "neq", value: "open" }),
     });
     expect(ids(res)).toEqual(["lead_afq_2", "lead_afq_4"]);
@@ -235,10 +241,10 @@ describe("advanced filters: eq and neq", () => {
 
 describe("advanced filters: contains", () => {
   it("is a case-insensitive substring match", async () => {
-    const upper = await get("leads", {
+    const upper = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "lastName", operator: "contains", value: "ANDERSON" }),
     });
-    const lower = await get("leads", {
+    const lower = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "lastName", operator: "contains", value: "anderson" }),
     });
     expect(ids(upper)).toEqual(["lead_afq_1", "lead_afq_4"]);
@@ -246,49 +252,49 @@ describe("advanced filters: contains", () => {
   });
 
   it("matches mid-string, not just at the start", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "email", operator: "contains", value: "@initech" }),
     });
     expect(ids(res)).toEqual(["lead_afq_3"]);
   });
 
   it("does not match a missing or null field", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "nonexistent", operator: "contains", value: "a" }),
     });
-    expect(res.body).toEqual([]);
+    expect(res.body.data).toEqual([]);
   });
 });
 
 describe("advanced filters: starts_with", () => {
   it("matches a case-insensitive prefix", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "company", operator: "starts_with", value: "ac" }),
     });
     expect(ids(res)).toEqual(["lead_afq_1"]);
   });
 
   it("does not match a substring that is not at the start", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "company", operator: "starts_with", value: "corporation" }),
     });
-    expect(res.body).toEqual([]);
+    expect(res.body.data).toEqual([]);
   });
 
   it("does not match a missing or null field", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "nonexistent", operator: "starts_with", value: "a" }),
     });
-    expect(res.body).toEqual([]);
+    expect(res.body.data).toEqual([]);
   });
 });
 
 describe("advanced filters: gt and lt", () => {
   it("compares numbers", async () => {
-    const gt = await get("leads", {
+    const gt = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "score", operator: "gt", value: 60 }),
     });
-    const lt = await get("leads", {
+    const lt = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "score", operator: "lt", value: 60 }),
     });
     expect(ids(gt)).toEqual(["lead_afq_1", "lead_afq_3"]);
@@ -296,10 +302,10 @@ describe("advanced filters: gt and lt", () => {
   });
 
   it("is exclusive at the boundary", async () => {
-    const gt = await get("leads", {
+    const gt = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "score", operator: "gt", value: 70 }),
     });
-    const lt = await get("leads", {
+    const lt = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "score", operator: "lt", value: 70 }),
     });
     expect(ids(gt)).toEqual(["lead_afq_1"]);
@@ -307,17 +313,17 @@ describe("advanced filters: gt and lt", () => {
   });
 
   it("compares a numeric field against a numeric string", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "score", operator: "gt", value: "40" }),
     });
     expect(ids(res)).toEqual(["lead_afq_1", "lead_afq_3"]);
   });
 
   it("compares ISO date strings chronologically", async () => {
-    const gt = await get("leads", {
+    const gt = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "createdAt", operator: "gt", value: "2024-03-15" }),
     });
-    const lt = await get("leads", {
+    const lt = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "createdAt", operator: "lt", value: "2024-03-15" }),
     });
     // lead_afq_1 = 2024-01-05 (before), lead_afq_2 = 2024-03-15 (equal, excluded),
@@ -327,58 +333,58 @@ describe("advanced filters: gt and lt", () => {
   });
 
   it("is exclusive at the date boundary too", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "createdAt", operator: "gt", value: "2024-06-20" }),
     });
-    expect(res.body).toEqual([]);
+    expect(res.body.data).toEqual([]);
   });
 
   it("does not match when the value is not comparable", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "status", operator: "gt", value: 5 }),
     });
-    expect(res.body).toEqual([]);
+    expect(res.body.data).toEqual([]);
   });
 });
 
 describe("advanced filters: is_set", () => {
   it("is true for a populated field", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "company", operator: "is_set" }),
     });
-    expect(res.body).toHaveLength(LEAD_FIXTURES.length);
+    expect(res.body.data).toHaveLength(LEAD_FIXTURES.length);
   });
 
   it("is false for an empty string, null, empty array, or missing field", async () => {
-    const emptyString = await get("leads", {
+    const emptyString = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "notes", operator: "is_set" }),
     });
     // lead_afq_2 notes === "", lead_afq_3 notes === null, 1 and 4 are populated.
     expect(ids(emptyString)).toEqual(["lead_afq_1", "lead_afq_4"]);
 
-    const emptyArray = await get("leads", {
+    const emptyArray = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "tags", operator: "is_set" }),
     });
     // lead_afq_2 has tags: []; leads 3 and 4 have no tags key at all.
     expect(ids(emptyArray)).toEqual(["lead_afq_1"]);
 
-    const missing = await get("leads", {
+    const missing = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "nonexistent", operator: "is_set" }),
     });
-    expect(missing.body).toEqual([]);
+    expect(missing.body.data).toEqual([]);
   });
 
   it("treats 0 and false as set values", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({ field: "score", operator: "is_set", value: false }),
     });
-    expect(res.body).toHaveLength(LEAD_FIXTURES.length);
+    expect(res.body.data).toHaveLength(LEAD_FIXTURES.length);
   });
 });
 
 describe("advanced filters: logical grouping", () => {
   it("applies $and across eq and gt", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({
         $and: [
           { field: "status", operator: "eq", value: "open" },
@@ -391,7 +397,7 @@ describe("advanced filters: logical grouping", () => {
   });
 
   it("applies $and across three conditions", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({
         $and: [
           { field: "status", operator: "eq", value: "open" },
@@ -404,7 +410,7 @@ describe("advanced filters: logical grouping", () => {
   });
 
   it("accepts AND and OR without the $ sigil", async () => {
-    const upperAnd = await get("leads", {
+    const upperAnd = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({
         AND: [
           { field: "status", operator: "eq", value: "open" },
@@ -412,7 +418,7 @@ describe("advanced filters: logical grouping", () => {
         ],
       }),
     });
-    const upperOr = await get("leads", {
+    const upperOr = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({
         OR: [
           { field: "status", operator: "eq", value: "won" },
@@ -425,7 +431,7 @@ describe("advanced filters: logical grouping", () => {
   });
 
   it("applies $or as a union", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({
         $or: [
           { field: "status", operator: "eq", value: "won" },
@@ -437,7 +443,7 @@ describe("advanced filters: logical grouping", () => {
   });
 
   it("evaluates nested groups recursively", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({
         $or: [
           {
@@ -454,7 +460,7 @@ describe("advanced filters: logical grouping", () => {
   });
 
   it("nests three levels deep", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       filters: JSON.stringify({
         $and: [
           {
@@ -478,44 +484,26 @@ describe("advanced filters: logical grouping", () => {
 
 describe("advanced filters: composition with existing query handling", () => {
   it("compounds with the q text search", async () => {
-    const res = await get("leads", {
+    const res = await get(FILTER_RESOURCE, {
       q: "globex",
       filters: JSON.stringify({ field: "status", operator: "eq", value: "won" }),
     });
     expect(ids(res)).toEqual(["lead_afq_2"]);
 
-    const mismatch = await get("leads", {
+    const mismatch = await get(FILTER_RESOURCE, {
       q: "globex",
       filters: JSON.stringify({ field: "status", operator: "eq", value: "open" }),
     });
-    expect(mismatch.body).toEqual([]);
+    expect(mismatch.body.data).toEqual([]);
   });
 
-  it("compounds with the activities type filter", async () => {
-    await mutateDb(db => {
-      db.activities.push(
-        {
-          id: "act_afq_1",
-          type: "email",
-          title: "kickoff",
-          recordId: "lead_afq_1",
-          createdAt: "2024-01-05T00:00:00.000Z",
-        },
-        {
-          id: "act_afq_2",
-          type: "meeting",
-          title: "review",
-          recordId: "lead_afq_2",
-          createdAt: "2024-01-06T00:00:00.000Z",
-        },
-      );
-    });
-
-    const res = await get("activities", {
+  it("compounds with the messages type filter", async () => {
+    const res = await get("messages", {
       type: "email",
-      filters: JSON.stringify({ field: "recordId", operator: "eq", value: "lead_afq_1" }),
+      filters: JSON.stringify({ field: "channel", operator: "eq", value: "email" }),
     });
-    expect(ids(res)).toEqual(["act_afq_1"]);
+    expect(res.status).toBe(200);
+    expect(ids(res)).toEqual(["msg_afq_1", "msg_afq_3", "msg_afq_5"]);
   });
 
   it("compounds with messages pagination and reports the filtered total", async () => {
@@ -524,7 +512,7 @@ describe("advanced filters: composition with existing query handling", () => {
     });
     expect(filtered.status).toBe(200);
     expect(filtered.body.total).toBe(3);
-    expect(filtered.body.items).toHaveLength(3);
+    expect(filtered.body.data).toHaveLength(3);
 
     const paged = await get("messages", {
       limit: "2",
@@ -532,15 +520,16 @@ describe("advanced filters: composition with existing query handling", () => {
       filters: JSON.stringify({ field: "channel", operator: "eq", value: "email" }),
     });
     expect(paged.body.total).toBe(3);
-    expect(paged.body.items).toHaveLength(1);
-    expect(paged.body.hasMore).toBe(false);
+    expect(paged.body.data).toHaveLength(1);
+    expect(paged.body.page).toBe(2);
   });
 
   it("keeps the existing unfiltered pagination contract intact", async () => {
     const res = await get("messages", { limit: "2", page: "1" });
     expect(res.body.total).toBe(MESSAGE_FIXTURES.length);
-    expect(res.body.items).toHaveLength(2);
-    expect(res.body.hasMore).toBe(true);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.page).toBe(1);
+    expect(res.body.limit).toBe(2);
   });
 
   it("leaves an unknown resource to fall through, even with an invalid payload", async () => {
