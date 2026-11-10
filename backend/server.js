@@ -73,24 +73,42 @@ import { seedPlaybooks } from "./services/seedPlaybooks.js";
 
 const app = express();
 app.disable("x-powered-by");
+const isProduction = process.env.NODE_ENV === "production";
 app.use(
   helmet({
-    frameguard: { action: "deny" },
     contentSecurityPolicy: {
+      // The API serves JSON, /uploads, and the built SPA from web/dist, so this
+      // policy also governs the app shell: no `unsafe-eval`, no wildcard http:/
+      // https: sources, and inline event handlers are forbidden. Two external
+      // image hosts are allow-listed because the SPA's footer and pixel divider
+      // load assets from them; everything else must be same-origin.
+      useDefaults: false,
       directives: {
-        defaultSrc: [
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        connectSrc: ["'self'", "ws:", "wss:"],
+        fontSrc: ["'self'", "data:"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
+        imgSrc: [
           "'self'",
-          "'unsafe-inline'",
-          "'unsafe-eval'",
           "data:",
           "blob:",
-          "http:",
-          "https:",
+          "https://img.icons8.com",
+          "https://framerusercontent.com",
         ],
-        connectSrc: ["'self'", "http:", "https:", "ws:", "wss:"],
-        frameAncestors: ["'none'"],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        ...(isProduction ? { upgradeInsecureRequests: [] } : {}),
       },
     },
+    // Defence against clickjacking and MIME sniffing (both also asserted in
+    // backend/__tests__/security-headers-csrf.test.js).
+    frameguard: { action: "deny" },
+    noSniff: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
     hsts: {
       maxAge: 31_536_000,
       includeSubDomains: true,
