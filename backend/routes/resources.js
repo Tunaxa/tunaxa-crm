@@ -31,6 +31,7 @@ import {
   checkWriteFieldMask,
   objectTypeOf,
 } from "./permissions.js";
+import { parseFilters, applyFilters } from "../services/queryFilter.js";
 import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
 import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
@@ -284,16 +285,40 @@ export default function registerResourceRoutes(app) {
    * Protected. Lists records of a registered resource.
    * PostgreSQL-backed resources are read through their repository (tenant-scoped
    * in SQL, field-masked after auth); JSON-store resources are filtered in memory.
-   * Query params: page, limit (1-50), q, plus resource-specific filters such as
-   * type/recordId/contact (activities) and type (messages).
-   * Response: 200 [{ record }]; /api/messages additionally returns
-   * { items, total, page, limit, hasMore } when page or limit is supplied.
+   * Query params: page, limit (1-100), q, filters (JSON), plus
+   * resource-specific filters such as type/recordId/contact (activities) and
+   * type (messages).
+   * Response: 200 { data, total, page, limit }. Advanced filters are supported
+   * for JSON-store resources; PG-backed resources reject them with 400 until the
+   * predicate can be pushed into SQL.
    */
   app.get("/api/:resource", auth, attachFieldPerms, async (req, res, next) => {
     if (!resources.has(req.params.resource)) return next();
 
-    // ── PG path: every resource in PG_RESOURCES ────────────────────────────
+    // Advanced filter payload: validated up front so a malformed schema is a
+    // 400 before any storage work.
+    let advancedFilters = null;
+
+    if (req.query.filters !== undefined) {
+      try {
+        advancedFilters = parseFilters(req.query.filters);
+      } catch (error) {
+        return res.status(400).json({ error: error.message });
+      }
+    }
+
+    // ── PG path: every resource in PG_RESOURCES ───────────────────────────
     if (PG_RESOURCES.has(req.params.resource)) {
+      // The filter engine runs in memory over legacy-shaped rows, so it cannot
+      // push a predicate into the repository's SQL. Fetching the whole table
+      // just to filter one page would be an unbounded read, so reject the
+      // combination explicitly instead of silently ignoring it.
+      if (advancedFilters) {
+        return res.status(400).json({
+          error:
+            "Advanced query filters are not yet supported for postgres-backed resources",
+        });
+      }
       try {
         const payload = await pgList(
           req.params.resource,
@@ -377,6 +402,10 @@ export default function registerResourceRoutes(app) {
         );
       }
     }
+
+    // Compounds with q / type / recordId above, and feeds the pagination
+    // below so `total` reflects the filtered set.
+    rows = applyFilters(rows, advancedFilters);
 
     if (req.fieldPerms) {
       rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
