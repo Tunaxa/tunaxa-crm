@@ -1,3 +1,4 @@
+import { Shell } from "./shell/Shell";
 import { WorkflowPicker } from "./pages/workflows/WorkflowPicker";
 import { WorkflowDetailPage } from "./pages/workflows/WorkflowDetailPage";
 import { DuplicateResolution } from "./components/DuplicateResolution";
@@ -28,7 +29,6 @@ import {
 } from "react";
 import {
   Navigate,
-  NavLink,
   Route,
   Routes,
   useLocation,
@@ -71,8 +71,6 @@ import { OrdersPage } from "./pages/revenue/OrdersPage";
 import { ProductsPage } from "./pages/revenue/ProductsPage";
 import { QuotesPage } from "./pages/revenue/QuotesPage";
 import { AppProvider, useApp } from "./context/AppContext";
-import { LayoutGrid, Sun, Moon } from "lucide-react";
-import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CustomReportBuilder } from "./components/reports/CustomReportBuilder";
@@ -110,115 +108,6 @@ const PipelinePage = lazy(() =>
 
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
-type NavItem = { path: string; label: string; icon: string };
-type NavGroup = { label: string; items: NavItem[] };
-
-const navGroups: NavGroup[] = [
-  {
-    label: "nav.overview",
-    items: [{ path: "/dashboard", label: "nav.dashboard", icon: "dashboard" }],
-  },
-  {
-    label: "nav.sales",
-    items: [
-      { path: "/leads", label: "nav.leads", icon: "lead" },
-      { path: "/contacts", label: "nav.contacts", icon: "contacts" },
-      { path: "/companies", label: "nav.companies", icon: "companies" },
-      { path: "/pipeline", label: "nav.pipeline", icon: "pipeline" },
-    ],
-  },
-  {
-    label: "nav.marketing",
-    items: [
-      { path: "/campaigns", label: "nav.campaigns", icon: "campaign" },
-      { path: "/marketing-emails", label: "nav.marketingEmails", icon: "mail" },
-      { path: "/events", label: "nav.events", icon: "event" },
-      { path: "/email-lists", label: "nav.emailLists", icon: "inbox" },
-      { path: "/landing-pages", label: "nav.landingPages", icon: "landing" },
-      { path: "/forms", label: "nav.forms", icon: "form" },
-    ],
-  },
-  {
-    label: "nav.revenue",
-    items: [
-      { path: "/quotes", label: "nav.quotes", icon: "quote" },
-      { path: "/contracts", label: "nav.contracts", icon: "contract" },
-      { path: "/products", label: "nav.products", icon: "cart" },
-      { path: "/orders", label: "nav.orders", icon: "send" },
-    ],
-  },
-  {
-    label: "nav.financial",
-    items: [
-      { path: "/finance", label: "nav.finance", icon: "money" },
-      { path: "/invoices", label: "nav.invoices", icon: "invoice" },
-      { path: "/expenses", label: "nav.expenses", icon: "reports" },
-      { path: "/forecast", label: "nav.forecast", icon: "trend" },
-    ],
-  },
-  {
-    label: "nav.service",
-    items: [
-      { path: "/surveys", label: "nav.surveys", icon: "survey" },
-      {
-        path: "/survey-responses",
-        label: "nav.surveyResponses",
-        icon: "response",
-      },
-      { path: "/portal", label: "nav.portal", icon: "portal" },
-    ],
-  },
-  {
-    label: "nav.hr",
-    items: [
-      { path: "/employees", label: "nav.employees", icon: "employee" },
-      { path: "/leave", label: "nav.leave", icon: "leave" },
-      { path: "/attendance", label: "nav.attendance", icon: "clockIn" },
-    ],
-  },
-  {
-    label: "nav.work",
-    items: [
-      { path: "/activities", label: "nav.activities", icon: "activity" },
-      { path: "/tasks", label: "nav.tasks", icon: "tasks" },
-      { path: "/calendar", label: "nav.calendar", icon: "calendar" },
-      { path: "/calls", label: "nav.calls", icon: "phone" },
-      { path: "/recordings", label: "nav.recordings", icon: "recording" },
-      { path: "/inbox", label: "nav.inbox", icon: "inbox" },
-    ],
-  },
-  {
-    label: "nav.automation",
-    items: [
-      { path: "/workflows", label: "nav.workflows", icon: "workflow" },
-      { path: "/webhooks", label: "nav.webhooks", icon: "webhook" },
-      { path: "/sequences", label: "nav.sequences", icon: "sequence" },
-    ],
-  },
-  {
-    label: "nav.analytics",
-    items: [
-      { path: "/reports", label: "nav.reports", icon: "reports" },
-      { path: "/goals", label: "nav.goals", icon: "goal" },
-      { path: "/duplicates", label: "nav.duplicates", icon: "duplicate" },
-      { path: "/audit", label: "nav.audit", icon: "shield" },
-    ],
-  },
-  {
-    label: "nav.workspace",
-    items: [
-      { path: "/team", label: "nav.team", icon: "team" },
-      { path: "/fields", label: "nav.fields", icon: "fields" },
-      { path: "/settings", label: "nav.settings", icon: "settings" },
-    ],
-  },
-];
-
-const titles = Object.fromEntries(
-  navGroups.flatMap((group) =>
-    group.items.map((item) => [item.path, item.label]),
-  ),
-);
 const stages = [
   { id: "new", label: "New" },
   { id: "qualified", label: "Qualified" },
@@ -518,63 +407,6 @@ function AppRoutes() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(
-    localStorage.getItem("tunaxa.sidebar") === "1",
-  );
-  const [mobile, setMobile] = useState(false);
-  const [profile, setProfile] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [theme, setTheme] = useState(
-    document.documentElement.classList.contains("dark"),
-  );
-  const [isEcosystemOpen, setIsEcosystemOpen] = useState(false);
-
-  useEffect(() => {
-    localStorage.setItem("tunaxa.sidebar", collapsed ? "1" : "0");
-
-    api(
-      "/users/me/preferences",
-      json("PUT", { sidebarCollapsed: collapsed }),
-    ).catch(() => {});
-  }, [collapsed]);
-  useEffect(() => {
-    setMobile(false);
-    setProfile(false);
-  }, [location.pathname]);
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setSearchOpen(true);
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
-        event.preventDefault();
-        setQuickOpen(true);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
-
-  function toggleTheme() {
-    const next = !theme;
-    setTheme(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
-
-    api(
-      "/users/me/preferences",
-      json("PUT", { theme: next ? "dark" : "light" }),
-    ).catch(() => {});
-  }
-
-  function toggleLanguage() {
-    const current = i18n.language || "en";
-    const next = current === "fr" ? "en" : "fr";
-    i18n.changeLanguage(next);
-    localStorage.setItem("tunaxa.language", next);
-  }
 
   const refreshAll = () =>
     window.dispatchEvent(new CustomEvent("tunaxa:resource-changed"));
@@ -611,197 +443,12 @@ function AppRoutes() {
   };
   useSSE(sseHandlers);
 
-  return (
-    <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
-      {/* Blueprint dot-grid overlay — fixed behind all content */}
-      <div className="blueprint-grid-global" aria-hidden="true" />
-      <div
-        className={`mobile-overlay ${mobile ? "show" : ""}`}
-        onClick={() => setMobile(false)}
-      />
-      <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
-        <div className="sidebar-logo">
-          <button
-            className="brand"
-            onClick={() => navigate("/dashboard")}
-            title="Tunaxa AXA CRM"
-          >
-            {collapsed ? (
-              <div
-                className="w-7 h-7 bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-mono font-black shrink-0"
-                style={{
-                  clipPath:
-                    "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
-                }}
-              >
-                <span className="text-xs">TX</span>
-              </div>
-            ) : (
-              <AxacrmLogo size="sm" showTunaxaPrefix={true} />
-            )}
-          </button>
-          <button
-            className="collapse-btn"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!collapsed}
-            onClick={() => setCollapsed((value) => !value)}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            <Icon name="arrowLeft" />
-          </button>
-        </div>
-        <nav className="nav-scroll">
-          {navGroups.map((group) => (
-            <section className="nav-group" key={group.label}>
-              <div className="nav-label">{t(group.label)}</div>
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  data-tooltip={t(item.label)}
-                  className={({ isActive }) =>
-                    `nav-link ${isActive ? "active" : ""}`
-                  }
-                >
-                  <Icon name={item.icon} />
-                  <span>{t(item.label)}</span>
-                </NavLink>
-              ))}
-            </section>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="workspace-mini">
-            <div
-              className="w-7 h-7 bg-[#3b82f6] text-white flex items-center justify-center font-mono font-bold text-xs shrink-0"
-              style={{
-                clipPath:
-                  "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
-              }}
-            >
-              <span>TX</span>
-            </div>
-            <div>
-              <b>Tunaxa CRM</b>
-              <small>Enterprise Workspace</small>
-            </div>
-          </div>
-        </div>
-      </aside>
-      <section className="workspace">
-        <header className="topbar topbar-glass">
-          <div className="topbar-left">
-            <button
-              className="icon-btn mobile-menu"
-              aria-label="Open navigation menu"
-              onClick={() => setMobile(true)}
-              title="Open Navigation"
-            >
-              <Icon name="menu" />
-            </button>
-            <div className="crumb relative px-3 py-1 border border-[#d1d1d1] dark:border-[#263140] bg-white dark:bg-[#121820]">
-              <CornerBrackets stroke="#3b82f6" size={5} />
-              <span>{t("nav.workspace")}</span>
-              <b>
-                {titles[location.pathname]
-                  ? t(titles[location.pathname])
-                  : "Tunaxa"}
-              </b>
-            </div>
-          </div>
-          <div className="topbar-right">
-            <button
-              className="search-button"
-              onClick={() => setSearchOpen(true)}
-            >
-              <Icon name="search" />
-              <span>Search everything…</span>
-              <kbd>Ctrl K</kbd>
-            </button>
-            <CutButton
-              variant="primary"
-              size="sm"
-              onClick={() => setQuickOpen(true)}
-            >
-              <div className="flex items-center gap-1.5 font-mono text-xs">
-                <Icon name="plus" />
-                <span>NEW</span>
-              </div>
-            </CutButton>
-            <button
-              className="icon-btn"
-              onClick={() => setIsEcosystemOpen(true)}
-              title="Tunaxa Ecosystem Apps"
-              aria-label="Tunaxa Ecosystem Apps"
-            >
-              <LayoutGrid className="w-4 h-4 text-[#3b82f6]" />
-            </button>
-            <button
-              className="icon-btn"
-              onClick={toggleTheme}
-              title={theme ? "Light Blueprint" : "Dark Cyber"}
-            >
-              {theme ? (
-                <Sun className="w-4 h-4" />
-              ) : (
-                <Moon className="w-4 h-4" />
-              )}
-            </button>
-            <button
-              className="icon-btn notification-btn"
-              aria-label="Notifications"
-              onClick={() => toast("No new notifications")}
-              title="Notifications"
-            >
-              <Icon name="bell" />
-            </button>
-            <div className="profile-wrap">
-              <button
-                className="profile-trigger"
-                onClick={() => setProfile((value) => !value)}
-              >
-                <Avatar name={user?.name || "TX"} />
-                <div>
-                  <b>{user?.name}</b>
-                  <small>{user?.role}</small>
-                </div>
-                <Icon name="chevronDown" />
-              </button>
-              {profile ? (
-                <div className="profile-menu">
-                  <div className="profile-menu-head">
-                    <Avatar name={user?.name || "TX"} size={38} />
-                    <div>
-                      <b>{user?.name}</b>
-                      <small>{user?.email}</small>
-                    </div>
-                  </div>
-                  <button onClick={() => navigate("/settings")}>
-                    <Icon name="settings" /> {t("nav.settings")}
-                  </button>
-                  <button onClick={toggleLanguage}>
-                    <Icon name="globe" />{" "}
-                    {(i18n.language || "en") === "fr" ? "English" : "Français"}
-                  </button>
-                  <button onClick={toggleTheme}>
-                    {theme ? (
-                      <Sun className="w-4 h-4" />
-                    ) : (
-                      <Moon className="w-4 h-4" />
-                    )}{" "}
-                    {theme ? "Light Blueprint" : "Dark Cyber"}
-                  </button>
-                  <hr />
-                  <button className="danger-link" onClick={logout}>
-                    <Icon name="logout" /> Sign out
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </header>
-        <main className="content">
-          <ErrorBoundary fallbackMessage="Something went wrong. Please reload.">
+return (
+  <Shell
+    renderQuickCreate={(onClose) => <QuickCreate onClose={onClose} />}
+    renderGlobalSearch={(onClose) => <GlobalSearch onClose={onClose} />}
+  >
+      <ErrorBoundary>
             <Routes>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route
@@ -1168,20 +815,10 @@ function AppRoutes() {
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
+                        </Routes>
           </ErrorBoundary>
-        </main>
-      </section>
-      {quickOpen ? <QuickCreate onClose={() => setQuickOpen(false)} /> : null}
-      {searchOpen ? (
-        <GlobalSearch onClose={() => setSearchOpen(false)} />
-      ) : null}
-      <EcosystemMenu
-        isOpen={isEcosystemOpen}
-        onClose={() => setIsEcosystemOpen(false)}
-      />
-    </div>
-  );
+        </Shell>
+      );
 }
 function QuickCreate({ onClose }: { onClose: () => void }) {
   const { toast } = useApp();
