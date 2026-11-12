@@ -8,7 +8,6 @@ import i18n from "../i18n";
 import { titles } from "./navGroups";
 
 export function Topbar({
-  mobile,
   onOpenMobile,
   onOpenSearch,
   onOpenQuickCreate,

@@ -1,10 +1,12 @@
 import { readDb, mutateDb } from '../store.js';
+import { findRecord } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { id, now } from '../helpers.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { getSettings, isEmailConfigured } from '../services/config.js';
 import { sendEmail } from '../services/smtp.js';
 import { broadcast } from './sse.js';
+import { checkWriteFieldMask } from './permissions.js';
 
 export function renderMerge(template, record) {
   return String(template ?? '').replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
@@ -31,10 +33,10 @@ function checkExitRules(record, sequence) {
 export default function registerSequenceRoutes(app) {
   app.get('/api/sequences', auth, async (req, res) => {
     const db = await readDb();
-    res.json({ data: db.sequences || [], total: (db.sequences || []).length });
+    res.json(paginateAndSort(db.sequences || [], req.query));
   });
 
-  app.post('/api/sequences', auth, requireRole('admin', 'member'), async (req, res) => {
+  app.post('/api/sequences', auth, requireRole('admin', 'member'), checkWriteFieldMask('sequence'), async (req, res) => {
     const { name, steps = [], exitRules = [], enabled = true } = req.body || {};
     if (!name) return res.status(400).json({ error: 'Sequence name is required' });
     if (!Array.isArray(steps) || steps.length === 0) return res.status(400).json({ error: 'Sequence must contain at least one step' });
@@ -47,7 +49,7 @@ export default function registerSequenceRoutes(app) {
     res.status(201).json(sequence);
   });
 
-  app.put('/api/sequences/:id', auth, requireRole('admin', 'member'), async (req, res) => {
+  app.put('/api/sequences/:id', auth, requireRole('admin', 'member'), checkWriteFieldMask('sequence'), async (req, res) => {
     const sequence = await mutateDb(db => {
       const found = (db.sequences || []).find(s => s.id === req.params.id);
       if (!found) return null;
@@ -77,12 +79,12 @@ export default function registerSequenceRoutes(app) {
   app.post('/api/sequences/:id/enroll', auth, requireRole('admin', 'member'), async (req, res) => {
     const { recordIds = [] } = req.body || {};
     if (!Array.isArray(recordIds) || !recordIds.length) return res.status(400).json({ error: 'recordIds array is required' });
-    const result = await mutateDb(db => {
+    const result = await mutateDb(async db => {
       const seq = (db.sequences || []).find(s => s.id === req.params.id);
       if (!seq) return null;
       let enrolled = 0;
       for (const recordId of recordIds) {
-        const record = db.leads.find(x => x.id === recordId) || db.contacts.find(x => x.id === recordId) || db.companies.find(x => x.id === recordId);
+        const record = (await findRecord(recordId, ['leads', 'contacts', 'companies'], db))?.record;
         if (!record) continue;
         if (seq.enrolled.some(e => e.recordId === recordId)) continue;
         seq.enrolled.unshift({ recordId, email: record.email || '', name: record.name || record.title || '', enrolledAt: now(), currentStep: 0, nextStepAt: now() });
@@ -113,12 +115,12 @@ export default function registerSequenceRoutes(app) {
   // Advance sequence steps (run the engine manually)
   app.post('/api/sequences/:id/run', auth, requireRole('admin', 'member'), async (req, res) => {
     const settings = await getSettings();
-    const summary = await mutateDb(db => {
+    const summary = await mutateDb(async db => {
       const seq = (db.sequences || []).find(s => s.id === req.params.id);
       if (!seq || !seq.enabled) return null;
       let sent = 0, skipped = 0, exited = 0;
       for (const enrollment of seq.enrolled) {
-        const record = db.leads.find(x => x.id === enrollment.recordId) || db.contacts.find(x => x.id === enrollment.recordId) || db.companies.find(x => x.id === enrollment.recordId);
+        const record = (await findRecord(enrollment.recordId, ['leads', 'contacts', 'companies'], db))?.record;
         if (!record) { exited++; continue; }
         const check = checkExitRules(record, seq);
         if (check.exited) {

@@ -1,0 +1,14 @@
+.record-360-layout { display:grid; grid-template-columns:minmax(240px, 320px) minmax(0, 1fr); gap:24px; align-items:start; }
+.record-360-sidebar { display:grid; gap:16px; min-width:0; }
+.record-360-sidebar .detail-props { grid-template-columns:1fr; }
+.record-360-main { min-width:0; }
+.association-panel h3 { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.association-count { font-size:12px; color:var(--ink-muted); }
+.associated-record { border-top:1px solid var(--border); padding:12px 0; }
+.associated-record summary { cursor:pointer; font-weight:600; overflow-wrap:anywhere; }
+.associated-record summary:focus-visible { outline:2px solid var(--accent, #2563eb); outline-offset:4px; }
+.associated-record dl { display:grid; gap:8px; margin:12px 0 0; }
+.associated-record dt { color:var(--ink-muted); font-size:12px; text-transform:capitalize; }
+.associated-record dd { margin:0; font-size:13px; overflow-wrap:anywhere; white-space:pre-wrap; }
+.association-empty { color:var(--ink-muted); font-size:13px; }
+@media (max-width:800px) { .record-360-layout { grid-template-columns:1fr; } }

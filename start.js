@@ -1,9 +1,18 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadEnvFile, getHost, getPort } from "./backend/runtime.js";
+
+// Loaded before the accessors below read it, and inherited by the backend
+// child process, so `npm start` picks up the repository `.env` the same way
+// `npm run migrate` does. Real environment variables still win.
+loadEnvFile();
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const apiUrl = process.env.API_HEALTH_URL || "http://127.0.0.1:3001/api/health";
+const apiHost = getHost();
+const apiPort = getPort();
+const apiBase = `http://${apiHost}:${apiPort}`;
+const apiUrl = process.env.API_HEALTH_URL || `${apiBase}/api/health`;
 let apiProcess;
 let webProcess;
 let stopping = false;
@@ -53,6 +62,8 @@ async function main() {
       {
         cwd: root,
         stdio: "inherit",
+        // Inherit the merged environment (shell exports plus `.env`).
+        env: process.env,
       },
     );
 
@@ -60,7 +71,7 @@ async function main() {
     if (!ready) {
       if (apiProcess?.exitCode === null) apiProcess.kill();
       throw new Error(
-        "The Tunaxa backend could not start on 127.0.0.1:3001. Check whether another app is using port 3001.",
+        `The Tunaxa backend could not start on ${apiBase}. Check whether another app is using port ${apiPort}.`,
       );
     }
   } else {

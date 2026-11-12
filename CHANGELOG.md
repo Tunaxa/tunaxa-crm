@@ -6,16 +6,312 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
-### Added
+### Security
+- Authentication security: implemented SHA-256 hashed refresh tokens, single-use rotation, reuse detection with automatic session invalidation, and global logout-all.
+- Security hardening: tightened Helmet CSP headers with `script-src-attr` restrictions and an explicit image allow-list, and enhanced the Origin/Referer CSRF guard with null-origin and `Sec-Fetch-Site: cross-site` protections.
+- File upload security: dependency-free magic-bytes signature verification rejecting executables and spoofed MIME types.
+- Server-Sent Events isolation: enforced purpose-scoped SSE token authentication and restricted broadcasts to explicit workspace and user rooms.
+- **RBAC Field-Masking on Write (`backend/routes/permissions.js` & route handlers):**
+  - Implemented write-side field-mask validation engine preventing unauthorized users from writing, updating, or clearing masked attributes via `POST`, `PUT`, `PATCH`, and batch endpoints.
+  - Added `normalizeFieldKey` folding keys to snake_case so casing variations (`firstName`, `first_name`, `First Name`) cannot bypass field permission masks.
+  - Added `submittedFieldKeys` expanding nested `customFields` and `custom_fields` payloads, treating any key presence (including `null`, `false`, `0`, and empty strings) as an intentional write operation.
+  - Implemented `checkWriteFieldMask(resource, pick)` middleware: returns HTTP 403 Forbidden with `{ error, maskedFields[] }` before data validation runs, fails closed with 500 on store errors, and skips checks for admin roles (`ADMIN_ROLES`).
+  - Added `objectTypeOf` shared singularization helper synchronizing read and write permission keys, including irregular `-ies` plurals so `companies`/`activities` resolve to the `company`/`activity` permission rows instead of unmatched `companie`/`activitie` keys.
+  - Attached write-mask enforcement across 13 write routes: generic resource CRUD (`POST`, `PUT`, `PATCH`, batch updates), all four `/api/v1/objects` endpoints, dedicated entity routes (`tickets`, `forms`, `goals`, `sequences`), and `POST /api/:resource/merge` to prevent bypasses via `fieldOverrides`.
+  - Read-side masking now runs post-auth (`attachFieldPerms`) on `GET /api/:resource`, `GET /api/:resource/:id`, and `GET /api/:resource/export.csv`, and applies to PostgreSQL-backed rows as well as the JSON store, closing the silent no-op where a role's `hidden` fields were returned unmasked. `objectTypeOf()` resolves irregular `-ies` plurals so `companies` and `activities` hit the right permission row, and write paths keep the 403 `checkWriteFieldMask` contract rather than silently stripping masked keys. `backend/__tests__/rbac.test.js` covers the 403 responses, non-persistence, and masked collection/single-record reads.
+- **Cross-Tenant IDOR Remediations (`backend/routes/` & repositories):**
+  - Remediated un-scoped generic CRUD and CSV export in `backend/routes/resources.js` to enforce tenant workspace boundaries across all 19 entities. The tenant is now server-derived on every write, so a `workspace_id` supplied in a request body is ignored on both create and update; cross-tenant reads and writes return `404` rather than `403` so a response does not confirm that an id exists.
+  - Enforced workspace isolation across all forms endpoints (`GET /api/forms`, `findById`, `update`, `delete`) in `backend/routes/forms.js`.
+  - Scoped ticket management, ticket boards, comments, and SLA summaries to the caller's workspace in `backend/routes/tickets.js`. Scoping is applied in SQL on every page of the paginated board, so paging cannot walk past the end of the caller's tenant.
+  - Fixed property spread precedence in `backend/routes/goals.js` preventing request payloads from overwriting the server-derived `workspace_id`.
+  - Fixed precedence order in `backend/services/savedReports.js` so the explicit scope argument wins over `data.workspaceId`. No current caller forwarded a raw body, so this corrected a latent weakness rather than a live hole.
+  - Tenant scoping was applied to all 21 PostgreSQL repositories. The scope is an optional argument, so omitting it still yields the previous unscoped SQL; this keeps migrations, backfills, and system workers working, and means a new call site that forgets the argument silently disables isolation.
+- **Origin & CSRF Defense (`backend/middleware/csrf.js`, `backend/server.js`):**
+  - Added state-changing request `Origin`/`Referer` validation with normalized protocol handling. `GET`, `HEAD`, and `OPTIONS` are never blocked, and requests carrying neither header are allowed through because they are non-browser clients with no ambient credential to forge.
+  - Same-origin is now compared on host **and** scheme where the request scheme is determinable, so an `http` page on an `https` deployment's host is rejected.
+  - Removed insecure trust of `http://localhost:5173` and `http://localhost:3000` in production environments. Development origins are now honored only when `NODE_ENV` is not `production`; previously a production build accepted a known-good origin an attacker could host a forgery page on.
+  - Documented the exempt path list (Twilio callbacks, token-authenticated webhook receivers, tracking pixel, chat widget, public form embeds, public booking pages, quote signing, customer portal), which are cross-origin by design and are not CSRF targets.
+  - Classic CSRF was assessed as not currently exploitable: sessions are opaque bearer tokens in `localStorage`, and browsers do not attach `Authorization` headers automatically. The check is defence in depth for a future move to cookie-based auth.
+- **Authentication Rate Limiting (`backend/routes/auth.js`):**
+  - Tightened the login and first-run setup limiter to 10 requests per 15 minutes, and kept the refresh limiter isolated at 30 requests per minute so refresh traffic cannot be used to lock a user out of logging in.
+  - Made the global `/api` ceiling configurable via `RATE_LIMIT_GLOBAL_MAX`, defaulting to the previous hardcoded 120 requests per minute. The bucket is per-process, so multi-instance deployments can otherwise throttle users unevenly.
+- **Security Policy & Documentation (`SECURITY.md`):**
+  - Expanded the 4-line policy stub into a full security policy: vulnerability disclosure via `security@tunaxa.com` or a private GitHub advisory with a 48-hour acknowledgement target, supported-version policy, an explanation of the opaque-session auth model, the tenant-isolation contract, and the rate-limit table.
+  - Added an OWASP Top 10 (2021) defense matrix with per-category status, the four A01 defects and their locations, and the origin-enforcement rules.
+  - Cataloged legacy JSON store models that have no `workspace_id` column and are therefore visible to every tenant (`knowledgebase`, `lists`, `sequences`, `templates`, `scheduler`, `uploads`, `webhookendpoints`, `modules`, `audit`, `ai`), plus other accepted risks, so the gap is recorded rather than left implicit.
+  - Also recorded that public form definitions are readable by permalink without authentication, and that quote signing is authorised by possession of a signed, expiring token rather than a session, making that call site intentionally not tenant-scoped.
 
-- PostgreSQL migration runner (`npm run migrate`) that records applied SQL files in `schema_migrations` and applies pending migrations in filename order.
-- Pipeline: added total and weighted pipeline value summary
-- A four-step custom report builder for Deals, Contacts, and Leads with metric, group-by, and date-range controls, plus normalized table and bar-chart results from `POST /api/reports/query`.
-- Email-based team invitations with a sent confirmation, pending invitation list, expiry display, retry state, and resend action. The frontend uses `POST /api/users/invite` and `GET /api/users/invites` without directly creating user accounts.
-- A first-login onboarding gate for empty workspaces with a resumable four-step wizard for company profile, contact CSV import, pipeline stages, and team invitations. Progress and completion are stored per user, and every step or the full setup can be skipped.
-- Added a reusable electronic-signature modal with draw and typed-name modes, live typed preview, explicit consent, PNG/SVG output, validation, and accessible controls.
-- Replaced the Goals table with a responsive progress-card dashboard, added an inline quick-add form, and added reduced-motion-aware confetti when a goal newly reaches 50%, 75%, or 100%.
-- Replaced the quote line-item text area with a dynamic quote builder that supports adding and removing products, quantity and unit-price inputs, live line totals, subtotal, discount, tax, and grand-total calculations.
+### Added
+- Advanced query filters: added structured filter query engine ($and, $or, comparison operators) for GET /api/:resource with validated operator dispatch.
+- feat: lifecycle stage API. `GET /api/lifecycle/stages` now returns `key`, `label`, and `order` metadata alongside the existing `stage` and `count` (acronyms such as MQL/SQL are spelled out in `label`), and a new `PATCH /api/:resource/:id/lifecycle` sets `lifecycleStage` on any known resource. The update stamps `updatedAt` and `lifecycleUpdatedAt`, prepends an activity entry ("Lifecycle stage changed to [Stage]") linked by `recordId` so the transition renders in the record's activity timeline, writes an audit entry naming the actor and record, and broadcasts `lifecycle.transitioned`. Guarded by `auth`, `requireRole('admin', 'member')`, and a 60/min rate limit. Unknown resource and missing record return 404; an invalid stage and a backward move return 400. (P1-BE2-03)
+- Database migration runner hardening: transactional execution, schema_migrations tracking table, and idempotency guarantees in backend/db/migrate.js.
+- Local Docker Compose stack: configured PostgreSQL 16, Redis 7, and Ollama services with comprehensive environment variable documentation.
+- Admin-only BullMQ observability endpoint GET /api/queue/status exposing waiting, active, and failed job counts with failure diagnostic details.
+- Webhook worker hardening: strict HMAC-SHA256 signatures, discrete delivery attempt logging in PostgreSQL, and exact exponential backoff retry scheduling.
+- Dynamic validation rules in schema reflection: GET /api/schema/:object exposes required, type, and maxLength metadata for built-in and custom fields.
+- Unified list endpoints under a single contract: every `GET` list route (`GET /api/:resource` plus all custom list endpoints such as `/api/audit`, `/api/users`, `/api/lists`, `/api/templates`, `/api/sequences`, `/api/workflows`, `/api/executions`, `/api/revisions`, `/api/knowledgebase/articles`, `/api/livechat/conversations`, `/api/tickets`, `/api/webhookEndpoints`, `/api/webhookDeliveries`, `/api/forms`, `/api/uploads`, `/api/scheduler/links`, `/api/tracking/events`) now returns `{ data, total, page, limit }` and supports `?q=` (case-insensitive substring search), `?sortBy=` (default `createdAt`), `?sortDir=asc|desc` (default `desc`), `?page=` (default 1), and `?limit=` (default 25, capped at 100) via the shared `paginateAndSort` helper in `backend/helpers.js`.
+- Secure email-based team invitations (backend): admins can `POST /api/users/invite` to generate a one-time, 48-hour invite token that is emailed as an accept link (`{publicBaseUrl}/accept-invite?token=…`), and invitees complete the public `POST /api/auth/accept-invite` endpoint with the token, name, and password to have their `member` account provisioned and a session created. Expired, unknown, or already-used tokens are rejected with a 400, and re-inviting an email invalidates any previously pending invite.
+- **Write-Side Field Masking Test Suite (`backend/__tests__/rbac-field-mask-write.test.js`):**
+  - Added 38 unit and mutation-verified integration tests verifying 403 Forbidden responses on attempted writes to masked scalar columns and nested custom fields, asserting database records remain untouched, verifying admin bypasses, and confirming merge override protections.
+- **Atomic Duplicate Merge Engine (`backend/services/merge.js` & `backend/routes/dataops.js`):**
+  - Implemented transactional record merging for `contacts`, `companies` and `leads`, wrapped in a single database transaction (`BEGIN` … `COMMIT`, with `ROLLBACK` on any failure) and holding `SELECT … FOR UPDATE` row locks on both records, so a mid-merge failure can no longer leave a partially merged state behind.
+  - Re-points every foreign key child reference from the duplicate id to the surviving primary id before the duplicate row is deleted. Candidate children are `activities`, `deals`, `tasks`, `tickets`, `quotes`, `contracts`, `orders`, `invoices` and `expenses`; the pointer columns actually present are resolved from `information_schema` at runtime rather than hardcoded, because the live schema deviates from the migrations — `tickets` carries no `contact_id`/`company_id` foreign key at all, only denormalized `contact`/`contact_email` display text that must not be rewritten.
+  - Merges `custom_fields` JSONB with right-biased precedence (survivor value wins on a shared key, the duplicate's additional keys are adopted, and an unknown `fieldOverrides` key lands in the bag rather than being dropped), while immutable columns and `updated_at` stay locked against caller-supplied overrides.
+  - Writes a `Merge` audit activity on the survivor's timeline carrying the original secondary id, the pre-merge duplicate payload and the per-table re-point counts.
+  - Tenant is server-derived from the session on every read and lock, and a cross-tenant id is answered with the same `404` as a missing one so a response never confirms that an id exists.
+  - Added `POST /api/:resource/merge`, restricted to `admin`/`member` roles, supporting `fieldOverrides` and a `dryRun` that executes the identical plan and then rolls back so it can be previewed without writing.
+- **Fuzzy Duplicate Detection Engine (`backend/services/dedup.js`):**
+  - Added multi-factor fuzzy matching for `contacts`, `companies` and `leads`, scoring email, phone, name and company into a single normalized confidence in `[0.0, 1.0]` with a per-pair `breakdown` and a `matchedFields` list. Weights are redistributed across the metrics a record actually has, so a company with no email or phone is still scored on the two it does.
+  - Requires at least two independent signals unless the email is an exact match, which keeps single weak similarities from manufacturing a duplicate.
+  - Added exhaustive in-memory pairwise evaluation below `MAX_PAIRWISE_ROWS = 400`, with a `pg_trgm` similarity shortlist used above that. This matters in practice: the live database has only `plpgsql` installed, so without the in-memory path dedup would degrade to nothing.
+  - Added `GET /api/:resource/duplicates` with `threshold`/`limit` and strict workspace scoping, returning results ordered by descending confidence plus `exhaustive`/`scanned`/`scoredPairs` counters so a caller can tell a complete answer from a narrowed one.
+- **Atomic Merge & Fuzzy Dedup Test Suite (`backend/__tests__/atomic-merge-fuzzy.test.js`):**
+  - Added 27 unit and integration tests covering multi-factor scoring, case-normalized email matching, weight redistribution, threshold/limit/ordering behaviour, tenant isolation in both directions, a successful transactional merge, and a forced mid-merge failure that must roll back.
+  - The rollback test injects the failure into a real transaction by wrapping the pooled client so an `UPDATE deals` rejects after `activities` has already been re-pointed, then asserts a four-table snapshot is unchanged and that no audit row survives. A mocked service call would prove nothing about atomicity.
+- **Security Audit Test Suite (`backend/__tests__/security-audit.test.js`):**
+  - Added 53 unit and integration tests sweeping SQL injection resistance, XSS escaping, CSRF origin enforcement, cross-tenant IDOR boundaries, and authentication rate limiting across all 19 tenant-scoped resources.
+  - Injection coverage asserts search payloads are treated as literal values, injected sort identifiers fall back to the default sort rather than erroring, malicious report `groupBy`/`metric` fields are refused, and a static scan rejects any repository that interpolates a caller-supplied id into SQL text.
+  - XSS coverage asserts the frontend contains no `dangerouslySetInnerHTML` or raw DOM HTML injection, and that `escapeHtml()` neutralizes script tags, event handlers, and attribute breakout.
+  - IDOR coverage is end-to-end against a real database: each resource is created in one tenant with a forged `workspace_id` in the body, then read, updated, deleted, and listed from a second tenant.
+  - Verified by mutation testing: reverting a single tenant argument, or the goals spread ordering, makes the suite fail.
+  - Full suite verified against a clean `HEAD` worktree: 22 pre-existing failures unchanged, 0 regressions. Repository unit tests 263/263 and targeted run 415/415 pass.
+- **Auth Refresh Test Suite (`backend/__tests__/auth-refresh.test.js`):**
+  - Added 16 unit and mutation-verified integration tests covering multiple token extraction sources (`body.refreshToken`, `body.token`, `x-refresh-token`, `Authorization: Bearer`), invalid/missing/whitespace inputs, expired and orphaned session eviction, immediate old-token revocation, non-disclosure of password hashes, audit trail recording, and core route non-regression.
+- **Subsystem Deep Health Probes (`backend/services/health.js`):**
+  - Implemented timeout-bounded (2000ms max) health probes for core CRM subsystems:
+    - `postgres`: Executes `SELECT 1 AS alive;` using connection pool (`ok` | `error`). The only probe whose failure is fatal, since the CRM cannot serve data without it.
+    - `redis`: Performs direct raw RESP `PING` over TCP socket to circumvent `ioredis` handshake/RESP3 initialization constraints and support lightweight mock/real servers without client connection leaks (`ok` | `degraded`). An absent Redis is never reported as an outage, because the queues are designed to fall back to in-process queues.
+    - `smtp`: Inspects configured CRM workspace email settings and environment variables (`ok` | `unconfigured`). Deliberately configuration-only: a live transport handshake inside a health probe would add a multi-second network dependency and risk account lockouts.
+    - `ai`: Checks for presence of OpenAI, Anthropic, or local Ollama runtime availability (`ok` | `offline`). Does not use `isAiConfigured()`, which is `Boolean(settings.ollamaBaseUrl)` and therefore always true because `DEFAULT_SETTINGS` seeds that value.
+  - Added composite `getDeepHealthStatus()` runner using `Promise.allSettled` to prevent subsystem probe hangs, returning top-level and subsystem status maps along with uptime and timestamp. Probes are injectable so failure modes that cannot be produced for real (such as an unreachable database) remain testable.
+- **Deep Health Check Route (`backend/routes/health.js`):**
+  - Added authenticated `GET /api/health/deep` endpoint restricted to `admin` users via `requireRole('admin')`. The endpoint is not public because the report discloses which subsystems are configured and which are not, which is reconnaissance for anyone probing an instance.
+  - Returns HTTP 200 OK when operational and HTTP 503 Service Unavailable when the primary PostgreSQL datastore is unreachable. Secondary subsystem degradations deliberately return 200, because the API is still serving and a load balancer evicting the instance over a missing AI key would be reacting to the wrong signal.
+  - Registered route in `backend/server.js`.
+- **Health Check Test Suite (`backend/__tests__/health-deep.test.js`):**
+  - Added 26 unit and mutation-verified integration tests covering RBAC authorization, individual subsystem status reporting, 503 PostgreSQL failure handling, raw socket RESP ping parsing, and connection resolution parity across queues.
+  - The Redis `ok` path is asserted against an in-process TCP server that replies `+PONG`, so the success case is covered on machines with no Redis installed.
+  - The parity test asserts `resolveRedisConnection()` returns results identical to both `workflowQueue.js` and `transcriptionQueue.js` across seven `REDIS_*` combinations, so the local copy of that logic cannot drift from the queues it mirrors.
+- **GitHub Actions CI Pipeline (`.github/workflows/ci.yml`):**
+  - Configured automated CI workflow triggering on pull requests targeting `main` or `dev`, pushes to `main` or `dev`, and `workflow_dispatch`.
+  - Added concurrency control (`concurrency: ${{ github.workflow }}-${{ github.ref }}`) with automatic cancellation of superseded runs on PR branches, while leaving `main` runs uncancelled so the post-merge signal always completes.
+  - Configured PostgreSQL 16 (`postgres:16-alpine` with `pg_isready` health check on port 5432) and Redis 7 (`redis:7-alpine` with `redis-cli ping` health check on port 6379) service containers.
+  - Implemented 8-step pipeline: code checkout (`actions/checkout@v4`), Node 22 setup with npm cache (`actions/setup-node@v4`), clean dependency installation (`npm ci`), TypeScript type checking (`npm run typecheck`), database migrations (`npm run migrate`), linting (`npm run lint`), Redis service readiness (`PING`), and Vitest test execution (`npm test`).
+  - Consolidates the previous split workflow into a single job. A reusable-workflow job cannot declare its own service containers or environment, so the PostgreSQL and Redis services could not live alongside the delegated lint/test job.
+  - `typecheck`, `migrate`, `lint` and `npm test` are all blocking gates: no step uses `continue-on-error`, so a red check always fails the workflow.
+  - The Vitest suite runs in its supported in-memory fallback mode (`REDIS_URL` is cleared for that step) because the queue and fallback suites assert fallback behavior when their modules load. The Redis service container is still verified with a dedicated `PING` step.
+- **NPM Scripts & Dependencies (`package.json`):**
+  - Added `npm run typecheck` (`tsc --noEmit -p web`) validating frontend TypeScript sources.
+  - Added `npm run migrate` (`node run-migrations.js`) running PostgreSQL schema migrations.
+  - Declared `js-yaml` (`^5.4.2`) in `devDependencies` for robust CI workflow file parsing and assertions. It was previously only present transitively, which the new test suite would otherwise have been relying on as a phantom dependency.
+- **CI Workflow Test Suite (`backend/__tests__/ci-workflow.test.js`):**
+  - Added 25 unit and mutation-verified integration tests validating workflow YAML syntax, trigger definitions, service container configurations, health checks, required execution steps, and environment variable bindings.
+  - The suite asserts the PG credentials reaching the job match the `postgres` service definition rather than re-declaring the password, so the two halves cannot drift apart unnoticed.
+  - Verified by mutation testing: retargeting the `pull_request` branch, altering a health command, removing a required gate step, and switching `test` to watch mode each produce a failure.
+- **Production Multi-Stage Dockerfile (`Dockerfile`):**
+  - Created hardened, two-stage Dockerfile based on `node:22-alpine`.
+  - **Build Stage (`deps`):** Performs clean dependency installation via `npm ci --no-audit --no-fund`, dynamically resolves missing Linux musl binaries (`@rollup/rollup-linux-x64-musl` and `@esbuild/linux-x64`) to overcome Windows-scoped package locks, compiles the frontend bundle (`npm run build`), and prunes devDependencies (`npm prune --omit=dev`).
+  - **Runtime Stage (`runner`):** Configures lightweight production container using `tini` as init process (`/sbin/tini --`), enforces non-root execution under UID/GID 1000 (`USER node`) with files copied using `--chown=node:node`, exposes port 3000, declares `NODE_ENV=production`, and configures container health checks (`wget -q -O - http://127.0.0.1:3000/api/health`).
+- **Build Context Configuration (`.dockerignore`):**
+  - Added 121-line `.dockerignore` file filtering secrets, environment variables, git history, test suites, coverage reports, build caches, and local datastores.
+- **Container Verification Test Suite (`backend/__tests__/dockerfile.test.js`):**
+  - Added 46 static and dynamic integration tests validating Dockerfile directives, multi-stage separation, non-root user enforcement, environment variables, startup responsiveness, and live image execution.
+- **Production Static Asset Serving (`backend/server.js`):**
+  - Serves `web/dist` when a built bundle is present, with a SPA fallback that returns the app shell for client-side routes while leaving `/api` and `/uploads` untouched so unknown API routes still return JSON rather than HTML.
+  - Listens on `process.env.PORT` (default 3001) and `process.env.HOST` (default 127.0.0.1) instead of a hardcoded loopback port, so the image can publish a port while the dev workflow is unchanged.
+- **Database Index Tuning & Foreign Key Coverage (Migration 012):**
+  - Added `backend/db/migrations/012_index_tuning_and_foreign_keys.sql` adding 12 missing relational pointer indexes:
+    - `deals(owner_id)`
+    - `contacts(company_id)`, `contacts(owner_id)`
+    - `leads(owner_id)`
+    - `activities(contact_id)`, `activities(user_id)`
+    - `tasks(contact_id)`
+    - `contracts(contact_id)`
+    - `orders(company_id)`, `orders(contact_id)`
+    - `invoices(company_id)`, `invoices(contact_id)`
+  - Added composite indexes for multi-column filtering and pagination:
+    - `contacts(workspace_id, created_at DESC)`
+    - `deals(workspace_id, stage, created_at DESC)`
+    - `deals(workspace_id, owner_id, created_at DESC)`
+    - `leads(workspace_id, status, created_at DESC)`
+    - `activities(workspace_id, record_id, created_at DESC)`
+    - `quotes(workspace_id, deal_id, created_at DESC)`
+  - Added covering index for pipeline revenue aggregations:
+    - `deals(workspace_id, created_at, stage) INCLUDE (value)` enabling pure Index Only Scans.
+  - Implemented high-selectivity partial indexes:
+    - `tasks(workspace_id, assigned_to, due_date ASC) WHERE completed = false` (dropped latency from 4.75ms to 0.14ms).
+    - `tickets(workspace_id, priority DESC, created_at DESC) WHERE resolved_at IS NULL` (dropped latency from 10.81ms to 0.05ms).
+  - Added functional/pattern B-tree indexes for case-insensitive and prefix lookups:
+    - `contacts(workspace_id, LOWER(email))`
+    - `contacts(workspace_id, LOWER(first_name) varchar_pattern_ops)`
+    - `contacts(workspace_id, LOWER(last_name) varchar_pattern_ops)`
+    - `leads(workspace_id, LOWER(email))`
+- **Performance Benchmark Harness & Test Suite:**
+  - Added benchmark tooling in `backend/db/tools/` generating 10,000 target rows + 27,000 multi-tenant decoy rows across tables.
+  - Added `backend/__tests__/db-indexes.test.js` validating index existence, plan node types, execution times (<10ms target met across all 10 common query patterns with 0 sequential scans), and prefix pattern search limits.
+- **Saved Reports Schema Migration (Migration 011):**
+  - Added `backend/db/migrations/011_saved_reports.sql` creating the `saved_reports` table with `workspace_id` tenant isolation, `query` and `schedule` JSONB columns, indexed `schedule_enabled` and `last_sent_at` columns, and `update_updated_at_column()` trigger.
+- **Saved Reports Repository & Service Layer:**
+  - Implemented `backend/db/repositories/saved-reports.js` providing CRUD operations and tenant-scoped queries.
+  - Implemented `backend/services/savedReports.js` with PostgreSQL-first lookups and JSON-store fallback.
+  - Registered `saved_reports` repository in `backend/db/repositories/index.js` and added explicit column mappings in `backend/db/legacy-shape.js` to ensure `workspace_id` and `schedule_enabled` map to dedicated columns rather than `custom_fields`.
+- **Report Email Digest Generator (`backend/services/reportEmail.js`):**
+  - Implemented `generateReportEmailContent(report, reportData)` rendering branded HTML and plaintext digests with summary KPI metrics (total records, currency-detected total values, group averages), styled responsive data tables, XSS escaping via `escapeHtml()`, and empty-state messaging.
+- **Weekly Report BullMQ Scheduler & Worker (`backend/workers/reportScheduler.js`):**
+  - Configured `report-scheduler-queue` with a repeatable cron job running Mondays at 08:00 UTC (`0 8 * * 1`) and exponential backoff retry.
+  - Implemented `InMemoryReportSchedulerQueue` fallback ensuring zero-dependency test execution when Redis is offline.
+  - Implemented `runScheduledReports()` executing tenant-scoped report queries, dispatching digest emails via SMTP, recording delivery in `db.messages`/`db.notifications`, and stamping `schedule.lastSentAt`.
+  - Wired worker initialization and clean shutdown into `backend/server.js`.
+- **Report Scheduling & Delivery API Endpoints (`backend/routes/reports.js`):**
+  - Added endpoints: `GET/POST /api/reports`, `GET/PUT/DELETE /api/reports/:id`, `GET/PUT/POST /api/reports/:id/schedule`, `POST /api/reports/:id/send-now`, and `POST /api/reports/:id/run` under `auth` and `requireRole('admin', 'member')`.
+  - Added strict schedule validation enforcing frequency, valid weekdays, 24-hour time format, and de-duplicated recipient email arrays.
+- **Report Scheduler Test Suite (`backend/__tests__/report-scheduler.test.js`):**
+  - Added 30 unit and integration tests covering schedule CRUD, validation, HTML/text digest generation, BullMQ cron registration, email delivery, tenant workspace isolation, and on-demand sending.
+- **Goal Tracking Schema Migration (Migration 010):**
+  - Added `backend/db/migrations/010_goals.sql` creating the `goals` table with `TEXT` primary keys, `workspace_id` tenant isolation, `type` (`revenue`, `activity`, `deal`), `target`, `period` (`monthly`, `quarterly`, `annual`), `assigned_to`, `assigned_type`, `start_date`, `end_date`, `status`, and `update_updated_at_column()` trigger with secondary indexes.
+- **Goals Repository & Entity Shape Mapping:**
+  - Implemented `backend/db/repositories/goals.js` with CRUD operations, tenant workspace filtering, pagination, and whitelisted sorting.
+  - Registered repository in `backend/db/repositories/index.js` under `goals`.
+  - Configured bidirectional mapping and aliases (`assignedTo`, `startDate`, `endDate`) in `backend/db/legacy-shape.js` and added `goals` to `PG_RESOURCES`.
+- **Live Goal Progress Calculation Engine (`backend/services/goals.js`):**
+  - Implemented `calculateGoalProgress()` computing actuals vs. targets from live CRM data across `revenue` (closed won deal values), `activity` (logged activities), and `deal` (created deals) metrics.
+  - Added date boundary resolution for `monthly`, `quarterly`, and `annual` periods with automatic UTC window calculation.
+  - Added pace tracking computing percentage, remaining value, and status (`achieved`, `on_track`, `at_risk`, `behind`) with an in-memory JSON fallback.
+- **Goal Tracking API Routes (`backend/routes/goals.js`):**
+  - Added authenticated endpoints: `GET /api/goals`, `POST /api/goals`, `GET /api/goals/:id`, `PUT /api/goals/:id`, `DELETE /api/goals/:id`, and `GET /api/goals/:id/progress`.
+  - Registered route module in `backend/server.js` with `admin`/`member` RBAC validation.
+- **Goal Tracking Test Suite (`backend/__tests__/goals.test.js`):**
+  - Added 23 unit and integration tests covering goal CRUD, input validation, revenue/activity/deal progress calculations, pace status evaluation, and workspace isolation.
+- **Custom Report Aggregation Engine (`backend/services/reports.js`):**
+  - Implemented `runReportQuery()` supporting dynamic grouping and metric aggregations (`count`, `sum`, `avg`) across core, revenue, and marketing/service entities.
+  - Added strict SQL injection protection: identifier regex validation (`/^[a-zA-Z0-9_]+$/`), column whitelisting, and property mapping via `RESOURCE_MAPPINGS` in `backend/db/legacy-shape.js`.
+  - Added parameterized date range filtering (`dateRange.from`, `dateRange.to`) and tenant workspace isolation (`workspace_id = $1`).
+  - Implemented `runJsonStoreReportQuery()` providing an in-memory aggregation fallback when tables are missing or in offline JSON store mode.
+- **Custom Report Query Endpoint (`backend/routes/reports.js`):**
+  - Added authenticated `POST /api/reports/query` endpoint restricted to `admin` and `member` roles via `requireRole('admin', 'member')`.
+  - Returns normalized output array `[{ group, value, count }]` ordered by value and count descending.
+- **Reports Query Test Suite (`backend/__tests__/reports-query.test.js`):**
+  - Added 23 unit and integration tests covering role-based access control, input validation, SQL injection prevention, metric calculations (`count`, `sum`, `avg`), date range filters, cross-entity queries, workspace isolation, and in-memory fallback.
+- **Async Audio Transcription Queue (`backend/services/transcriptionQueue.js`):**
+  - Implemented BullMQ queue (`transcription-queue`) and background worker for asynchronous audio transcription with automatic in-memory queue fallback (`InMemoryTranscriptionQueue`).
+  - Processes transcription jobs in the background using `transcribeAudio` from `backend/services/ai.js`, generates summaries when enabled, persists transcripts and media status, and broadcasts `recording.transcribed` (or `recording.failed`) Server-Sent Events via `backend/routes/sse.js`.
+  - Added worker lifecycle methods (`startTranscriptionWorker`, `stopTranscriptionWorker`, `closeTranscriptionQueue`) integrated into server startup and teardown.
+- **Transcription Queue Test Suite (`backend/__tests__/transcription-queue.test.js`):**
+  - Added 11 unit and integration tests covering queue fallback, immediate 201 response on upload, worker background processing, transcript persistence, SSE event delivery, failure handling, and async route modes.
+
+### Changed
+- Configuration normalization: established canonical port defaults (API: 3001, Vite: 5173) and synchronized environment documentation across README and runtime configs.
+- **Dependencies (`package.json`):**
+  - Moved `@vitejs/plugin-react` from `dependencies` to `devDependencies`. The plugin declares `vite` as a peer dependency, so listing it as a production dependency caused npm to resolve Vite — and transitively Rollup and Esbuild — into the production graph, where `npm prune --omit=dev` is required to keep them. The production image now carries 228 packages instead of 253.
+- **Test Database Setup (`backend/__tests__/setup.js`):**
+  - Included `saved_reports` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
+  - Included `goals` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
+- **PG Resource Inventory Test (`backend/db/__tests__/legacy-shape.test.js`):**
+  - Added `savedReports` and `saved_reports` to the expected `PG_RESOURCES` set asserted by the inventory test.
+- **Resource Numeric Coercion (`backend/routes/resources.js`):**
+  - Added numeric coercion for `target` to ensure consistent JSON types.
+- **Recording Upload Route (`backend/routes/recordings.js`):**
+  - Decoupled synchronous transcription from `POST /api/recordings/upload`; returns immediately with HTTP 201 Created and `status: 'queued'` with job metadata.
+  - Added support for asynchronous background transcription on `POST /api/recordings/:id/transcribe` via `?async=true` returning HTTP 202 Accepted.
+- **Call Webhook Processing (`backend/routes/calls.js`):**
+  - Routed Twilio recording auto-transcription through `queueTranscriptionJob` rather than unmanaged ad-hoc timeouts.
+- **Server Initialization (`backend/server.js`):**
+  - Initialized background transcription worker on server boot alongside webhook and email workers with clean shutdown handling.
+
+- **AI Lead Scoring Worker (`backend/workers/leadScoring.js`):**
+  - Implemented multi-dimensional lead scoring algorithm calculating normalized scores from 0 to 100 based on email interactions (0–25 pts), activity recency (0–25 pts), lifecycle stage velocity (0–25 pts), and form fills (0–25 pts).
+  - Configured BullMQ repeatable scheduler executing nightly at 02:00 UTC (`pattern: '0 2 * * *'`) with an automatic in-memory queue fallback for offline/test environments.
+  - Implemented batched lead scoring with PostgreSQL persistence updating `score`, `score_factors`, and `last_scored_at`.
+  - Dispatches `lead.scored` workflow event to the workflow engine whenever a lead's score meets or exceeds the configured threshold.
+- **Workflow Event Registration (`backend/services/workflows.js`):**
+  - Registered `lead.scored` event in `EVENT_META` with description and resource association.
+- **Leads Repository Score Integration (`backend/db/repositories/leads.js`):**
+  - Enhanced `create`, `update`, `findById`, and `findAll` to unpack and map `score` and `last_scored_at` transparently.
+- **Lead Scoring Test Suite (`backend/__tests__/lead-scoring.test.js`):**
+  - Added 9 unit and integration tests covering scoring component formulas, point caps, recency decay, velocity bonuses, PostgreSQL score updates, threshold-based workflow triggers, cron scheduler registration, and in-memory fallback.
+- **Quote Signing Automations (`backend/routes/quotes.js`):**
+  - Dispatches `quote.signed` workflow events to the workflow execution engine upon successful quote signature, passing quote details, contract ID, signer metadata, and workspace context.
+  - Added deal owner resolution to identify the sales representative associated with the quote's deal (or creator fallback) and dispatches an email notification with signing metadata, contract reference, and financial totals.
+  - Automatically records outbound notification records in `db.messages` and structured alerts in `db.notifications`.
+  - Appends an audit trail record to `db.audit` capturing `action: 'quote.signed'`, quote ID, contract ID, financial total, signer name/email, signer IP address, user agent, and ISO timestamp.
+- **Workflow Event Registration (`backend/services/workflows.js`):**
+  - Registered `quote` and `contract` resource mappings in `RESOURCE_BY_EVENT_PREFIX`.
+  - Registered `quote.signed`, `quote.created`, `quote.updated`, `contract.created`, and `contract.updated` events in workflow event metadata.
+- **Audit Route Compatibility (`backend/routes/audit.js`):**
+  - Enhanced audit log resolution to support structured actor objects (`actor.name`, `actor.email`, `actor.type`) and fallback resolution for IP/user agent fields.
+- **Signing Automation Tests (`backend/__tests__/quote-sign.test.js`):**
+  - Added 4 integration tests verifying `quote.signed` workflow execution, deal owner email notification delivery, graceful fallback for unassigned quotes, and audit trail record generation.
+- **Quote Share Token Service (`backend/services/quoteToken.js`):**
+  - Implemented secure HMAC-SHA256 time-limited signing tokens (`createQuoteSignToken`) with constant-time verification (`crypto.timingSafeEqual`) to prevent timing attacks.
+  - Added share link generator (`createQuoteShareLink`) formatting client signing URLs with token query parameters.
+- **E-Signature Capture & Contract Auto-Creation (`backend/routes/quotes.js`):**
+  - Added public `POST /api/quotes/:id/sign` endpoint validating time-limited signature tokens, base64 signature image URLs, and signer details.
+  - Recorded signature audit trail in `custom_fields.signature` (capturing `signerName`, `signerEmail`, `signatureDataUrl`, `signedAt`, `signerIp`, and `userAgent`).
+  - Added double-signing guard returning `409 Conflict` if the quote is already signed.
+  - Transitions quote status to `'Signed'` and automatically instantiates an active `Contract` record in PostgreSQL linked by `quote_id` with financial totals and terms preserved.
+  - Added authenticated `POST /api/quotes/:id/share-link` endpoint to generate valid signing links for sales representatives.
+- **Quote E-Signature Test Suite (`backend/__tests__/quote-sign.test.js`):**
+  - Added 14 unit and integration tests covering token generation, tampering and expiration rejection, payload validation, 404 missing quote handling, double-signing protection, and PostgreSQL quote/contract state verification.
+- **Quote PDF Generation Service (`backend/services/quotePdf.js`):**
+  - Added `@react-pdf/renderer` server-side rendering for PDF generation in Node.js ESM using `React.createElement`.
+  - Designed professional quote template featuring Tunaxa brand badge, quote reference metadata, customer/company details grid, styled line items table, financial totals (subtotal, discount, tax, grand total), terms/notes, and dual signature block (Prepared By & Accepted By).
+  - Exported `renderQuotePdfStream()` for direct HTTP streaming and `renderQuotePdfBuffer()` for binary buffers.
+- **Quote PDF Streaming Route (`backend/routes/quotes.js`):**
+  - Added authenticated `GET /api/quotes/:id/pdf` endpoint streaming quote PDFs with `inline` `Content-Disposition`.
+  - Enriches quote metadata with referenced company and contact names/emails from PostgreSQL repositories.
+  - Registered quote routes in `backend/server.js` with proper route precedence.
+- **Quote PDF Test Suite (`backend/__tests__/quote-pdf.test.js`):**
+  - Added 7 unit and integration tests covering binary buffer generation, empty line item fallbacks, stream readability, 401 authentication checks, 404 missing quote handling, HTTP streaming headers, and company/contact enrichment.
+- **Workflow "Wait" Node & Delay Engine (`backend/services/workflows.js`):**
+  - Added support for `wait` nodes in visual workflow graphs.
+  - Halts synchronous execution along the active branch when a `wait` node is encountered and records a step with `status: 'waiting'`, `delayMs`, and `scheduledResumeAt`.
+  - Added `resumeNodeGraphExecution()` allowing asynchronous workers to resume traversal from downstream target nodes while appending steps into the existing `workflow_runs` row.
+  - Added `wait` to `NODE_META` and simulated wait step execution in `dryRunFlow()`.
+- **Duration Parsing Utility (`backend/services/duration.js`):**
+  - Implemented `parseDelayToMs(delay)` supporting human-readable strings (`"1 day"`, `"2 hours"`, `"30 minutes"`, `"45 seconds"`, `"1 week"`), structured duration objects (`{ amount: 3, unit: 'days' }`), and raw millisecond numbers.
+- **BullMQ Delayed Queue Service (`backend/services/workflowQueue.js`):**
+  - Configured `'workflow-wait-queue'` with BullMQ delayed jobs (`{ delay: delayMs }`) and worker resumption handling.
+  - Implemented automatic fallback to an in-memory wait queue when Redis is offline or unconfigured, ensuring robust zero-dependency local and CI test execution.
+- **Wait Node Unit & Integration Tests (`backend/services/__tests__/workflows-wait.test.js`):**
+  - Added 14 unit and integration tests covering duration parsing, in-memory queue fallback, wait step status logging, worker graph resumption, conditional branch skipping with wait nodes, and dry run simulation.
+- **Workflow Execution Runs Migration (Migration 009):** Added `backend/db/migrations/009_workflow_runs.sql` creating the `workflow_runs` table with `TEXT` primary keys, `workspace_id` tenant isolation, `status` tracking (`running`, `success`, `failed`), `started_at`/`completed_at` timestamps, `steps JSONB`, `error_message`, and `update_updated_at_column()` triggers with 5 secondary indexes.
+- **Workflow Runs Repository:** Implemented `backend/db/repositories/workflow-runs.js` providing `create`, `update`, `findById`, `findByWorkflowId`, and `findAll` with JSONB serialization (`toJsonb`) and workspace isolation. Registered in repository index under `workflowRuns` and `workflow_runs`.
+- **Workflow Execution Tracking (`backend/services/workflows.js`):** Instrumented `triggerWorkflows()` to log run records on trigger and capture detailed per-node step execution metadata (`nodeId`, `nodeType`, `nodeName`, `status`, `output`, `error`, `executedAt`). Downstream nodes on inactive branches are explicitly recorded with `status: 'skipped'`.
+- **Workflow Runs API (`backend/routes/workflowbuilder.js`):** Added `GET /api/workflows/:id/runs` endpoint with pagination and workspace isolation under `auth` and `requireRole('admin', 'member')`.
+- **Workflow Runs Tests:** Added repository unit tests (`backend/db/repositories/__tests__/workflow-runs.test.js`) and end-to-end integration tests (`backend/__tests__/workflow-runs.test.js`) verifying graph step tracking, skipped condition branches, failure handling, 404 validation, and workspace isolation.
+- Initial CRM MVP: Express 5 backend (REST + GraphQL, JSON store, V1 PostgreSQL object API, workflows, webhooks, forms, surveys, reports, calls/recordings, AI, live chat, knowledge base, RBAC, file uploads, SSE) and React 18 + Vite frontend (dashboard, pipeline, all CRM modules, global search, quick-create, i18n EN/FR, dark mode), with tests and CI.
+- **Workflow Node Graph Execution Engine (`backend/services/workflows.js`):**
+  - Upgraded `triggerWorkflows()` to support visual node graph execution (`Trigger` → `Condition` → `Action`/`Delay`) in addition to legacy flat action lists.
+  - Implemented graph adjacency traversal supporting edge schemas (`{ source, target, sourceHandle }` and `{ from, to, fromHandle }`) as well as direct node pointers (`node.next`, `trueNext`, `falseNext`).
+  - Added condition branch evaluation (`evaluateCondition` and `evaluateOperator`) supporting direct properties, dot-notation nested paths, and `custom_fields` fallbacks.
+  - Added support for comparison operators (`equals`, `not_equals`, `contains`, `greater_than`, `less_than`, `is_empty`, `is_not_empty`, `in`, `starts_with`, `ends_with`, `daysAgo`) and compound rule sets (`match: all | any`).
+  - Implemented strict branch skipping: when a condition evaluates to `false`, non-matching branches are omitted from downstream execution unless connected to an explicit `false` handle.
+  - Built-in cycle detection and recursion bounds (`MAX_STEPS = 200`) to guard against cyclic workflow graphs.
+  - Integrated delayed actions and `delay` node scheduling via `scheduleExecution()`.
+  - Updated `dryRunFlow()` to simulate node graph branch execution without state mutation.
+- **Workflow Graph Unit Tests (`backend/services/__tests__/workflows-graph.test.js`):**
+  - Added 19 comprehensive unit tests covering linear execution, conditional branching, false-branch skipping, compound condition logic, cycle prevention, delay scheduling, edge format compatibility, and legacy flat workflow fallback.
+- **Marketing & Service Repositories:** Added repository modules for `campaigns`, `email-lists`, `forms`, `tickets`, `surveys`, and `survey-responses` under `backend/db/repositories/`.
+- **Workspace Scoping on Repositories:** Extended `leads` and `contacts` repositories with optional `workspaceId` parameters on `findById` and `findByEmail` to prevent cross-tenant record tampering during public form submissions.
+- **Queue Record Resolution:** Added `findRecord(resource, recordId)` in `backend/services/queue.js` to resolve workflow execution target records from PostgreSQL repositories or the legacy JSON store dynamically.
+- **Marketing & Service Route Tests:** Added `backend/__tests__/marketing-service-routes.test.js` (40 tests) covering CRUD, ticket comments, SLA routes, form submissions, customer portal ticket visibility, and tenant isolation.
+- **Revenue Route Integration Tests (`backend/__tests__/revenue-routes.test.js`):** Added 35 integration tests covering customer portal access resolution, category filtering, pagination clamping (`?limit=1000` clamped to 100), CSV exports for revenue resources, and 404 status assertions on non-existent IDs.
+- **PostgreSQL Revenue Schema (Migration 006):** Created `backend/db/migrations/006_revenue_tables.sql` defining tables for `products`, `quotes`, `contracts`, `orders`, `invoices`, and `expenses`:
+  - `TEXT` primary keys with `gen_random_uuid()::text` defaults for backwards compatibility and 404 handling.
+  - `DOUBLE PRECISION` types for all monetary amounts, totals, costs, and prices to eliminate floating point / string coercion issues.
+  - `items JSONB NOT NULL DEFAULT '[]'` for line items and `custom_fields JSONB NOT NULL DEFAULT '{}'` for overflow attributes.
+  - `update_updated_at_column()` triggers on all 6 tables and 34 secondary indexes (40 total including the 6 primary keys) covering foreign keys, status, dates, and search columns.
+- **Revenue Repositories:** Implemented repository modules under `backend/db/repositories/` (`products.js`, `quotes.js`, `contracts.js`, `orders.js`, `invoices.js`, `expenses.js`) with input validation, whitelisted sorting, and paginated query results.
+- **Repository Registry Integration:** Registered all six revenue repositories in `backend/db/repositories/index.js` and `repoFor()`.
+- **Data Migration Script:** Added `scripts/migrate-revenue-to-pg.js` for idempotent batch backfilling from `readDb()` into PostgreSQL. All six source arrays in `backend/data/db.json` are currently empty, so it currently migrates 0 rows; it is safe to re-run once data exists.
+- **Unit & Integration Tests:** Added repository unit test suites under `backend/db/repositories/__tests__/` and updated test database truncation in `backend/__tests__/setup.js`.
+- **PostgreSQL Marketing & Service Schema (Migration 007):** Created `backend/db/migrations/007_marketing_service_tables.sql` defining tables for `campaigns`, `email_lists`, `forms`, `tickets`, `surveys`, and `survey_responses` (numbered 007 because `006_revenue_tables.sql` already occupies 006 on this branch):
+  - `TEXT` primary keys with `gen_random_uuid()::text` defaults, and `custom_fields JSONB NOT NULL DEFAULT '{}'::jsonb` as the overflow bag.
+  - `DOUBLE PRECISION` for monetary and counter columns (`campaigns.budget`/`spend`/`target`/`reached`/`leads`, `surveys.target_score`, `survey_responses.score`).
+  - `update_updated_at_column()` trigger on all 6 tables and 28 secondary indexes (34 total including the 6 primary keys), including a `UNIQUE` index on `forms.permalink`, which `routes/forms.js` enforces and uses as its public lookup key.
+  - Column names follow what the application actually writes rather than the obvious label, because several differ: `campaigns.channel` (not `type`), `tickets.stage` (not `status` — `routes/tickets.js` `slaStatus()` branches on it), `surveys.name` as `NOT NULL` (not `title`, which no code path writes), `email_lists.subscribers INTEGER` (the store holds a count, coerced by `helpers.js`, not an address array), and `tickets.contact`/`contact_email` (the legacy record stores a free-text contact name and has no contact id).
+- **Marketing & Service Backfill Script:** Added `scripts/migrate-marketing-service-to-pg.js`, an idempotent batch upsert from `readDb()` that tolerates the `forms` and `tickets` keys being absent (both are created lazily by their route modules and are absent from `db.json`), accepts `email_lists`/`emailLists` and `survey_responses`/`surveyResponses` key aliases, JSON-serializes every JSONB parameter, mirrors each column's SQL default in a `DEFAULTS` map so an absent key lands on the default rather than an explicit `NULL` that would override it, and preserves historical `created_at`/`updated_at` on insert while excluding `created_at` from the update set. All six source arrays are currently empty, so it migrates 0 rows; it is safe to re-run once data exists.
+- User preferences API (`GET` / `PUT /api/users/me/preferences`) now persists per-user preferences under `db.settings.userPreferences[userId]` instead of on the user record in `db.users`, and the page-size preference is stored under the canonical `tablePageSize` property while still accepting and returning the legacy `pageSize` key used by `web/src/App.tsx` (mapped on the wire). The PUT route now also strictly validates that `theme` is `light` or `dark`, `sidebarCollapsed` is a boolean, and the page size is a positive number; the login and `/api/auth/me` responses continue to surface the saved preferences so the frontend initialization sequence is unchanged.
 - New database seed script (`backend/db/seed.js`, run via `npm run seed`) that populates the JSON store with realistic sample data — 20 contacts, 15 leads, 10 companies, 8 deals, 10 tasks, 5 activities, and an admin user (`admin@tunaxa.com` / `tunaxa2024`, role `admin`). Seeding is idempotent: re-running skips records that already exist instead of duplicating them.
 - CSV downloads for leads, contacts, and companies, backed by the authenticated `/api/:resource/export.csv` endpoint.
 - Goal progress bars and 50%, 75%, and 100% milestone badges on the Goals page, with red, amber, and green progress states.
@@ -33,24 +329,54 @@ and this project adheres to Semantic Versioning.
 - Parameterized PostgreSQL repository layer for Contacts and Leads with CRUD, pagination, search, and validated sorting.
 - PostgreSQL repository layer for Companies, Deals, Tasks, and Activities with CRUD, pagination, search, sorting whitelists, and pipeline aggregation.
 - Redis query caching with 60s TTL and pattern-based invalidation across core repository findAll queries.
+- Search: `GET /api/search` now returns results grouped by entity type (`{ contacts, leads, companies, deals, tasks, recordings }`) with per-type section headers in the global search dropdown, and resource list endpoints (`GET /api/:resource?q=`) now match specific meaningful fields (`name`, `email`, `company`, `phone`, `title`, `subject`, …) instead of string-searching entire serialized records, which keeps search efficient and avoids surfacing hidden data.
 
 ### Changed
 
+- Standardized string quoting and improved logout error handling in `AppContext` (`d57414b`).
+- Removed `--open` from Vite dev startup (`836239a`); updated Vite config in `package.json` and `web/vite.config.ts` (`4e9bc9b`).
+- Added ESLint config and devDependencies (`fde1c02`, `fb9c4b4`); added `backend/data/db.json.bac` seed template (`f7890c0`).
+- **Test Database Setup (`backend/__tests__/setup.js`):** Included `workflow_runs` in the test database `TRUNCATE TABLE ... CASCADE;` cleanup routine.
+- **Forms Route Cutover (`backend/routes/forms.js`):** Swapped permalink resolution and form submission handlers to use repositories; added workspace isolation to prevent cross-tenant overwrites; preserved custom fields during partial submissions; and wired activity creation into PostgreSQL.
+- **Tickets Route Cutover (`backend/routes/tickets.js`):** Swapped ticket CRUD and comments to repositories; moved `PUT /api/tickets/sla` before parameterized `:id` routes to resolve route shadowing; and wired ticket activities to PostgreSQL.
+- **Portal Ticket Resolution (`backend/routes/dataops.js`):** Updated `emailEquals` to check `contactEmail` so tickets are properly matched in `/api/portal/access`.
+- **Execution Queue (`backend/routes/queue.js`):** Rewired delayed execution queuing to validate records against PostgreSQL repositories.
+- **Customer Portal Data Access (`backend/routes/dataops.js`):** Generalized `loadDuplicateRows()` to `loadRows()`, allowing concurrent, repository-backed retrieval across `contacts`, `quotes`, `contracts`, and `invoices` via `Promise.all`. Preserved fallback to JSON store for `tickets`. Added `try/catch` block forwarding errors to `next(err)` to prevent unhandled promise rejections.
+- **Resource Query Filtering (`backend/routes/resources.js`):** Added `"category"` to `PG_FILTER_KEYS` so `?category=` query parameters are properly routed to repository `findAll()` methods for `products` and `expenses`.
+- **Portal Test Alignment (`backend/__tests__/extensions.test.js`):** Updated customer portal tests to seed entities via HTTP endpoints rather than mutating the legacy JSON store directly.
+- **Shape Adapters (`backend/db/legacy-shape.js`):** Extended `PG_RESOURCES` (6 → 12 resources) and `RESOURCE_MAPPINGS` with bidirectional mappings, title fallback logic (`name`, `quote_number`/`contract_number`, `subject`, `customerEmail`), and numeric aliases (`amount` ↔ `total`).
+- **Module Summaries (`backend/routes/modules.js`):** Updated `commerce/summary` and `finance/summary` to aggregate live revenue data from PostgreSQL repositories instead of reading stale JSON stores — they previously reported zero revenue once writes moved to Postgres.
+- **JSONB Serialization Fix:** Ensured array fields (`items` / `lineItems`) are JSON-serialized before parameter binding to prevent PostgreSQL `22P02` array literal syntax errors. node-postgres sends a JS array as a Postgres array literal, which `jsonb` rejects; the same payload now round-trips correctly.
+- **Custom Fields Coercion:** Extended `coerceBuiltIns()` in `backend/helpers.js` to recurse into `custom_fields`, so numeric overflow fields (`products.stock`, `products.minStock`, `contracts.mrr`) coerce to numbers instead of persisting as strings.
+- AXA-154: Optimized the login background as WebP, self-hosted/preloaded Geist WOFF2 fonts, and deferred optional Sentry loading to reduce production preview render blocking and initial JavaScript.
 - Optimized the login background as WebP, self-hosted/preloaded Geist WOFF2 fonts, and deferred optional Sentry loading to reduce production preview render blocking and initial JavaScript.
 - Per-route `ErrorBoundary` instances now get `key={location.pathname}`, so client-side navigation remounts a fresh boundary instead of carrying over a previously caught error's fallback UI.
+- CSV exports (`GET /api/:resource/export.csv`) now stream through native Node.js streams (`Readable.from` + `stream.pipeline`) instead of buffering the entire dataset in memory: rows are field-masked one chunk at a time as they pass through the pipeline, and the header row is derived from the first record only (with the built-in and custom field definitions as a fallback, so empty datasets still export a header and end the stream cleanly). Response headers (`Content-Type: text/csv; charset=utf-8` and the `Content-Disposition` attachment filename) are unchanged.
+- Comprehensive Week 3 backend code review: added JSDoc documentation, route signature specs, and architectural audit coverage.
+
 
 ### Fixed
 
-- Rate-limit buckets now use Redis `INCR`/`EXPIRE` when Redis is connected, with the existing in-memory fallback retained when it is unavailable.
-- Added `POST /api/auth/refresh` with 30-day session token rotation, invalidating the previous token after each successful refresh.
-- Added Helmet security headers, including `X-Frame-Options: DENY`, a permissive Content Security Policy, and Strict-Transport-Security.
-- Secured Server-Sent Events by requiring authentication and restricting event delivery to the authenticated user's workspace.
-- Search: updated empty search result message
-- Login: lower Sign In button spacing next to Remember me
-- Cleared critical and serious accessibility findings by naming icon-only buttons and form controls, raising muted text to WCAG AA contrast in light and dark themes, and enforcing a visible keyboard focus ring across interactive elements.
+- Upload endpoints rate limiting: applied shared IP-based rate limiting across all upload routes.
+- Test harness stability: isolated test database paths and ensured serial execution configurations for Windows environments.
+- **Stale Repository SQL Assertions (`backend/db/repositories/__tests__/`):**
+  - Four repository tests (`contacts`, `companies`, `leads`, `email-lists`) asserted on the pre-merge `custom_fields = $n` overwrite form and on a structured object in the bound parameters, so they failed against the JSONB merge rewrite introduced with the atomic duplicate merge engine. Both expectations now assert the merge expression `COALESCE(custom_fields, '{}'::jsonb) || $n::jsonb` and the serialized JSON parameter that the `::jsonb` cast requires. Assertions were tightened to name the merge explicitly rather than loosened to a substring that would match either form.
+- **Email Dedup Case Sensitivity (`backend/services/dedup.js`):**
+  - `emailMetric` compared the raw address strings for the exact-match check, so `Sarah.Connor@Acme.com` and `sarah.connor@acme.com` failed equality and fell through to the same-domain near-miss branch, scoring 0.5 instead of 1.0. Both addresses are now normalized before any comparison, so casing can no longer suppress the exact-match path. Found by the new suite's first run.
+- **Database Probe Race in Test Harness (`backend/__tests__/atomic-merge-fuzzy.test.js`):**
+  - The Postgres availability flag was assigned in `beforeAll`, but `describe.skipIf()` is evaluated while Vitest is still collecting files — before any lifecycle hook runs — so every database and HTTP assertion was skipped while the suite reported success. Replaced with a module-scope top-level `await` probe, and an unreachable database now logs a warning instead of quietly passing.
+- **Session Token Refresh Endpoint (`backend/routes/auth.js`):**
+  - Resolved unhandled `ReferenceError` on `POST /api/auth/refresh` caused by undeclared variables (`session`, `user`, `nextToken`) and removed dead `readDb()` call.
+  - Implemented atomic session token rotation inside `mutateDb`: validates caller sessions against `sessionIsExpired()`, prunes expired or orphaned sessions, immediately revokes the presented token, issues a new 32-byte cryptographic hex token, records a session refresh audit log, and returns `{ token, user }` sanitized via `publicUser()`.
+  - Added dedicated `refreshLimiter` rate limiter (30 requests/minute) isolated from the login endpoint bucket.
+  - Cleared the codebase's sole remaining `no-undef` ESLint violation.
+- `scripts/migrate-revenue-to-pg.js` silently discarded every legacy timestamp: `created_at`/`updated_at` were computed in `main()` but never added to the `INSERT` column list, so every backfilled row received the column default `NOW()` instead of the record's real `createdAt`/`updatedAt`. Both columns are now inserted, and `created_at` is deliberately excluded from the `ON CONFLICT (id) DO UPDATE` assignment list so a re-run cannot restamp an original creation date. `updated_at` is left to the `update_updated_at_column()` trigger, which already overwrites it on every write. Found by a fixture pass on migration 007; the revenue backfill had never been run against non-empty data, so the bug was latent.
 - Backend failed to start locally: runtime data file `backend/data/db.json` was missing, so `app.listen(3001)` never ran; restored the tracked `db.json.bac` seed to `db.json`, unblocking `npm run server` and `npm start`. (Note: `db.json` is gitignored runtime data.)
 - `npm test` previously invoked `jest` (not installed); it now runs `vitest run`, matching the runner the backend suite actually uses (tests import from `vitest`, and `server.js` already skips `app.listen(3001)` when `VITEST === "true"`).
 - Duplicate merge now happens atomically: `POST /api/duplicates/merge` accepts a `mergeIds` array and merges an entire duplicate group in a single `mutateDb()` call, and the Duplicates page sends all IDs in one request instead of looping per-merge HTTP calls, so a mid-merge failure can no longer leave partial/corrupted state.
+- `npm run build` failed inside the container image: `package-lock.json` was generated on Windows and records only the `win32` variants of Rollup and Esbuild, so `npm ci` on `node:22-alpine` left `node_modules/@rollup` and `node_modules/@esbuild` empty and Vite aborted with `Cannot find module @rollup/rollup-linux-x64-musl` (npm/cli#4828). The Dockerfile now installs both binaries at versions read from the already-resolved `rollup` and `esbuild` packages, so they cannot drift from the lockfile.
+- `web/src/styles/app.css`: an unclosed `@media (max-width: 700px)` block (introduced in `a1983c4`) swallowed roughly 180 following lines and broke the PostCSS build with "Unclosed block".
+- `web/src/lib/api.ts`: an orphaned duplicate tail of `requestWithRetry` was left behind by an earlier revision, producing an esbuild `Unexpected "catch"` parse error; the dead fragment is removed.
 
 ### Testing
 
@@ -67,20 +393,10 @@ and this project adheres to Semantic Versioning.
 - Added focused tests for progress colors, capped progress-bar width, and newly crossed milestone detection; production build and targeted lint/type checks pass.
 - Added focused unit coverage for line totals, discount-before-tax calculations, percentage limits, negative values, rounding, and legacy item normalization; production build and targeted lint/type checks pass.
 - Lighthouse on the production preview with the local API running improved the login screen from 86/95/100 to 98/95/100 (Performance/Accessibility/Best Practices); `npm run build`, TypeScript type-check, and targeted ESLint checks passed.
+- Atomic merge & fuzzy dedup (`backend/__tests__/atomic-merge-fuzzy.test.js`) — 27/27 passing against a real PostgreSQL database.
 - Webhook delivery logging (inbound) — verified by the webhook-Endpoints vitest suite (`backend/__tests__/forms-webhooks.test.js`, 18/18 passing in isolation) and manually via the API: `npm run server`, authenticate (`POST /api/auth/login`, or reuse a live session token from `backend/data/db.json`), `POST /api/webhookEndpoints` with `{"name":"Manual test","enabled":true}` and note the returned `id`/`url`, then `POST <url>` with `Content-Type: application/json` (repeat 3×) and `GET /api/webhookEndpoints/:id/deliveries` with `Authorization: Bearer $TOKEN` → newest-first rows with `status:"received"`, captured `contentType`/`remoteIp`, and per-endpoint `attemptNumber` incrementing 1→2→3…; same GET without a token → 401, bogus endpoint id with a token → 404.
+- Deep health check (`backend/__tests__/health-deep.test.js`) — 26/26 passing, and mutation-verified: dropping `requireRole('admin')`, never returning 503, mislabelling the postgres or redis failure status, breaking `REDIS_URL` precedence, ignoring SMTP or AI provider configuration, dropping the flattened status fields, and ignoring postgres failure in the composite were each caught. Full suite at 966 passed / 21 pre-existing baseline failures / 1 skipped, a delta of exactly +26 over the prior 962, so no regressions. Note that the 21 failures are the known baseline in `hubspot-parity`, `graphql`, `extensions`, `new-features`, `emailSync` and `hubspot-parity-2`; a `transcription-queue` failure also appeared in one full run and did not reproduce in isolation or on a clean re-run, consistent with the existing parallel-execution flakiness around the shared `test-db.json`.
 
 ### Security
 
 - Added a scoped, short-lived (120s) query-token authentication path for the SSE endpoint only (`GET /api/events`), since browsers cannot attach custom headers to `EventSource` connections. Tokens are minted per-connection via a new authenticated endpoint (`POST /api/auth/events-token`), scoped to `purpose: "sse"`, and cannot be used on any other route. All other existing routes continue using standard header-based authentication, unchanged.
-
-## [2.1.0] - 2026-09-16
-
-### Added
-
-- Initial CRM MVP: Express 5 backend (REST + GraphQL, JSON store, V1 PostgreSQL object API, workflows, webhooks, forms, surveys, reports, calls/recordings, AI, live chat, knowledge base, RBAC, file uploads, SSE) and React 18 + Vite frontend (dashboard, pipeline, all CRM modules, global search, quick-create, i18n EN/FR, dark mode), with tests and CI.
-
-### Changed
-
-- Standardized string quoting and improved logout error handling in `AppContext` (`d57414b`).
-- Removed `--open` from Vite dev startup (`836239a`); updated Vite config in `package.json` and `web/vite.config.ts` (`4e9bc9b`).
-- Added ESLint config and devDependencies (`fde1c02`, `fb9c4b4`); added `backend/data/db.json.bac` seed template (`f7890c0`).

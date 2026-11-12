@@ -30,23 +30,73 @@ describe("migration runner", () => {
     expect(connectionsOnImport).toBe(0);
   });
 
-  it("runs only unapplied SQL files in order and records each filename", async () => {
+  it("runs unapplied SQL files in order and records each inside a transaction", async () => {
     mocks.query.mockImplementation(async (sql) => ({
       rows: sql === "SELECT filename FROM schema_migrations" ? [{ filename: "001.sql" }] : [],
     }));
     await runMigrations();
+    // Only 002.sql is pending -> exactly one file read, in the right order.
     expect(mocks.readFile).toHaveBeenCalledTimes(1);
     expect(mocks.readFile.mock.calls[0][0]).toMatch(/002\.sql$/);
+    // The migration runs inside BEGIN/COMMIT and records its filename.
+    expect(mocks.query).toHaveBeenCalledWith("BEGIN");
+    expect(mocks.query).toHaveBeenCalledWith("SELECT 1;");
     expect(mocks.query).toHaveBeenCalledWith(
       "INSERT INTO schema_migrations (filename) VALUES ($1)", ["002.sql"],
     );
+    expect(mocks.query).toHaveBeenCalledWith("COMMIT");
     expect(mocks.release).toHaveBeenCalledOnce();
+  });
+
+  it("strips legacy BEGIN;/COMMIT; wrappers so they cannot commit the runner's transaction", async () => {
+    mocks.readFile.mockResolvedValue(
+      "BEGIN;\nCREATE TABLE demo (id INT);\nCOMMIT;\n",
+    );
+    await runMigrations();
+
+    const fileCall = mocks.query.mock.calls.find(([sql]) =>
+      sql.includes("CREATE TABLE demo"),
+    );
+    expect(fileCall).toBeTruthy();
+    const executed = fileCall[0];
+    expect(executed).not.toMatch(/^\s*BEGIN\s*;/im);
+    expect(executed).not.toMatch(/^\s*COMMIT\s*;\s*$/im);
+    expect(executed).toContain("-- BEGIN (stripped by runner)");
+    expect(executed).toContain("-- COMMIT (stripped by runner)");
   });
 
   it("releases the connection and does not record a failed migration", async () => {
     mocks.readFile.mockRejectedValue(new Error("Unreadable migration"));
     await expect(runMigrations()).rejects.toThrow("Unreadable migration");
     expect(mocks.query.mock.calls.some(([sql]) => sql.startsWith("INSERT"))).toBe(false);
+    expect(mocks.release).toHaveBeenCalledOnce();
+  });
+
+  it("rolls back a migration whose SQL fails mid-execution", async () => {
+    mocks.query.mockImplementation(async (sql) => {
+      if (sql === "SELECT filename FROM schema_migrations") return { rows: [] };
+      if (sql === "SELECT 1;") throw new Error("duplicate key");
+      return { rows: [] };
+    });
+    await expect(runMigrations()).rejects.toThrow("Migration 001.sql failed: duplicate key");
+    expect(mocks.query.mock.calls.some(([sql]) => sql === "ROLLBACK")).toBe(true);
+    expect(mocks.query.mock.calls.some(([sql]) => sql.startsWith("INSERT"))).toBe(false);
+    expect(mocks.query.mock.calls.some(([sql]) => sql === "COMMIT")).toBe(false);
+    expect(mocks.release).toHaveBeenCalledOnce();
+  });
+
+  it("is idempotent on an up-to-date database (skips everything, applies nothing)", async () => {
+    mocks.query.mockImplementation(async (sql) => ({
+      rows: sql === "SELECT filename FROM schema_migrations"
+        ? [{ filename: "001.sql" }, { filename: "002.sql" }]
+        : [],
+    }));
+    const result = await runMigrations();
+    expect(result.applied).toEqual([]);
+    expect(result.skipped).toEqual(["001.sql", "002.sql"]);
+    expect(mocks.readFile).not.toHaveBeenCalled();
+    expect(mocks.query).not.toHaveBeenCalledWith("BEGIN");
+    expect(mocks.query).not.toHaveBeenCalledWith("COMMIT");
     expect(mocks.release).toHaveBeenCalledOnce();
   });
 });

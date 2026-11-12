@@ -3,6 +3,7 @@ import helmet from "helmet";
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import multer from "multer";
 import * as Sentry from "@sentry/node";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,7 @@ import { startRateLimitSweeper } from "./services/rateLimit.js";
 import { backupDb } from "./services/backup.js";
 import { cleanupExpiredSessions } from "./middleware/auth.js";
 import registerAuthRoutes from "./routes/auth.js";
+import registerHealthRoutes from "./routes/health.js";
 import registerResourceRoutes from "./routes/resources.js";
 import registerSettingsRoutes from "./routes/settings.js";
 import registerCallRoutes from "./routes/calls.js";
@@ -50,25 +52,63 @@ import registerModuleRoutes from "./routes/modules.js";
 import registerGraphQLRoutes from "./routes/graphql.js";
 import registerDataOpsRoutes from "./routes/dataops.js";
 import registerWebhookEndpointRoutes from "./routes/webhookendpoints.js";
+import registerQuoteRoutes from "./routes/quotes.js";
+import registerContactRoutes from "./routes/contacts.js";
+import registerGoalRoutes from "./routes/goals.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
+import { originGuard } from "./middleware/csrf.js";
+import {
+  initReportSchedulerWorker,
+  closeReportSchedulerQueue,
+} from "./workers/reportScheduler.js";
 import { processExecutionQueue } from "./services/queue.js";
 import { startEmailSync, stopEmailSync } from "./services/emailSync.js";
+import {
+  startTranscriptionWorker,
+  stopTranscriptionWorker,
+} from "./services/transcriptionQueue.js";
 import { createRateLimiter } from "./services/rateLimit.js";
 import { initCache } from "./services/cache.js";
 import { seedPlaybooks } from "./services/seedPlaybooks.js";
 
 const app = express();
 app.disable("x-powered-by");
+const isProduction = process.env.NODE_ENV === "production";
 app.use(
   helmet({
-    frameguard: { action: "deny" },
     contentSecurityPolicy: {
+      // The API serves JSON, /uploads, and the built SPA from web/dist, so this
+      // policy also governs the app shell: no `unsafe-eval`, no wildcard http:/
+      // https: sources, and inline event handlers are forbidden. Two external
+      // image hosts are allow-listed because the SPA's footer and pixel divider
+      // load assets from them; everything else must be same-origin.
+      useDefaults: false,
       directives: {
-        defaultSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "data:", "blob:", "http:", "https:"],
-        connectSrc: ["'self'", "http:", "https:", "ws:", "wss:"],
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        connectSrc: ["'self'", "ws:", "wss:"],
+        fontSrc: ["'self'", "data:"],
+        formAction: ["'self'"],
         frameAncestors: ["'none'"],
+        imgSrc: [
+          "'self'",
+          "data:",
+          "blob:",
+          "https://img.icons8.com",
+          "https://framerusercontent.com",
+        ],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        ...(isProduction ? { upgradeInsecureRequests: [] } : {}),
       },
     },
+    // Defence against clickjacking and MIME sniffing (both also asserted in
+    // backend/__tests__/security-headers-csrf.test.js).
+    frameguard: { action: "deny" },
+    noSniff: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
     hsts: {
       maxAge: 31_536_000,
       includeSubDomains: true,
@@ -187,7 +227,11 @@ app.use(express.urlencoded({ extended: true }));
 
 const globalLimiter = createRateLimiter({
   windowMs: 60_000,
-  max: 120,
+  // Tunable because the bucket is per-process: a deployment fronted by several
+  // instances sees only its share of traffic, and a stricter-than-default value
+  // would then throttle legitimate users unevenly. Defaults to the previous
+  // hardcoded limit when unset.
+  max: Number(process.env.RATE_LIMIT_GLOBAL_MAX) || 120,
   prefix: "global",
 });
 app.use("/api", globalLimiter);
@@ -201,12 +245,18 @@ app.use(
   }),
 );
 
+// Origin enforcement for state-changing API requests. Mounted at the root
+// rather than on "/api" so that req.path still carries the /api prefix the
+// exempt patterns match against. Must be registered before any route.
+app.use(originGuard());
+
 // V1 Dynamic Object API (PostgreSQL + JSONB) — registered BEFORE legacy routes
 registerV1ObjectRoutes(app);
 registerV1AssociationRoutes(app);
 registerWebhookRoutes(app);
 
 registerAuthRoutes(app);
+registerHealthRoutes(app);
 registerSettingsRoutes(app);
 registerCallRoutes(app);
 registerRecordingRoutes(app, upload);
@@ -241,7 +291,50 @@ registerModuleRoutes(app);
 registerGraphQLRoutes(app);
 registerDataOpsRoutes(app);
 registerWebhookEndpointRoutes(app);
+registerQuoteRoutes(app);
+registerContactRoutes(app);
+registerGoalRoutes(app);
 registerResourceRoutes(app);
+
+// ============================================
+// Production static assets
+// ============================================
+// In development the UI is served by the Vite dev server (web/vite.config.ts
+// proxies /api and /uploads here), so this block is inert: it only activates
+// when a production bundle exists, which is what the Dockerfile produces. That
+// keeps every existing test and dev workflow on the same code path it had
+// before - there is no web/dist in a checkout, so nothing is mounted.
+//
+// The fallback is registered as a bare app.use rather than app.get("*") on
+// purpose: Express 5 replaced path-to-regexp's bare "*" with named wildcards,
+// and a pattern-free middleware cannot break on a future Express upgrade.
+// /api and /uploads are excluded so an unknown API route still returns JSON
+// 404 rather than the HTML shell.
+const webDistDir = path.join(root, "..", "web", "dist");
+if (existsSync(path.join(webDistDir, "index.html"))) {
+  // Static assets are public and unauthenticated, so they need their own
+  // throttle ahead of the file system access below. The SPA shell is read once
+  // at startup rather than per request: production images are immutable, and
+  // keeping disk I/O out of the request path removes the DoS surface CodeQL
+  // flags for unmatched GETs.
+  const staticLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    prefix: "static",
+  });
+  const indexHtml = readFileSync(path.join(webDistDir, "index.html"));
+  app.use(staticLimiter);
+  // index: false - the shell is served explicitly below, so that it can be sent
+  // with no-store while the content-hashed assets under /assets stay immutable.
+  app.use(express.static(webDistDir, { index: false, maxAge: "1y", immutable: true }));
+  app.use((req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    if (req.path.startsWith("/api") || req.path.startsWith("/uploads")) return next();
+    res.setHeader("Cache-Control", "no-store");
+    res.type("html");
+    return res.send(indexHtml);
+  });
+}
 
 app.use((err, req, res, next) => {
   if (process.env.SENTRY_DSN && process.env.VITEST !== "true") {
@@ -261,10 +354,21 @@ app.use((err, req, res, next) => {
 export { app };
 
 if (process.env.VITEST !== "true") {
-  app.listen(3001, "127.0.0.1", () => {
-    console.log("Tunaxa API running on http://127.0.0.1:3001");
+  // Defaults are the pre-existing dev values, so `npm start`, start.js and the
+  // Vite proxy in web/vite.config.ts keep working untouched. A container
+  // overrides both: PORT selects the published port and HOST must be 0.0.0.0,
+  // because a server bound to 127.0.0.1 inside a container is unreachable from
+  // the host no matter what the port mapping says.
+  const port = Number(process.env.PORT) || 3001;
+  const host = process.env.HOST || "127.0.0.1";
+  app.listen(port, host, () => {
+    console.log(`Tunaxa API running on http://${host}:${port}`);
     startWebhookWorker();
     startEmailSync();
+    startTranscriptionWorker();
+    initReportSchedulerWorker().catch((error) =>
+      console.error("[report-scheduler] worker init failed:", error.message),
+    );
   });
   setInterval(
     () =>
@@ -276,6 +380,8 @@ if (process.env.VITEST !== "true") {
 
   const shutdown = () => {
     stopEmailSync();
+    stopTranscriptionWorker().catch(() => {});
+    closeReportSchedulerQueue().catch(() => {});
     process.exit(0);
   };
   process.on("SIGTERM", shutdown);

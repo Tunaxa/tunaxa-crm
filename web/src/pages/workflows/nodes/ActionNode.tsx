@@ -19,7 +19,7 @@ export default function ActionNode({
       </div>
 
       <div className="workflow-node-body">
-        <strong>{data.type || "Action"}</strong>
+        <strong>{typeof data.type === "string" ? data.type || "Action" : "Action"}</strong>
 
         {Object.entries(configuration).map(([key, value]) => (
           <div className="action-summary" key={key}>

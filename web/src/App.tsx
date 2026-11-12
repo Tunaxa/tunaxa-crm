@@ -1,4 +1,9 @@
-import WorkflowCanvas from "./pages/workflows/WorkflowCanvas";
+import { DesignSystemPage } from "./pages/DesignSystemPage";
+import { Shell } from "./shell/Shell";
+import { WorkflowPicker } from "./pages/workflows/WorkflowPicker";
+import { WorkflowDetailPage } from "./pages/workflows/WorkflowDetailPage";
+import { DuplicateResolution } from "./components/DuplicateResolution";
+import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 
 import { useForm } from "react-hook-form";
 import {
@@ -13,6 +18,7 @@ import {
   YAxis,
 } from "recharts";
 import {
+  Fragment,
   lazy,
   Suspense,
   useEffect,
@@ -24,7 +30,6 @@ import {
 } from "react";
 import {
   Navigate,
-  NavLink,
   Route,
   Routes,
   useLocation,
@@ -33,6 +38,10 @@ import {
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Icon } from "./components/Icon";
+import { AssociatedRecords } from "./components/AssociatedRecords";
+import { FilterBuilder, type FilterGroup } from "./components/FilterBuilder";
+import { LifecycleStage } from "./components/LifecycleStage";
+import { InlineEditField } from "./components/InlineEditField";
 import {
   Avatar,
   Badge,
@@ -51,9 +60,18 @@ import {
 import { AxacrmLogo } from "./components/common/AxacrmLogo";
 import { HomePage } from "./pages/HomePage";
 import { PricingPage } from "./pages/PricingPage";
+import { ActivitiesPage } from "./pages/activities/ActivitiesPage";
+import { CallsPage } from "./pages/communication/CallsPage";
+import { InboxPage } from "./pages/communication/InboxPage";
+import { RecordingsPage } from "./pages/communication/RecordingsPage";
+import { SequencesPage } from "./pages/communication/SequencesPage";
+import { WebhooksPage } from "./pages/communication/WebhooksPage";
+import { ContractsPage } from "./pages/revenue/ContractsPage";
+import { InvoicesPage } from "./pages/revenue/InvoicesPage";
+import { OrdersPage } from "./pages/revenue/OrdersPage";
+import { ProductsPage } from "./pages/revenue/ProductsPage";
+import { QuotesPage } from "./pages/revenue/QuotesPage";
 import { AppProvider, useApp } from "./context/AppContext";
-import { LayoutGrid, Sun, Moon } from "lucide-react";
-import { EcosystemMenu } from "./components/layout/EcosystemMenu";
 import { api, getToken, json, setToken } from "./lib/api";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { CustomReportBuilder } from "./components/reports/CustomReportBuilder";
@@ -71,16 +89,17 @@ import {
 } from "./components/goals/GoalProgress";
 import { QuoteForm } from "./components/quotes/QuoteForm";
 import { GenerateInvoiceButton } from "./components/quotes/GenerateInvoiceButton";
+import { ContractDetails, contractSummaryValue } from "./components/contracts/ContractDetails";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
 
-const LeadsPage = lazy(() =>
-  import("./pages/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
-);
-const ContactsPage = lazy(() =>
-  import("./pages/sales/ContactsPage").then((module) => ({ default: module.ContactsPage })),
-);
+// const LeadsPage = lazy(() =>
+//   import("./pages/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
+// );
+// const ContactsPage = lazy(() =>
+//   import("./pages/sales/ContactsPage").then((module) => ({ default: module.ContactsPage })),
+// );
 const CompaniesPage = lazy(() =>
   import("./pages/sales/CompaniesPage").then((module) => ({ default: module.CompaniesPage })),
 );
@@ -90,115 +109,6 @@ const PipelinePage = lazy(() =>
 
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
-type NavItem = { path: string; label: string; icon: string };
-type NavGroup = { label: string; items: NavItem[] };
-
-const navGroups: NavGroup[] = [
-  {
-    label: "nav.overview",
-    items: [{ path: "/dashboard", label: "nav.dashboard", icon: "dashboard" }],
-  },
-  {
-    label: "nav.sales",
-    items: [
-      { path: "/leads", label: "nav.leads", icon: "lead" },
-      { path: "/contacts", label: "nav.contacts", icon: "contacts" },
-      { path: "/companies", label: "nav.companies", icon: "companies" },
-      { path: "/pipeline", label: "nav.pipeline", icon: "pipeline" },
-    ],
-  },
-  {
-    label: "nav.marketing",
-    items: [
-      { path: "/campaigns", label: "nav.campaigns", icon: "campaign" },
-      { path: "/marketing-emails", label: "nav.marketingEmails", icon: "mail" },
-      { path: "/events", label: "nav.events", icon: "event" },
-      { path: "/email-lists", label: "nav.emailLists", icon: "inbox" },
-      { path: "/landing-pages", label: "nav.landingPages", icon: "landing" },
-      { path: "/forms", label: "nav.forms", icon: "form" },
-    ],
-  },
-  {
-    label: "nav.revenue",
-    items: [
-      { path: "/quotes", label: "nav.quotes", icon: "quote" },
-      { path: "/contracts", label: "nav.contracts", icon: "contract" },
-      { path: "/products", label: "nav.products", icon: "cart" },
-      { path: "/orders", label: "nav.orders", icon: "send" },
-    ],
-  },
-  {
-    label: "nav.financial",
-    items: [
-      { path: "/finance", label: "nav.finance", icon: "money" },
-      { path: "/invoices", label: "nav.invoices", icon: "invoice" },
-      { path: "/expenses", label: "nav.expenses", icon: "reports" },
-      { path: "/forecast", label: "nav.forecast", icon: "trend" },
-    ],
-  },
-  {
-    label: "nav.service",
-    items: [
-      { path: "/surveys", label: "nav.surveys", icon: "survey" },
-      {
-        path: "/survey-responses",
-        label: "nav.surveyResponses",
-        icon: "response",
-      },
-      { path: "/portal", label: "nav.portal", icon: "portal" },
-    ],
-  },
-  {
-    label: "nav.hr",
-    items: [
-      { path: "/employees", label: "nav.employees", icon: "employee" },
-      { path: "/leave", label: "nav.leave", icon: "leave" },
-      { path: "/attendance", label: "nav.attendance", icon: "clockIn" },
-    ],
-  },
-  {
-    label: "nav.work",
-    items: [
-      { path: "/activities", label: "nav.activities", icon: "activity" },
-      { path: "/tasks", label: "nav.tasks", icon: "tasks" },
-      { path: "/calendar", label: "nav.calendar", icon: "calendar" },
-      { path: "/calls", label: "nav.calls", icon: "phone" },
-      { path: "/recordings", label: "nav.recordings", icon: "recording" },
-      { path: "/inbox", label: "nav.inbox", icon: "inbox" },
-    ],
-  },
-  {
-    label: "nav.automation",
-    items: [
-      { path: "/workflows", label: "nav.workflows", icon: "workflow" },
-      { path: "/webhooks", label: "nav.webhooks", icon: "webhook" },
-      { path: "/sequences", label: "nav.sequences", icon: "sequence" },
-    ],
-  },
-  {
-    label: "nav.analytics",
-    items: [
-      { path: "/reports", label: "nav.reports", icon: "reports" },
-      { path: "/goals", label: "nav.goals", icon: "goal" },
-      { path: "/duplicates", label: "nav.duplicates", icon: "duplicate" },
-      { path: "/audit", label: "nav.audit", icon: "shield" },
-    ],
-  },
-  {
-    label: "nav.workspace",
-    items: [
-      { path: "/team", label: "nav.team", icon: "team" },
-      { path: "/fields", label: "nav.fields", icon: "fields" },
-      { path: "/settings", label: "nav.settings", icon: "settings" },
-    ],
-  },
-];
-
-const titles = Object.fromEntries(
-  navGroups.flatMap((group) =>
-    group.items.map((item) => [item.path, item.label]),
-  ),
-);
 const stages = [
   { id: "new", label: "New" },
   { id: "qualified", label: "Qualified" },
@@ -248,16 +158,6 @@ function AuthScreen({
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [theme, setTheme] = useState(
-    document.documentElement.classList.contains("dark"),
-  );
-
-  function toggleTheme() {
-    const next = !theme;
-    setTheme(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
-  }
 
   useEffect(() => {
     api<{ needsSetup: boolean }>("/auth/status")
@@ -508,67 +408,6 @@ function AppRoutes() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(
-    localStorage.getItem("tunaxa.sidebar") === "1",
-  );
-  const [pageSize, setPageSize] = useState(getPageSize());
-  const [mobile, setMobile] = useState(false);
-  const [profile, setProfile] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [theme, setTheme] = useState(
-    document.documentElement.classList.contains("dark"),
-  );
-  const [isEcosystemOpen, setIsEcosystemOpen] = useState(false);
-
-  useEffect(() => {
-    localStorage.setItem("tunaxa.sidebar", collapsed ? "1" : "0");
-
-    api(
-      "/users/me/preferences",
-      json("PUT", { sidebarCollapsed: collapsed }),
-    ).catch(() => {});
-  }, [collapsed]);
-  useEffect(() => {
-    setMobile(false);
-    setProfile(false);
-  }, [location.pathname]);
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setSearchOpen(true);
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
-        event.preventDefault();
-        setQuickOpen(true);
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
-  function changePageSize(value: number) {
-    setPageSize(value);
-    savePageSize(value);
-  }
-  function toggleTheme() {
-    const next = !theme;
-    setTheme(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("tunaxa.theme", next ? "dark" : "light");
-
-    api(
-      "/users/me/preferences",
-      json("PUT", { theme: next ? "dark" : "light" }),
-    ).catch(() => {});
-  }
-
-  function toggleLanguage() {
-    const current = i18n.language || "en";
-    const next = current === "fr" ? "en" : "fr";
-    i18n.changeLanguage(next);
-    localStorage.setItem("tunaxa.language", next);
-  }
 
   const refreshAll = () =>
     window.dispatchEvent(new CustomEvent("tunaxa:resource-changed"));
@@ -605,197 +444,12 @@ function AppRoutes() {
   };
   useSSE(sseHandlers);
 
-  return (
-    <div className={`app-shell ${collapsed ? "sidebar-collapsed" : ""}`}>
-      {/* Blueprint dot-grid overlay — fixed behind all content */}
-      <div className="blueprint-grid-global" aria-hidden="true" />
-      <div
-        className={`mobile-overlay ${mobile ? "show" : ""}`}
-        onClick={() => setMobile(false)}
-      />
-      <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
-        <div className="sidebar-logo">
-          <button
-            className="brand"
-            onClick={() => navigate("/dashboard")}
-            title="Tunaxa AXA CRM"
-          >
-            {collapsed ? (
-              <div
-                className="w-7 h-7 bg-black text-white dark:bg-white dark:text-black flex items-center justify-center font-mono font-black shrink-0"
-                style={{
-                  clipPath:
-                    "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
-                }}
-              >
-                <span className="text-xs">TX</span>
-              </div>
-            ) : (
-              <AxacrmLogo size="sm" showTunaxaPrefix={true} />
-            )}
-          </button>
-          <button
-            className="collapse-btn"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!collapsed}
-            onClick={() => setCollapsed((value) => !value)}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            <Icon name="arrowLeft" />
-          </button>
-        </div>
-        <nav className="nav-scroll">
-          {navGroups.map((group) => (
-            <section className="nav-group" key={group.label}>
-              <div className="nav-label">{t(group.label)}</div>
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  data-tooltip={t(item.label)}
-                  className={({ isActive }) =>
-                    `nav-link ${isActive ? "active" : ""}`
-                  }
-                >
-                  <Icon name={item.icon} />
-                  <span>{t(item.label)}</span>
-                </NavLink>
-              ))}
-            </section>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="workspace-mini">
-            <div
-              className="w-7 h-7 bg-[#3b82f6] text-white flex items-center justify-center font-mono font-bold text-xs shrink-0"
-              style={{
-                clipPath:
-                  "polygon(3px 0%, 100% 0%, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0% 100%, 0% 3px)",
-              }}
-            >
-              <span>TX</span>
-            </div>
-            <div>
-              <b>Tunaxa CRM</b>
-              <small>Enterprise Workspace</small>
-            </div>
-          </div>
-        </div>
-      </aside>
-      <section className="workspace">
-        <header className="topbar topbar-glass">
-          <div className="topbar-left">
-            <button
-              className="icon-btn mobile-menu"
-              aria-label="Open navigation menu"
-              onClick={() => setMobile(true)}
-              title="Open Navigation"
-            >
-              <Icon name="menu" />
-            </button>
-            <div className="crumb relative px-3 py-1 border border-[#d1d1d1] dark:border-[#263140] bg-white dark:bg-[#121820]">
-              <CornerBrackets stroke="#3b82f6" size={5} />
-              <span>{t("nav.workspace")}</span>
-              <b>
-                {titles[location.pathname]
-                  ? t(titles[location.pathname])
-                  : "Tunaxa"}
-              </b>
-            </div>
-          </div>
-          <div className="topbar-right">
-            <button
-              className="search-button"
-              onClick={() => setSearchOpen(true)}
-            >
-              <Icon name="search" />
-              <span>Search everything…</span>
-              <kbd>Ctrl K</kbd>
-            </button>
-            <CutButton
-              variant="primary"
-              size="sm"
-              onClick={() => setQuickOpen(true)}
-            >
-              <div className="flex items-center gap-1.5 font-mono text-xs">
-                <Icon name="plus" />
-                <span>NEW</span>
-              </div>
-            </CutButton>
-            <button
-              className="icon-btn"
-              onClick={() => setIsEcosystemOpen(true)}
-              title="Tunaxa Ecosystem Apps"
-              aria-label="Tunaxa Ecosystem Apps"
-            >
-              <LayoutGrid className="w-4 h-4 text-[#3b82f6]" />
-            </button>
-            <button
-              className="icon-btn"
-              onClick={toggleTheme}
-              title={theme ? "Light Blueprint" : "Dark Cyber"}
-            >
-              {theme ? (
-                <Sun className="w-4 h-4" />
-              ) : (
-                <Moon className="w-4 h-4" />
-              )}
-            </button>
-            <button
-              className="icon-btn notification-btn"
-              aria-label="Notifications"
-              onClick={() => toast("No new notifications")}
-              title="Notifications"
-            >
-              <Icon name="bell" />
-            </button>
-            <div className="profile-wrap">
-              <button
-                className="profile-trigger"
-                onClick={() => setProfile((value) => !value)}
-              >
-                <Avatar name={user?.name || "TX"} />
-                <div>
-                  <b>{user?.name}</b>
-                  <small>{user?.role}</small>
-                </div>
-                <Icon name="chevronDown" />
-              </button>
-              {profile ? (
-                <div className="profile-menu">
-                  <div className="profile-menu-head">
-                    <Avatar name={user?.name || "TX"} size={38} />
-                    <div>
-                      <b>{user?.name}</b>
-                      <small>{user?.email}</small>
-                    </div>
-                  </div>
-                  <button onClick={() => navigate("/settings")}>
-                    <Icon name="settings" /> {t("nav.settings")}
-                  </button>
-                  <button onClick={toggleLanguage}>
-                    <Icon name="globe" />{" "}
-                    {(i18n.language || "en") === "fr" ? "English" : "Français"}
-                  </button>
-                  <button onClick={toggleTheme}>
-                    {theme ? (
-                      <Sun className="w-4 h-4" />
-                    ) : (
-                      <Moon className="w-4 h-4" />
-                    )}{" "}
-                    {theme ? "Light Blueprint" : "Dark Cyber"}
-                  </button>
-                  <hr />
-                  <button className="danger-link" onClick={logout}>
-                    <Icon name="logout" /> Sign out
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </header>
-        <main className="content">
-          <ErrorBoundary fallbackMessage="Something went wrong. Please reload.">
+return (
+  <Shell
+    renderQuickCreate={(onClose) => <QuickCreate onClose={onClose} />}
+    renderGlobalSearch={(onClose) => <GlobalSearch onClose={onClose} />}
+  >
+      <ErrorBoundary>
             <Routes>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route
@@ -1009,23 +663,52 @@ function AppRoutes() {
                   </ErrorBoundary>
                 }
               />
-              <Route path="/activities" element={<ActivitiesPage />} />
+              <Route
+                path="/activities"
+                element={
+                  <ActivitiesPage SimpleCards={SimpleCards} RecordForm={RecordForm} />
+                }
+              />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/workflows" element={<WorkflowsPage />} />
+              <Route path="/workflows/:id" element={<WorkflowDetailPage key={location.pathname} />} />
               <Route path="/calls" element={<CallsPage />} />
               <Route path="/recordings" element={<RecordingsPage />} />
               <Route path="/inbox" element={<InboxPage />} />
-              <Route path="/sequences" element={<SequencesPage />} />
-              <Route path="/webhooks" element={<WebhooksPage />} />
+              <Route
+                path="/sequences"
+                element={
+                  <SequencesPage SimpleCards={SimpleCards} RecordForm={RecordForm} />
+                }
+              />
+              <Route
+                path="/webhooks"
+                element={<WebhooksPage SimpleCards={SimpleCards} />}
+              />
               <Route path="/campaigns" element={<CampaignsPage />} />
               <Route path="/email-lists" element={<EmailListsPage />} />
               <Route path="/landing-pages" element={<LandingPagesPage />} />
               <Route path="/forms" element={<FormsPage />} />
-              <Route path="/products" element={<ProductsPage />} />
-              <Route path="/orders" element={<OrdersPage />} />
+              <Route
+                path="/products"
+                element={
+                  <ProductsPage CrudTablePage={CrudTablePage} productFields={productFields} />
+                }
+              />
+              <Route
+                path="/orders"
+                element={
+                  <OrdersPage CrudTablePage={CrudTablePage} orderFields={orderFields} />
+                }
+              />
               <Route path="/finance" element={<FinancePage />} />
-              <Route path="/invoices" element={<InvoicesPage />} />
+              <Route
+                path="/invoices"
+                element={
+                  <InvoicesPage CrudTablePage={CrudTablePage} invoiceFields={invoiceFields} />
+                }
+              />
               <Route path="/expenses" element={<ExpensesPage />} />
               <Route path="/forecast" element={<ForecastPage />} />
               <Route path="/employees" element={<EmployeesPage />} />
@@ -1056,7 +739,12 @@ function AppRoutes() {
                   />
                 }
               />
-              <Route path="/quotes" element={<QuotesPage />} />
+              <Route
+                path="/quotes"
+                element={
+                  <QuotesPage CrudTablePage={CrudTablePage} quoteFields={quoteFields} QuoteForm={QuoteForm} />
+                }
+              />
               <Route
                 path="/quotes/:id"
                 element={
@@ -1067,12 +755,18 @@ function AppRoutes() {
                   />
                 }
               />
-              <Route path="/contracts" element={<ContractsPage />} />
+              <Route
+                path="/contracts"
+                element={
+                  <ContractsPage CrudTablePage={CrudTablePage} contractFields={contractFields} />
+                }
+              />
               <Route
                 path="/contracts/:id"
                 element={
                   <RecordDetailPage
                     resource="contracts"
+                    key={location.pathname}
                     fields={contractFields}
                     title={t("nav.contracts")}
                   />
@@ -1121,21 +815,12 @@ function AppRoutes() {
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/design-system" element={<DesignSystemPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
+                        </Routes>
           </ErrorBoundary>
-        </main>
-      </section>
-      {quickOpen ? <QuickCreate onClose={() => setQuickOpen(false)} /> : null}
-      {searchOpen ? (
-        <GlobalSearch onClose={() => setSearchOpen(false)} />
-      ) : null}
-      <EcosystemMenu
-        isOpen={isEcosystemOpen}
-        onClose={() => setIsEcosystemOpen(false)}
-      />
-    </div>
-  );
+        </Shell>
+      );
 }
 function QuickCreate({ onClose }: { onClose: () => void }) {
   const { toast } = useApp();
@@ -1240,16 +925,53 @@ function QuickCreate({ onClose }: { onClose: () => void }) {
   );
 }
 
+type SearchResult = {
+  id: string;
+  type: string;
+  route: string;
+  name: string;
+  detail?: string;
+};
+
+type SearchGroups = {
+  leads: SearchResult[];
+  contacts: SearchResult[];
+  companies: SearchResult[];
+  deals: SearchResult[];
+  tasks: SearchResult[];
+  recordings: SearchResult[];
+};
+
+const EMPTY_SEARCH_GROUPS: SearchGroups = {
+  leads: [],
+  contacts: [],
+  companies: [],
+  deals: [],
+  tasks: [],
+  recordings: [],
+};
+
+const SEARCH_GROUPS: { key: keyof SearchGroups; label: string }[] = [
+  { key: "leads", label: "Leads" },
+  { key: "contacts", label: "Contacts" },
+  { key: "companies", label: "Companies" },
+  { key: "deals", label: "Deals" },
+  { key: "tasks", label: "Tasks" },
+  { key: "recordings", label: "Recordings" },
+];
+
 function GlobalSearch({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<Row[]>([]);
+  const [results, setResults] = useState<SearchGroups>(EMPTY_SEARCH_GROUPS);
   useEffect(() => {
     const timer = window.setTimeout(
       () =>
         q.trim()
-          ? api<Row[]>(`/search?q=${encodeURIComponent(q)}`).then(setResults)
-          : setResults([]),
+          ? api<SearchGroups>(`/search?q=${encodeURIComponent(q)}`).then(
+              setResults,
+            )
+          : setResults(EMPTY_SEARCH_GROUPS),
       180,
     );
     return () => window.clearTimeout(timer);
@@ -1281,42 +1003,51 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
               title="Search your workspace"
               text="Start typing to search stored CRM records."
             />
-          ) : results.length ? (
-            results.map((item) => (
-              <button
-                key={`${item.type}-${item.id}`}
-                onClick={() => {
-                  navigate(item.route);
-                  onClose();
-                }}
-              >
-                <span>
-                  <Icon
-                    name={
-                      item.type === "Deal"
-                        ? "pipeline"
-                        : item.type === "Company"
-                          ? "companies"
-                          : item.type === "Contact"
-                            ? "contacts"
-                            : item.type === "Task"
-                              ? "tasks"
-                              : item.type === "Recording"
-                                ? "recording"
-                                : "lead"
-                    }
-                  />
-                </span>
-                <div>
-                  <b>{item.name}</b>
-                  <small>
-                    {item.type}
-                    {item.detail ? ` · ${item.detail}` : ""}
-                  </small>
-                </div>
-                <Icon name="arrowRight" />
-              </button>
-            ))
+          ) : SEARCH_GROUPS.some(({ key }) => results[key].length) ? (
+            SEARCH_GROUPS.map(({ key, label }) => {
+              const items = results[key];
+              if (!items.length) return null;
+              return (
+                <Fragment key={key}>
+                  <small>{label}</small>
+                  {items.map((item) => (
+                    <button
+                      key={`${item.type}-${item.id}`}
+                      onClick={() => {
+                        navigate(item.route);
+                        onClose();
+                      }}
+                    >
+                      <span>
+                        <Icon
+                          name={
+                            item.type === "Deal"
+                              ? "pipeline"
+                              : item.type === "Company"
+                                ? "companies"
+                                : item.type === "Contact"
+                                  ? "contacts"
+                                  : item.type === "Task"
+                                    ? "tasks"
+                                    : item.type === "Recording"
+                                      ? "recording"
+                                      : "lead"
+                          }
+                        />
+                      </span>
+                      <div>
+                        <b>{item.name}</b>
+                        <small>
+                          {item.type}
+                          {item.detail ? ` · ${item.detail}` : ""}
+                        </small>
+                      </div>
+                      <Icon name="arrowRight" />
+                    </button>
+                  ))}
+                </Fragment>
+              );
+            })
           ) : (
             <Empty
               icon="search"
@@ -1491,7 +1222,7 @@ export const leadFields: FieldSpec[] = [
     options: ["New", "Contacted", "Qualified", "Nurture", "Lost"],
   },
   { key: "owner", label: "Owner" },
-  
+
   { key: "value", label: "Estimated value", type: "number" },
 ];
 export const contactFields: FieldSpec[] = [
@@ -2253,9 +1984,10 @@ function PeoplePage({
   icon: string;
   fields: FieldSpec[];
 }) {
-  const { items, loading, load, create, update, remove } =
-    useResource<Row>(resource);
-  const { toast } = useApp();
+  const [filters, setFilters] = useState<FilterGroup | null>(null);
+  const { items, loading, error, load, create, update, remove } =
+    useResource<Row>(resource, { filters, all: true });
+  const { toast, user } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [pageSize, setPageSize] = useState(getPageSize());
@@ -2267,10 +1999,7 @@ function PeoplePage({
     ...fields,
     ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
   ];
-  const peopleFields: FieldSpec[] = [
-    { key: "avatar", label: "Photo", type: "photo" },
-    ...allFields,
-  ];
+
   const cols = allFields;
   const mCols = new Set(cols.map((field) => field.key));
   const singular = title.slice(0, -1).toLowerCase();
@@ -2284,11 +2013,6 @@ const filteredRows = items.filter(
     JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
 );
 
-const totalPages = Math.max(
-  1,
-  Math.ceil(filteredRows.length / pageSize),
-);
-
 const rows = filteredRows.slice(
   (page - 1) * pageSize,
   page * pageSize,
@@ -2296,13 +2020,15 @@ const rows = filteredRows.slice(
 
 useEffect(() => {
   setPage(1);
-}, [query, pageSize, resource]);
+}, [query, pageSize, resource, filters]);
 
 function changePageSize(value: number) {
   setPageSize(value);
   setPage(1);
   savePageSize(value);
 }
+  const bulk = useBulkSelection(JSON.stringify([resource, query, filters]), rows.map((row) => row.id));
+  const canBulk = user?.role === "admin" || user?.role === "member";
   async function importCsv(file: File) {
     try {
       const text = await file.text();
@@ -2370,6 +2096,8 @@ function changePageSize(value: number) {
           <Icon name="plus" /> Add {singular}
         </button>
       </PageHeader>
+      <FilterBuilder fields={allFields} value={filters} onChange={(next) => { if (!bulk.busy) setFilters(next); }} />
+      {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
       <section className="surface table-surface">
         <div className="table-toolbar">
           <div className="header-search">
@@ -2377,7 +2105,7 @@ function changePageSize(value: number) {
             <input
               aria-label={`Search ${title.toLowerCase()}`}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              disabled={bulk.busy} onChange={(e) => setQuery(e.target.value)}
               placeholder={`Search ${title.toLowerCase()}`}
             />
           </div>
@@ -2402,6 +2130,7 @@ function changePageSize(value: number) {
           <table>
             <thead>
               <tr>
+                {canBulk && <th><SelectPage ids={rows.map((row) => row.id)} selected={bulk.selected} onChange={bulk.setSelected} disabled={bulk.busy} /></th>}
                 <th>{cols[0]?.label || "Name"}</th>
                 {cols.slice(1).map((c) => (
                   <th key={c.key}>{c.label}</th>
@@ -2412,6 +2141,7 @@ function changePageSize(value: number) {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
+                  {canBulk && <td><input className="bulk-select" type="checkbox" aria-label={`Select ${row.name || row.title || row.id}`} checked={bulk.selected.includes(row.id)} disabled={bulk.busy || (!bulk.selected.includes(row.id) && bulk.selected.length >= 100)} onChange={() => bulk.toggle(row.id)} /></td>}
                   {cols.map((c, i) =>
                     i === 0 ? (
                       <td key={c.key}>
@@ -2489,6 +2219,7 @@ function changePageSize(value: number) {
           />
         )}
       </section>
+      {canBulk && <BulkActions resource={resource} ids={bulk.selected} statuses={allFields.find((field) => field.key === "status")?.options} busy={bulk.busy} setBusy={bulk.setBusy} onSelection={bulk.setSelected} onReload={load} />}
       {edit !== undefined ? (
         <RecordForm
           title={`${edit ? "Edit" : "Add"} ${singular}`}
@@ -2505,7 +2236,7 @@ function changePageSize(value: number) {
   );
 }
 
-const detailTabList = ["Overview", "Activity", "Notes", "Emails", "History"] as const;
+const detailTabList = ["Overview", "Activity", "Notes", "Emails", "Calls", "History"] as const;
 type DetailTab = (typeof detailTabList)[number];
 const activityFilters = [
   "All",
@@ -2535,16 +2266,21 @@ function RecordDetailPage({
 }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const [record, setRecord] = useState<Row | null>(null);
+  const recordRoute = useRef("");
+  recordRoute.current = `${resource}/${id}`;
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<DetailTab>("Overview");
-  const [edit, setEdit] = useState(false);
+  const [tab, setTab] = useState<DetailTab>(resource === "contacts" ? "Activity" : "Overview");
   const [activities, setActivities] = useState<Row[]>([]);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("All");
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState(false);
+  const [activityRetry, setActivityRetry] = useState(0);
   const [messages, setMessages] = useState<Row[]>([]);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState(false);
+  const [emailRetry, setEmailRetry] = useState(0);
   const [revisions, setRevisions] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
@@ -2559,30 +2295,41 @@ function RecordDetailPage({
     label: resource === "companies" ? "Logo" : "Photo",
     type: "photo",
   };
-  const detailFields: FieldSpec[] = [photoField, ...fields];
+  const detailFields: FieldSpec[] = resource === "contracts"
+    ? fields
+    : [photoField, ...fields.filter((field) => field.key !== photoKey)];
 
   useEffect(() => {
     if (!id) return;
     setLoading(true);
-    api<Row>(`/${resource}/${id}`)
+    setRecord(null);
+    setTab(resource === "contacts" ? "Activity" : "Overview");
+    setNoteText("");
+    setActivityFilter("All");
+    const controller = new AbortController();
+    api<Row>(`/${resource}/${id}`, { signal: controller.signal })
       .then((r) => {
+        if (controller.signal.aborted) return;
         setRecord(r);
         setLoading(false);
       })
       .catch(() => {
+        if (controller.signal.aborted) return;
         toast("Record not found", "error");
         navigate(`/${resource}`, { replace: true });
       });
+    return () => controller.abort();
   }, [id, resource]);
 
   useEffect(() => {
-    if (!record || (tab !== "Activity" && tab !== "Notes")) return;
+    if (!record || (tab !== "Activity" && tab !== "Notes" && tab !== "Calls")) return;
     const params = new URLSearchParams({ recordId: record.id });
     const name = record.name || record.title || "";
-    if (name) params.set("contact", name);
+    if (name && resource !== "contracts") params.set("contact", name);
     const type =
       tab === "Notes"
         ? "Note"
+        : tab === "Calls" ? "Call"
         : showActivityFilters
           ? activityFilterTypes[activityFilter]
           : undefined;
@@ -2591,44 +2338,48 @@ function RecordDetailPage({
     setActivities([]);
     setActivityError(false);
     setActivityLoading(true);
-    api<Row[]>(`/activities?${params}`, { signal: controller.signal })
-      .then(setActivities)
+    api<Row[] | { data: Row[] }>(`/activities?${params}`, { signal: controller.signal })
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        const items = Array.isArray(response) ? response : response.data;
+        if (!Array.isArray(items)) throw new Error("Invalid activity response");
+        setActivities(items.filter((item) => item && typeof item === "object" && typeof item.id === "string"));
+      })
       .catch((error) => {
-        if (error.name !== "AbortError") setActivityError(true);
+        if (!controller.signal.aborted && error.name !== "AbortError") setActivityError(true);
       })
       .finally(() => {
         if (!controller.signal.aborted) setActivityLoading(false);
       });
     return () => controller.abort();
-  }, [record, tab, activityFilter, showActivityFilters]);
+  }, [record, tab, activityFilter, showActivityFilters, activityRetry, resource]);
 
   useEffect(() => {
-    if (!record?.email) return;
-    api<Row[]>("/messages")
-      .then((items) => setMessages(items.filter((m) => m.to === record.email)))
-      .catch(() => {});
-    api<{ data: Row[] }>("/activities")
-      .then(({ data: items }) =>
-        setActivities(
-          items.filter(
-            (a) =>
-              a.contact === recordName ||
-              a.title?.toLowerCase().includes(recordName.toLowerCase()),
-          ),
-        ),
-      )
-      .catch(() => {});
-    if (record.email)
-      api<{ data: Row[] }>("/messages")
-        .then(({ data: items }) =>
-          setMessages(items.filter((m) => m.to === record.email)),
-        )
-        .catch(() => {});
-    if (resource === "contacts")
-      api<{ data: Row[] }>(`/revisions/${resource}/${record.id}`)
-        .then((result) => setRevisions(result.data))
-        .catch(() => setRevisions([]));
-  }, [record]);
+    setMessages([]);
+    setEmailLoading(false); setEmailError(false);
+    if (!record?.email || tab !== "Emails") return;
+    const controller = new AbortController();
+    setEmailLoading(true); setEmailError(false);
+    api<Row[] | { data: Row[] }>("/messages", { signal: controller.signal })
+      .then((response) => {
+        const items = Array.isArray(response) ? response : response.data;
+        if (!Array.isArray(items)) throw new Error("Invalid message response");
+        if (!controller.signal.aborted) setMessages(items.filter((message) => message.to === record.email && (!message.channel || message.channel.toLowerCase() === "email")));
+      })
+      .catch(() => { if (!controller.signal.aborted) setEmailError(true); })
+      .finally(() => { if (!controller.signal.aborted) setEmailLoading(false); });
+    return () => controller.abort();
+  }, [record?.id, record?.email, tab, emailRetry]);
+
+  useEffect(() => {
+    setRevisions([]);
+    if (!record || resource !== "contacts" || tab !== "History") return;
+    const controller = new AbortController();
+    api<{ data: Row[] }>(`/revisions/${resource}/${record.id}`, { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) setRevisions(result.data); })
+      .catch(() => { if (!controller.signal.aborted) setRevisions([]); });
+    return () => controller.abort();
+  }, [record?.id, record?.updatedAt, resource, tab]);
 
   async function addNote() {
     if (!noteText.trim() || !record) return;
@@ -2639,6 +2390,7 @@ function RecordDetailPage({
         json("POST", {
           title: `Note on ${title.slice(0, -1)}`,
           type: "Note",
+          recordId: record.id,
           contact: record.name || record.title || "",
           date: new Date().toISOString().slice(0, 10),
           notes: noteText,
@@ -2694,6 +2446,54 @@ function RecordDetailPage({
       </span>
     );
   };
+
+  const propertiesPanel = (
+            <div className="detail-section">
+              {(resource === "contacts" || resource === "leads") && <LifecycleStage
+                key={`${resource}/${record.id}`}
+                recordId={record.id}
+                stage={record.lifecycleStage}
+                disabled={user?.role !== "admin" && user?.role !== "member"}
+                onSaved={(updated) => {
+                  if (recordRoute.current !== `${resource}/${record.id}`) return;
+                  setRecord((previous) => previous?.id === record.id ? { ...previous, ...updated } : previous);
+                  setActivityRetry((value) => value + 1);
+                  toast("Lifecycle stage updated");
+                }}
+              />}
+              <h3>{resource === "contracts" ? "Contract summary" : "Contact information"}</h3>
+              <dl className="detail-props">
+                {detailFields.map((f) => (
+                    <div key={f.key}>
+                      <dt>{f.label}</dt>
+                      <dd>
+                        <InlineEditField
+                          key={`${resource}/${record.id}/${f.key}`}
+                          field={f}
+                          value={record[f.key]}
+                          disabled={user?.role !== "admin" && user?.role !== "member"}
+                          displayValue={f.type === "photo" ? (record[f.key] ? "Change image" : "Add image")
+                            : record[f.key] == null || record[f.key] === "" ? undefined
+                            : resource === "contracts" ? contractSummaryValue(record[f.key], f.type, f.key)
+                            : f.type === "number" && f.key === "value" ? money(record[f.key]) : undefined}
+                          onSave={async (value) => {
+                            const route = `${resource}/${record.id}`;
+                            const updated = await api<Row>(`/${resource}/${record.id}`, json("PATCH", { [f.key]: value }));
+                            if (recordRoute.current !== route) return;
+                            setRecord((previous) => previous?.id === record.id ? {
+                              ...previous,
+                              [f.key]: Object.prototype.hasOwnProperty.call(updated, f.key) ? updated[f.key] : value,
+                              updatedAt: updated.updatedAt ?? previous.updatedAt,
+                            } : previous);
+                            toast(`${f.label} updated`);
+                          }}
+                        />
+                      </dd>
+                    </div>
+                  ))}
+              </dl>
+            </div>
+  );
 
   return (
     <div className="page">
@@ -2755,13 +2555,8 @@ function RecordDetailPage({
               </Badge>
             ) : null}
             <button
-              className="btn secondary compact"
-              onClick={() => setEdit(true)}
-            >
-              <Icon name="edit" /> Edit
-            </button>
-            <button
               className="btn ghost compact danger-link"
+              disabled={resource === "contracts" && user?.role !== "admin" && user?.role !== "member"}
               aria-label={`Delete ${record.name || record.title || "record"}`}
               onClick={deleteRecord}
             >
@@ -2771,17 +2566,25 @@ function RecordDetailPage({
         </div>
       </div>
 
-      <div className="detail-tabs">
-        {(resource === "contacts"
-          ? detailTabList
-          : detailTabList.filter((item) => item !== "History")
+      <div className={resource === "contacts" ? "record-360-layout" : undefined}>
+        {resource === "contacts" && <aside className="record-360-sidebar" aria-label="Contact properties and related records">
+          {propertiesPanel}
+          <AssociatedRecords key={record.id} contactId={record.id} company={record.company} name={record.name} email={record.email} />
+        </aside>}
+        <section className="record-360-main" aria-label="Record activity">
+      <div className="detail-tabs" role="group" aria-label="Record sections">
+        {(resource === "contracts" ? (["Overview", "Activity"] as const) : resource === "contacts"
+          ? detailTabList.filter((item) => item !== "Overview")
+          : detailTabList.filter((item) => item !== "History" && item !== "Calls")
         ).map((t) => (
           <button
             key={t}
+            type="button"
+            aria-pressed={tab === t}
             className={tab === t ? "active" : ""}
             onClick={() => setTab(t)}
           >
-            {t}
+            {resource === "contracts" && t === "Activity" ? "Activity timeline" : t}
             {t === "Emails" && messages.length ? (
               <span>{messages.length}</span>
             ) : t === "Activity" && tab === "Activity" && activities.length ? (
@@ -2796,29 +2599,14 @@ function RecordDetailPage({
       <div className="detail-body">
         {tab === "Overview" && (
           <div className="detail-overview">
-            <div className="detail-section">
-              <h3>Contact information</h3>
-              <div className="detail-props">
-                {fields.map((f) =>
-                  record[f.key] ? (
-                    <div key={f.key}>
-                      <dt>{f.label}</dt>
-                      <dd>
-                        {f.type === "number" && f.key === "value"
-                          ? money(record[f.key])
-                          : String(record[f.key])}
-                      </dd>
-                    </div>
-                  ) : null,
-                )}
-              </div>
-            </div>
+            {propertiesPanel}
+            {resource === "contracts" ? <ContractDetails record={record} /> : null}
           </div>
         )}
 
-        {tab === "Activity" && (
+        {(tab === "Activity" || tab === "Calls") && (
           <div className="detail-activity">
-            {showActivityFilters && (
+            {showActivityFilters && tab === "Activity" && (
               <div
                 className="detail-tabs activity-filter-tabs"
                 role="group"
@@ -2843,7 +2631,12 @@ function RecordDetailPage({
               <Empty
                 icon="activity"
                 title="Could not load activities"
-                text="Try another filter."
+                text="Try loading this section again."
+                action={(
+                  <button type="button" className="btn secondary compact" onClick={() => setActivityRetry((value) => value + 1)}>
+                    Retry
+                  </button>
+                )}
               />
             ) : activities.length ? (
               activities.map((a) => (
@@ -2869,7 +2662,7 @@ function RecordDetailPage({
             ) : (
               <Empty
                 icon="activity"
-                title="No activity yet"
+                title={tab === "Calls" ? "No calls yet" : "No activity yet"}
                 text="Activities related to this record will appear here."
               />
             )}
@@ -2927,7 +2720,7 @@ function RecordDetailPage({
 
         {tab === "Emails" && (
           <div className="detail-emails">
-            {messages.length ? (
+            {emailLoading ? <div className="table-loading">Loading emails…</div> : emailError ? <div role="alert">Could not load emails. <button type="button" className="btn secondary compact" onClick={() => setEmailRetry((value) => value + 1)}>Retry</button></div> : messages.length ? (
               messages.map((m) => (
                 <div className="email-item" key={m.id}>
                   <div className="email-item-head">
@@ -2991,25 +2784,8 @@ function RecordDetailPage({
         )}
       </div>
 
-      {edit ? (
-        <RecordForm
-          title={`Edit ${title.slice(0, -1)}`}
-          fields={detailFields}
-          initial={record}
-          onClose={() => setEdit(false)}
-          onSave={async (data) => {
-            try {
-              const payload = { ...record, ...data };
-              await api(`/${resource}/${record.id}`, json("PUT", payload));
-              setRecord((prev) => (prev ? { ...prev, ...payload } : prev));
-              setEdit(false);
-              toast("Updated");
-            } catch (error) {
-              toast((error as Error).message, "error");
-            }
-          }}
-        />
-      ) : null}
+        </section>
+      </div>
     </div>
   );
 }
@@ -3151,391 +2927,6 @@ function RecordForm({
         )}
       </div>
     </Drawer>
-  );
-}
-function LegacyCompaniesPage() {
-  const fields: FieldSpec[] = [
-    { key: "logo", label: "Logo", type: "photo" },
-    { key: "name", label: "Company name" },
-    { key: "industry", label: "Industry" },
-    { key: "website", label: "Website" },
-    { key: "country", label: "Country" },
-    { key: "employees", label: "Employees", type: "number" },
-    { key: "owner", label: "Owner" },
-  ];
-  const { items, create, update, remove } = useResource<Row>("companies");
-  const { toast } = useApp();
-  const navigate = useNavigate();
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const custom = useSchema("companies");
-  const nonPhoto = fields.filter((f) => f.key !== "logo");
-  const photoField = fields.find((f) => f.key === "logo")!;
-  const allFields = [
-    photoField,
-    ...nonPhoto,
-    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
-  ];
-  async function exportCsv() {
-    try {
-      await downloadResourceCsv("companies");
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
-  }
-  return (
-    <div className="page">
-      <PageHeader
-        title="Companies"
-        description="Accounts, organizations and relationship ownership."
-      >
-        <button className="btn secondary" onClick={exportCsv}>
-          <Icon name="download" /> Export CSV
-        </button>
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add company
-        </button>
-      </PageHeader>
-      {items.length ? (
-        <div className="company-grid">
-          {items.map((company) => (
-            <article
-              className="company-card"
-              key={company.id}
-              onClick={() => navigate(`/companies/${company.id}`)}
-              style={{ cursor: "pointer" }}
-            >
-              <header>
-                <span className="company-logo">
-                  {company.logo ? (
-                    <img src={company.logo} alt="" />
-                  ) : (
-                    String(company.name || "NX")
-                      .split(/\s+/)
-                      .map((x: string) => x[0])
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase()
-                  )}
-                </span>
-                <div
-                  className="row-actions"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    className="icon-btn tiny"
-                    aria-label={`Edit ${company.name || "company"}`}
-                    onClick={() => setEdit(company)}
-                  >
-                    <Icon name="edit" />
-                  </button>
-                  <button
-                    className="icon-btn tiny danger-link"
-                    aria-label={`Delete ${company.name || "company"}`}
-                    onClick={() =>
-                      confirm("Delete this company?") && remove(company.id)
-                    }
-                  >
-                    <Icon name="trash" />
-                  </button>
-                </div>
-              </header>
-              <h3>{company.name || "Untitled company"}</h3>
-              <p>
-                {company.industry || "No industry"}
-                {company.country ? ` · ${company.country}` : ""}
-              </p>
-              <div className="company-meta">
-                <span>
-                  <small>Employees</small>
-                  <b>{company.employees || 0}</b>
-                </span>
-                <span>
-                  <small>Owner</small>
-                  <b>{company.owner || "—"}</b>
-                </span>
-              </div>
-              <footer>
-                <Badge>{company.website || "No website"}</Badge>
-                <span className="link-btn">Open account</span>
-              </footer>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <Empty
-          icon="companies"
-          title="No companies"
-          text="Add companies to connect contacts and deals to accounts."
-          action={
-            <button
-              className="btn primary compact"
-              onClick={() => setEdit(null)}
-            >
-              Add company
-            </button>
-          }
-        />
-      )}
-      {edit !== undefined ? (
-        <RecordForm
-          title={`${edit ? "Edit" : "Add"} company`}
-          fields={allFields}
-          initial={edit || {}}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function LegacyPipelinePage() {
-  const { items, create, update, remove } = useResource<Row>("deals");
-  const [pipelineStages, setPipelineStages] = useState<
-    { name: string; probability: number }[]
-  >([]);
-
-  useEffect(() => {
-    api<{
-      stages: { name: string; probability: number }[];
-    }>("/pipeline")
-      .then((data) => setPipelineStages(data.stages))
-      .catch(() => setPipelineStages([]));
-  }, []);
-  const navigate = useNavigate();
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const [dragging, setDragging] = useState<string | null>(null);
-  const custom = useSchema("deals");
-  const fields: FieldSpec[] = [
-    { key: "title", label: "Deal name" },
-    { key: "company", label: "Company" },
-    { key: "value", label: "Value", type: "number" },
-    {
-      key: "stage",
-      label: "Stage",
-      type: "select",
-      options: stages.map((x) => x.id),
-    },
-    { key: "owner", label: "Owner" },
-    { key: "closeDate", label: "Close date", type: "date" },
-  ];
-  const allFields = [
-    ...fields,
-    ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
-  ];
-  async function drop(stage: string) {
-    if (!dragging) return;
-    await update(dragging, { stage });
-    setDragging(null);
-  }
-  const probabilityByStage = Object.fromEntries(
-    pipelineStages.map((stage) => [
-      stage.name.toLowerCase(),
-      stage.probability,
-    ]),
-  );
-
-  const totalPipelineValue = items.reduce(
-    (sum, row) => sum + Number(row.value || 0),
-    0,
-  );
-
-  const weightedPipelineValue = items.reduce((sum, row) => {
-    const probability =
-      probabilityByStage[String(row.stage || "new").toLowerCase()] ?? 0;
-
-    return sum + Number(row.value || 0) * (probability / 100);
-  }, 0);
-  return (
-    <div className="page pipeline-page">
-      <PageHeader
-        title="Pipeline"
-        description="Drag deals between stages and keep your pipeline moving."
-      >
-        <button className="btn primary" onClick={() => setEdit(null)}>
-          <Icon name="plus" /> Add deal
-        </button>
-      </PageHeader>
-      <div className="pipeline-summary">
-        <div className="summary-card">
-          <span>Total pipeline value</span>
-          <strong>{money(totalPipelineValue)}</strong>
-        </div>
-
-        <div className="summary-card">
-          <span>Weighted value</span>
-          <strong>{money(weightedPipelineValue)}</strong>
-        </div>
-      </div>
-      {items.length ? (
-        <div className="pipeline-board">
-          {stages.map((stage) => {
-            const rows = items.filter(
-              (item) => (item.stage || "new") === stage.id,
-            );
-            return (
-              <section
-                className="pipeline-column"
-                key={stage.id}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => drop(stage.id)}
-              >
-                <header>
-                  <div>
-                    <span className="dot" />
-                    <b>{stage.label}</b>
-                    <em>{rows.length}</em>
-                  </div>
-                  <strong>
-                    {money(
-                      rows.reduce(
-                        (sum, row) => sum + Number(row.value || 0),
-                        0,
-                      ),
-                    )}
-                  </strong>
-                </header>
-                <div className="deal-list">
-                  {rows.map((row) => (
-                    <article
-                      className="deal-card"
-                      key={row.id}
-                      draggable
-                      onDragStart={() => setDragging(row.id)}
-                    >
-                      <div className="deal-top">
-                        <Badge tone={stage.id === "won" ? "green" : "blue"}>
-                          {stage.label}
-                        </Badge>
-                        <div className="row-actions">
-                          <button
-                            className="icon-btn tiny"
-                            aria-label={`Edit ${row.title || "deal"}`}
-                            onClick={() => setEdit(row)}
-                          >
-                            <Icon name="edit" />
-                          </button>
-                          <button
-                            className="icon-btn tiny danger-link"
-                            aria-label={`Delete ${row.title || "deal"}`}
-                            onClick={() =>
-                              confirm("Delete this deal?") && remove(row.id)
-                            }
-                          >
-                            <Icon name="trash" />
-                          </button>
-                        </div>
-                      </div>
-                      <button
-                        className="deal-title"
-                        onClick={() => navigate(`/deals/${row.id}`)}
-                      >
-                        {row.title || "Untitled deal"}
-                      </button>
-                      <p>{row.company || "No company"}</p>
-                      <strong>{money(row.value || 0)}</strong>
-                      <footer>
-                        <span>{row.owner || "Unassigned"}</span>
-                        <small>{row.closeDate || "No close date"}</small>
-                      </footer>
-                    </article>
-                  ))}
-                  <button
-                    className="add-deal"
-                    onClick={() => setEdit({ id: "", stage: stage.id })}
-                  >
-                    <Icon name="plus" /> Add deal
-                  </button>
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      ) : (
-        <Empty
-          icon="pipeline"
-          title="No deals"
-          text="Add your first deal to start building the sales pipeline."
-          action={
-            <button
-              className="btn primary compact"
-              onClick={() => setEdit(null)}
-            >
-              Add deal
-            </button>
-          }
-        />
-      )}
-      {edit !== undefined ? (
-        <RecordForm
-          title={`${edit?.id ? "Edit" : "Add"} deal`}
-          fields={allFields}
-          initial={edit || { stage: "new" }}
-          onClose={() => setEdit(undefined)}
-          onSave={async (data) => {
-            edit?.id ? await update(edit.id, data) : await create(data);
-            setEdit(undefined);
-          }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function ActivitiesPage() {
-  const { items, create, update, remove } = useResource<Row>("activities");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const fields: FieldSpec[] = [
-    { key: "title", label: "Activity title" },
-    {
-      key: "type",
-      label: "Type",
-      type: "select",
-      options: ["Note", "Meeting", "Email", "SMS", "Call"],
-    },
-    { key: "contact", label: "Contact" },
-    { key: "date", label: "Date", type: "date" },
-    { key: "notes", label: "Notes", type: "textarea" },
-  ];
-  return (
-    <SimpleCards
-      title="Activities"
-      description="Meetings, notes and customer touchpoints."
-      icon="activity"
-      items={items}
-      onAdd={() => setEdit(null)}
-      onEdit={setEdit}
-      onDelete={remove}
-      render={(item) => (
-        <>
-          <div className="activity-item-head">
-            <Badge tone="blue">{item.type || "Note"}</Badge>
-            <small>
-              {item.date || new Date(item.createdAt).toLocaleDateString()}
-            </small>
-          </div>
-          <h3>{item.title || "Untitled activity"}</h3>
-          <p>{item.contact || item.notes || "No details"}</p>
-        </>
-      )}
-      modal={
-        edit !== undefined ? (
-          <RecordForm
-            title={`${edit ? "Edit" : "Add"} activity`}
-            fields={fields}
-            initial={edit || {}}
-            onClose={() => setEdit(undefined)}
-            onSave={async (data) => {
-              edit ? await update(edit.id, data) : await create(data);
-              setEdit(undefined);
-            }}
-          />
-        ) : null
-      }
-    />
   );
 }
 
@@ -4147,7 +3538,10 @@ function WorkflowForm({
 }
 
 function WorkflowsPage() {
-  const { items, create, update, remove } = useResource<Row>("workflows");
+  const { items, loading, error, load, create, update, remove } = useResource<Row>("workflows");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [pickerOpen, setPickerOpen] = useState(() => new URLSearchParams(location.search).get("picker") === "1");
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const [meta, setMeta] = useState<WorkflowMeta>({
     events: [],
@@ -4166,6 +3560,9 @@ function WorkflowsPage() {
         title="Workflows"
         description="Automate follow-ups: pick a trigger, add actions, and Tunaxa runs them server-side."
       >
+        <button type="button" className="btn secondary" onClick={() => setPickerOpen(true)}>
+          <Icon name="workflow" /> Open Canvas
+        </button>
         <button
           className="btn primary"
           disabled={!meta.events.length}
@@ -4175,13 +3572,11 @@ function WorkflowsPage() {
         </button>
       </PageHeader>
 
-      {items.length ? (
+      {loading ? <p role="status">Loading workflows…</p> : error ? (
+        <Empty icon="workflow" title="Could not load workflows" text="Try loading the list again."
+          action={<button type="button" className="btn secondary" onClick={() => load()}>Retry</button>} />
+      ) : items.length ? (
         <>
-          {/* Workflow visualisation avec React Flow */}
-          <WorkflowCanvas
-            workflow={{ event: items[0].event, filter: items[0].filter, actions: items[0].actions }}
-          />
-
           {/* Liste des workflows existants */}
           <div className="workflow-list">
             {items.map((flow) => (
@@ -4272,6 +3667,11 @@ function WorkflowsPage() {
         />
       )}
 
+      {pickerOpen ? (
+        <WorkflowPicker workflows={items} loading={loading} error={error}
+          onRetry={() => load()} onClose={() => setPickerOpen(false)}
+          onSelect={(id) => { setPickerOpen(false); navigate(`/workflows/${encodeURIComponent(id)}`); }} />
+      ) : null}
       {edit !== undefined ? (
         <WorkflowForm
           meta={meta}
@@ -4290,1202 +3690,6 @@ function WorkflowsPage() {
         />
       ) : null}
     </div>
-  );
-}
-
-function CallsPage() {
-  const { items, load, create, remove } = useResource<Row>("calls");
-  const { toast } = useApp();
-  const [number, setNumber] = useState("");
-  const [active, setActive] = useState<Row | null>(null);
-  const [started, setStarted] = useState<number | null>(null);
-  const [ending, setEnding] = useState(false);
-  const [twilio, setTwilio] = useState(false);
-  const keypad = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
-
-  useEffect(() => {
-    api<{ configured: boolean }>("/twilio/status")
-      .then((result) => setTwilio(result.configured))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (active) return;
-    const existing = items.find((call) => call.status === "Connected");
-    if (!existing) return;
-    setActive(existing);
-    setNumber(existing.phone || "");
-    setStarted(
-      existing.startedAt ? new Date(existing.startedAt).getTime() : Date.now(),
-    );
-  }, [items, active]);
-
-  async function startCall() {
-    if (!number.trim()) return toast("Enter a phone number", "error");
-    try {
-      let call;
-      if (twilio) {
-        call = await api<Row>(
-          "/calls/dial",
-          json("POST", { phone: number.trim() }),
-        );
-        toast("Call placed via Twilio");
-      } else {
-        call = await create({
-          phone: number.trim(),
-          direction: "Outbound",
-          status: "Connected",
-          startedAt: new Date().toISOString(),
-          duration: 0,
-        });
-        toast("Call session started");
-      }
-      setActive(call);
-      setStarted(Date.now());
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
-  }
-
-  async function endCall() {
-    if (!active || ending) return;
-    setEnding(true);
-    try {
-      const duration = started
-        ? Math.max(1, Math.floor((Date.now() - started) / 1000))
-        : 0;
-      const result = await api<{ call: Row; recording?: Row; activity?: Row }>(
-        `/calls/${active.id}/complete`,
-        json("POST", { duration, endedAt: new Date().toISOString() }),
-      );
-      await load();
-      setActive(null);
-      setStarted(null);
-      setNumber("");
-      toast(
-        result.recording
-          ? "Call completed and recording record created"
-          : "Call completed",
-      );
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setEnding(false);
-    }
-  }
-
-  return (
-    <div className="page">
-      <PageHeader
-        title="Telephony"
-        description="Start calls from the dialer. With Twilio configured, real calls are placed; otherwise Tunaxa logs the local call session."
-      />
-      <div className="calls-grid">
-        <section className="surface dialer-card">
-          <div className="dialer-head">
-            <span className={`phone-status ${active ? "calling" : ""}`}>
-              <i />
-              {active ? "Connected" : "Ready"}
-            </span>
-            <button
-              className="icon-btn"
-              disabled={Boolean(active)}
-              onClick={() => setNumber("")}
-              title="Clear"
-            >
-              <Icon name="close" />
-            </button>
-          </div>
-          <input
-            className="dial-input"
-            aria-label="Phone number"
-            value={number}
-            onChange={(e) => setNumber(e.target.value)}
-            placeholder="Enter a number"
-            disabled={Boolean(active)}
-          />
-          <div className="keypad">
-            {keypad.map((key) => (
-              <button
-                key={key}
-                disabled={Boolean(active)}
-                onClick={() => setNumber((value) => value + key)}
-              >
-                {key}
-              </button>
-            ))}
-          </div>
-          {active ? (
-            <button
-              className="call-button danger"
-              disabled={ending}
-              onClick={endCall}
-            >
-              <Icon name="phone" /> {ending ? "Ending…" : "End call"}
-            </button>
-          ) : (
-            <button className="call-button" onClick={startCall}>
-              <Icon name="phone" /> {twilio ? "Call via Twilio" : "Start call"}
-            </button>
-          )}
-          <div className="call-note">
-            <Icon name="warning" />
-            <span>
-              {twilio
-                ? "Twilio is configured. Calls are placed through your provider and require a public webhook URL in Settings."
-                : "Actual phone connectivity requires a configured telephony provider. Tunaxa still logs the local call session and related CRM activity."}
-            </span>
-          </div>
-        </section>
-        <section className="surface call-history">
-          <div className="section-head">
-            <div>
-              <h2>Call history</h2>
-              <p>
-                {items.length
-                  ? `${items.length} calls logged`
-                  : "Calls will appear here automatically"}
-              </p>
-            </div>
-          </div>
-          {items.length ? (
-            items.map((call) => (
-              <article className="call-row" key={call.id}>
-                <span
-                  className={`call-direction ${call.direction === "Inbound" ? "received" : ""}`}
-                >
-                  <Icon name="phone" />
-                </span>
-                <div>
-                  <b>{call.contact || call.phone || "Unknown number"}</b>
-                  <small>
-                    {call.direction || "Outbound"} · {call.status || "Logged"} ·{" "}
-                    {call.duration || 0}s
-                    {call.provider ? ` · ${call.provider}` : ""}
-                  </small>
-                </div>
-                <time>{new Date(call.createdAt).toLocaleString()}</time>
-                <button
-                  className="icon-btn tiny danger-link"
-                  onClick={() =>
-                    confirm("Delete this call log?") && remove(call.id)
-                  }
-                  title="Delete call"
-                >
-                  <Icon name="trash" />
-                </button>
-              </article>
-            ))
-          ) : (
-            <Empty
-              icon="phone"
-              title="No calls"
-              text="Use the dialer to make your first call. Call logs are created automatically."
-            />
-          )}
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function RecordingsPage() {
-  const { items, load, remove } = useResource<Row>("recordings");
-  const { toast } = useApp();
-  const [selected, setSelected] = useState<Row | null>(null);
-  const [transcribing, setTranscribing] = useState(false);
-
-  async function summarize(item: Row) {
-    try {
-      const result = await api<Row>(
-        `/recordings/${item.id}/summarize`,
-        json("POST"),
-      );
-      setSelected(result);
-      toast("Summary updated");
-      load();
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
-  }
-
-  async function transcribe(item: Row) {
-    setTranscribing(true);
-
-    try {
-      const result = await api<Row>(
-        `/recordings/${item.id}/transcribe`,
-        json("POST"),
-      );
-
-      setSelected(result);
-      toast("Transcription ready");
-      await load();
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setTranscribing(false);
-    }
-  }
-
-  return (
-    <div className="page">
-      <PageHeader
-        title="Recordings"
-        description="Recording records are created automatically from completed calls."
-      />
-      {items.length ? (
-        <section className="surface recordings-list">
-          {items.map((item) => (
-            <article className="recording-row" key={item.id}>
-              <button
-                className="play-btn"
-                disabled={!item.fileUrl}
-                onClick={() => setSelected(item)}
-                title={
-                  item.fileUrl
-                    ? "Open recording"
-                    : "Audio will be available when a provider supplies media"
-                }
-              >
-                <Icon name={item.fileUrl ? "play" : "recording"} />
-              </button>
-              <div className="recording-person">
-                <button
-                  className="recording-title"
-                  onClick={() => setSelected(item)}
-                >
-                  {item.title || item.originalName || "Call recording"}
-                </button>
-                <small>
-                  {item.contact || item.phone || "No linked contact"} ·{" "}
-                  {new Date(item.createdAt).toLocaleString()}
-                </small>
-              </div>
-              <Badge tone={item.fileUrl ? "green" : "amber"}>
-                {item.mediaStatus ||
-                  (item.fileUrl ? "Audio ready" : "Awaiting audio")}
-              </Badge>
-              <div className="row-actions">
-                <button
-                  className="btn secondary compact"
-                  onClick={() => setSelected(item)}
-                >
-                  Open
-                </button>
-                <button
-                  className="icon-btn tiny danger-link"
-                  onClick={() =>
-                    confirm("Delete this recording record?") && remove(item.id)
-                  }
-                  title="Delete"
-                >
-                  <Icon name="trash" />
-                </button>
-              </div>
-            </article>
-          ))}
-        </section>
-      ) : (
-        <Empty
-          icon="recording"
-          title="No recordings"
-          text="Complete a call and Tunaxa will create its recording record automatically when call recording is enabled."
-        />
-      )}
-      {selected ? (
-        <Modal
-          title={selected.title || "Recording"}
-          onClose={() => setSelected(null)}
-          footer={
-            <>
-              <button
-                className="btn secondary"
-                onClick={() => setSelected(null)}
-              >
-                Close
-              </button>
-              <button
-                className="btn secondary"
-                disabled={!selected.fileUrl || transcribing}
-                onClick={() => transcribe(selected)}
-              >
-                <Icon name="ai" />
-                {transcribing ? "Processing transcript..." : "Transcribe"}
-              </button>
-              <button
-                className="btn primary"
-                disabled={!selected.transcript}
-                onClick={() => summarize(selected)}
-              >
-                <Icon name="spark" /> Generate summary
-              </button>
-            </>
-          }
-        >
-          {selected.fileUrl ? (
-            <audio controls src={selected.fileUrl} className="audio-player" />
-          ) : (
-            <div className="media-pending">
-              <Icon name="recording" />
-              <div>
-                <b>Audio is not available yet</b>
-                <p>
-                  This call record was created automatically. A connected
-                  telephony provider can attach the actual call media here.
-                </p>
-              </div>
-            </div>
-          )}
-          <div className="recording-detail">
-            <h3>
-              Summary{" "}
-              {selected.summaryAi ? <Badge tone="green">AI</Badge> : null}
-            </h3>
-            <p>{selected.summary || "No summary yet."}</p>
-            <h3>Transcript</h3>
-
-            <div
-              className="transcript-text"
-              style={{
-                maxHeight: "280px",
-                overflowY: "auto",
-                whiteSpace: "pre-wrap",
-                padding: "12px",
-              }}
-            >
-              {transcribing ? (
-                <span>Processing transcript...</span>
-              ) : selected.transcript ? (
-                selected.transcript
-              ) : (
-                <span>No transcript is available yet.</span>
-              )}
-            </div>
-          </div>
-        </Modal>
-      ) : null}
-    </div>
-  );
-}
-
-function InboxPage() {
-  const { toast } = useApp();
-
-  const [messages, setMessages] = useState<Row[]>([]);
-  const [selectedThread, setSelectedThread] = useState<Row[]>([]);
-  const [activeFilter, setActiveFilter] = useState<
-    "All" | "Unread" | "Sent" | "Tracked"
-  >("All");
-
-  const [page, setPage] = useState(1);
-  const [limit] = useState(20);
-  const [total, setTotal] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const [compose, setCompose] = useState(false);
-  const [sending, setSending] = useState(false);
-
-  const [templates, setTemplates] = useState<Row[]>([]);
-  const [templateId, setTemplateId] = useState("");
-  const {
-  register,
-  handleSubmit,
-  reset,
-  watch,
-  setValue,
-} = useForm<{
-  channel: string;
-  to: string;
-  subject: string;
-  body: string;
-}>({
-  defaultValues: {
-    channel: "Email",
-    to: "",
-    subject: "",
-    body: "",
-  },
-});
-
-  const [draft, setDraft] = useState<Row>({
-    id: "",
-    channel: "Email",
-    to: "",
-    subject: "",
-    body: "",
-  });
-
-  async function loadMessages(targetPage = page) {
-    setLoading(true);
-
-    try {
-      const response = await api<{
-        items: Row[];
-        total: number;
-        page: number;
-        limit: number;
-        hasMore: boolean;
-      }>(
-        `/messages?type=email&page=${targetPage}&limit=${limit}`,
-      );
-
-      setMessages(response.items || []);
-      setTotal(response.total || 0);
-      setHasMore(Boolean(response.hasMore));
-
-      if (response.items?.length && !selectedThread.length) {
-        setSelectedThread([response.items[0]]);
-      }
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadMessages(page);
-  }, [page]);
-
-  useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
-      .catch(() => {});
-  }, []);
-
-  function applyTemplate(id: string) {
-    setTemplateId(id);
-
-    const template = templates.find((item) => item.id === id);
-
-    if (!template) return;
-
-    setDraft((prev) => ({
-      ...prev,
-      subject: template.subject || "",
-      body: template.body || "",
-    }));
-  }
-
-  function getThreadKey(message: Row) {
-    return `${String(message.to || "").toLowerCase()}::${String(
-      message.subject || "",
-    )
-      .trim()
-      .toLowerCase()}`;
-  }
-
-  const threads = Array.from(
-    messages.reduce((map, message) => {
-      const key = getThreadKey(message);
-
-      if (!map.has(key)) {
-        map.set(key, []);
-      }
-
-      map.get(key)!.push(message);
-
-      return map;
-    }, new Map<string, Row[]>()),
-  ).map(([key, thread]) => ({
-    key,
-    messages: thread.sort(
-      (a, b) =>
-        new Date(a.createdAt || 0).getTime() -
-        new Date(b.createdAt || 0).getTime(),
-    ),
-  }));
-
-  const filteredThreads = threads.filter(({ messages: thread }) => {
-    if (!thread.length) return false;
-
-    if (activeFilter === "Unread") {
-      return thread.some((message) => !message.read);
-    }
-
-    if (activeFilter === "Sent") {
-      return thread.some(
-        (message) =>
-          message.direction === "Outbound" ||
-          message.status === "Sent",
-      );
-    }
-
-    if (activeFilter === "Tracked") {
-      return thread.some(
-        (message) =>
-          Boolean(message.openedAt) || Boolean(message.clickedAt),
-      );
-    }
-
-    return true;
-  });
-
-  function openThread(thread: Row[]) {
-    setSelectedThread(thread);
-
-    const unread = thread.filter((message) => !message.read);
-
-    unread.forEach((message) => {
-      api(`/messages/${message.id}`, json("PATCH", { read: true })).catch(
-        () => {},
-      );
-    });
-
-    setMessages((current) =>
-      current.map((message) =>
-        thread.some((item) => item.id === message.id)
-          ? { ...message, read: true }
-          : message,
-      ),
-    );
-  }
-
-  async function sendMessage(message: Row) {
-    setSending(true);
-
-    try {
-      const saved = await api<Row>(
-        "/messages/send",
-        json("POST", {
-          id: message.id,
-          channel: "Email",
-          to: message.to,
-          subject: message.subject,
-          body: message.body,
-          contact: message.contact,
-        }),
-      );
-
-      setCompose(false);
-      setTemplateId("");
-      setDraft({
-        id: "",
-        channel: "Email",
-        to: "",
-        subject: "",
-        body: "",
-      });
-
-      await loadMessages(page);
-
-      setSelectedThread([saved]);
-
-      toast(
-        saved.deliveredAt
-          ? "Message sent"
-          : saved.status === "Failed"
-            ? "Delivery failed"
-            : "Message saved for later",
-      );
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function deleteMessage(message: Row) {
-    if (!confirm("Delete this message?")) return;
-
-    try {
-      await api(`/messages/${message.id}`, json("DELETE"));
-
-      setSelectedThread([]);
-
-      await loadMessages(page);
-
-      toast("Message deleted");
-    } catch (error) {
-      toast((error as Error).message, "error");
-    }
-  }
-
-  const selectedLastMessage =
-    selectedThread[selectedThread.length - 1] || null;
-
-  return (
-    <div className="page">
-      <PageHeader
-        title="Unified Inbox"
-        description="Manage your email conversations from one place."
-      >
-        <button
-          className="btn primary"
-          onClick={() => {
-            setDraft({
-              id: "",
-              channel: "Email",
-              to: "",
-              subject: "",
-              body: "",
-            });
-            setTemplateId("");
-            setCompose(true);
-          }}
-        >
-          <Icon name="send" /> Compose
-        </button>
-      </PageHeader>
-
-      <section
-        className="surface"
-        style={{
-          overflow: "hidden",
-          minHeight: "650px",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {/* FILTERS */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            padding: "14px 18px",
-            borderBottom: "1px solid var(--border, #e5e7eb)",
-          }}
-        >
-          {(["All", "Unread", "Sent", "Tracked"] as const).map((filter) => (
-            <button
-              key={filter}
-              className={
-                activeFilter === filter
-                  ? "btn primary compact"
-                  : "btn secondary compact"
-              }
-              onClick={() => setActiveFilter(filter)}
-            >
-              {filter}
-            </button>
-          ))}
-
-          <span
-            style={{
-              marginLeft: "auto",
-              fontSize: "12px",
-              opacity: 0.65,
-            }}
-          >
-            {total} email{total !== 1 ? "s" : ""}
-          </span>
-        </div>
-
-        {/* SPLIT PANE */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "360px minmax(0, 1fr)",
-            minHeight: "580px",
-            flex: 1,
-          }}
-        >
-          {/* LEFT PANE */}
-          <aside
-            style={{
-              borderRight: "1px solid var(--border, #e5e7eb)",
-              overflowY: "auto",
-            }}
-          >
-            {loading ? (
-              <div style={{ padding: "30px", textAlign: "center" }}>
-                Loading conversations…
-              </div>
-            ) : filteredThreads.length ? (
-              filteredThreads.map(({ key, messages: thread }) => {
-                const last = thread[thread.length - 1];
-                const unread = thread.some((message) => !message.read);
-                const active = selectedThread.some(
-                  (message) => message.id === last.id,
-                );
-
-                return (
-                  <button
-                    key={key}
-                    onClick={() => openThread(thread)}
-                    style={{
-                      width: "100%",
-                      display: "block",
-                      textAlign: "left",
-                      padding: "16px",
-                      border: "0",
-                      borderBottom:
-                        "1px solid var(--border, #e5e7eb)",
-                      background: active
-                        ? "rgba(59, 130, 246, 0.08)"
-                        : "transparent",
-                      cursor: "pointer",
-                      fontWeight: unread ? 700 : 400,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: "12px",
-                      }}
-                    >
-                      <span>
-                        {last.to || "Unknown recipient"}
-                      </span>
-
-                      <time
-                        style={{
-                          fontSize: "11px",
-                          opacity: 0.6,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {last.createdAt
-                          ? new Date(
-                              last.createdAt,
-                            ).toLocaleDateString()
-                          : ""}
-                      </time>
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: "6px",
-                        fontSize: "13px",
-                        fontWeight: unread ? 700 : 500,
-                      }}
-                    >
-                      {last.subject || "No subject"}
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: "5px",
-                        fontSize: "12px",
-                        opacity: 0.65,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {last.body || "No content"}
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: "8px",
-                        marginTop: "9px",
-                        alignItems: "center",
-                      }}
-                    >
-                      {unread ? (
-                        <Badge tone="blue">Unread</Badge>
-                      ) : null}
-
-                      {last.status ? (
-                        <Badge
-                          tone={
-                            last.status === "Sent"
-                              ? "green"
-                              : last.status === "Failed"
-                                ? "red"
-                                : "amber"
-                          }
-                        >
-                          {last.status}
-                        </Badge>
-                      ) : null}
-
-                      {last.openedAt || last.clickedAt ? (
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            opacity: 0.7,
-                          }}
-                        >
-                          <Icon name="eye" /> Tracked
-                        </span>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              <div style={{ padding: "40px 20px" }}>
-                <Empty
-                  icon="inbox"
-                  title="No conversations"
-                  text="No email conversations match this filter."
-                />
-              </div>
-            )}
-
-            {/* PAGINATION */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "12px",
-                borderTop: "1px solid var(--border, #e5e7eb)",
-                position: "sticky",
-                bottom: 0,
-                background: "var(--surface, white)",
-              }}
-            >
-              <button
-                className="btn secondary compact"
-                disabled={page <= 1 || loading}
-                onClick={() => {
-                  setPage((current) => Math.max(1, current - 1));
-                  setSelectedThread([]);
-                }}
-              >
-                Previous
-              </button>
-
-              <span style={{ fontSize: "12px", opacity: 0.65 }}>
-                Page {page}
-              </span>
-
-              <button
-                className="btn secondary compact"
-                disabled={!hasMore || loading}
-                onClick={() => {
-                  setPage((current) => current + 1);
-                  setSelectedThread([]);
-                }}
-              >
-                Next
-              </button>
-            </div>
-          </aside>
-
-          {/* RIGHT PANE */}
-          <main
-            style={{
-              minWidth: 0,
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {selectedThread.length ? (
-              <>
-                <header
-                  style={{
-                    padding: "18px 22px",
-                    borderBottom:
-                      "1px solid var(--border, #e5e7eb)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "16px",
-                  }}
-                >
-                  <div>
-                    <h3 style={{ margin: 0 }}>
-                      {selectedLastMessage?.subject || "No subject"}
-                    </h3>
-
-                    <small style={{ opacity: 0.65 }}>
-                      {selectedLastMessage?.to}
-                    </small>
-                  </div>
-
-                  {selectedLastMessage ? (
-                    <button
-                      className="icon-btn danger-link"
-                      title="Delete message"
-                      onClick={() =>
-                        deleteMessage(selectedLastMessage)
-                      }
-                    >
-                      <Icon name="trash" />
-                    </button>
-                  ) : null}
-                </header>
-
-                <div
-                  style={{
-                    flex: 1,
-                    overflowY: "auto",
-                    padding: "22px",
-                  }}
-                >
-                  {selectedThread.map((message) => {
-                    const outbound =
-                      message.direction === "Outbound";
-
-                    return (
-                      <article
-                        key={message.id}
-                        style={{
-                          marginBottom: "18px",
-                          maxWidth: "85%",
-                          marginLeft: outbound ? "auto" : "0",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            opacity: 0.6,
-                            marginBottom: "6px",
-                          }}
-                        >
-                          {outbound ? "You" : message.to} ·{" "}
-                          {message.createdAt
-                            ? new Date(
-                                message.createdAt,
-                              ).toLocaleString()
-                            : ""}
-                        </div>
-
-                        <div
-                          style={{
-                            padding: "16px",
-                            borderRadius: "12px",
-                            background: outbound
-                              ? "rgba(59, 130, 246, 0.10)"
-                              : "var(--surface-muted, #f5f5f5)",
-                            border:
-                              "1px solid var(--border, #e5e7eb)",
-                            whiteSpace: "pre-wrap",
-                          }}
-                        >
-                          {message.body || "No content"}
-                        </div>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "8px",
-                            marginTop: "6px",
-                            fontSize: "11px",
-                            opacity: 0.65,
-                          }}
-                        >
-                          {message.status ? (
-                            <span>{message.status}</span>
-                          ) : null}
-
-                          {message.openedAt ? (
-                            <span>
-                              <Icon name="eye" /> Opened{" "}
-                              {message.openCount || 1}×
-                            </span>
-                          ) : null}
-
-                          {message.clickedAt ? (
-                            <span>
-                              Clicked {message.clickCount || 1}×
-                            </span>
-                          ) : null}
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-
-                <footer
-                  style={{
-                    padding: "14px 20px",
-                    borderTop:
-                      "1px solid var(--border, #e5e7eb)",
-                    display: "flex",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  <button
-                    className="btn primary"
-                    disabled={sending}
-                    onClick={() =>
-                      sendMessage({
-                        ...selectedLastMessage,
-                        id: "",
-                        body: "",
-                      })
-                    }
-                  >
-                    <Icon name="send" /> Reply
-                  </button>
-                </footer>
-              </>
-            ) : (
-              <div
-                style={{
-                  flex: 1,
-                  display: "grid",
-                  placeItems: "center",
-                }}
-              >
-                <Empty
-                  icon="inbox"
-                  title="Select a conversation"
-                  text="Choose an email thread from the list."
-                />
-              </div>
-            )}
-          </main>
-        </div>
-      </section>
-
-      {/* COMPOSE */}
-      {compose ? (
-        <Drawer
-          title="New email"
-          subtitle="Compose a new email message."
-          onClose={() => {
-  setCompose(false);
-  setTemplateId("");
-  reset();
-}}
-          footer={
-            <button
-              className="btn secondary"
-              onClick={() => {
-                setCompose(false);
-                setTemplateId("");
-              }}
-            >
-              Cancel
-            </button>
-          }
-        >
-          <div className="drawer-form">
-            {templates.length ? (
-              <label className="field">
-                <span>Template</span>
-
-                <select
-                  value={templateId}
-                  onChange={(e) => applyTemplate(e.target.value)}
-                >
-                  <option value="">No template</option>
-
-                  {templates.map((template) => (
-                    <option
-                      key={template.id}
-                      value={template.id}
-                    >
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-
-            <label className="field">
-              <span>Recipient *</span>
-
-              <input
-                type="email"
-                value={draft.to || ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    to: e.target.value,
-                  }))
-                }
-                placeholder="recipient@example.com"
-              />
-            </label>
-
-            <label className="field">
-              <span>Subject</span>
-
-              <input
-                type="text"
-                value={draft.subject || ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    subject: e.target.value,
-                  }))
-                }
-                placeholder="Email subject"
-              />
-            </label>
-
-            <label className="field">
-              <span>Message *</span>
-
-              <textarea
-                value={draft.body || ""}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    body: e.target.value,
-                  }))
-                }
-                placeholder="Write your email…"
-                rows={8}
-              />
-            </label>
-
-            <button
-              className="btn primary"
-              disabled={!draft.to || !draft.body || sending}
-              onClick={() => sendMessage(draft)}
-            >
-              {sending ? "Sending…" : "Send email"}
-            </button>
-          </div>
-        </Drawer>
-      ) : null}
-    </div>
-  );
-}
-
-function SequencesPage() {
-  const { items, create, update, remove } = useResource<Row>("sequences");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const fields: FieldSpec[] = [
-    { key: "name", label: "Sequence name" },
-    { key: "audience", label: "Audience / segment" },
-    { key: "steps", label: "Steps description", type: "textarea" },
-  ];
-  return (
-    <SimpleCards
-      title="Sequences"
-      description="Reusable multi-step outreach plans."
-      icon="sequence"
-      items={items}
-      onAdd={() => setEdit(null)}
-      onEdit={setEdit}
-      onDelete={remove}
-      render={(item) => (
-        <>
-          <div className="deal-top">
-            <Badge tone={item.enabled ? "green" : "neutral"}>
-              {item.enabled ? "Active" : "Paused"}
-            </Badge>
-            <Toggle
-              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "sequence"}`}
-              value={Boolean(item.enabled)}
-              onChange={(enabled) => update(item.id, { enabled })}
-            />
-          </div>
-          <h3>{item.name || "Untitled sequence"}</h3>
-          <p>{item.audience || "No audience selected"}</p>
-          <small>{item.steps || "No steps added"}</small>
-        </>
-      )}
-      modal={
-        edit !== undefined ? (
-          <RecordForm
-            title={`${edit ? "Edit" : "New"} sequence`}
-            fields={fields}
-            initial={edit || {}}
-            onClose={() => setEdit(undefined)}
-            onSave={async (data) => {
-              edit
-                ? await update(edit.id, data)
-                : await create({ ...data, enabled: false });
-              setEdit(undefined);
-            }}
-          />
-        ) : null
-      }
-    />
   );
 }
 
@@ -5531,50 +3735,6 @@ function LandingPagesPage() {
       synopsis={(r) =>
         `${r.views || 0} views · ${r.conversions || 0} conversions`
       }
-    />
-  );
-}
-function ProductsPage() {
-  return (
-    <CrudTablePage
-      resource="products"
-      title="Products"
-      description="Product catalog with pricing and inventory."
-      icon="cart"
-      fields={productFields}
-      nameKey="name"
-      statusField="status"
-      synopsis={(r) => r.sku || r.category || ""}
-    />
-  );
-}
-function OrdersPage() {
-  return (
-    <CrudTablePage
-      resource="orders"
-      title="Orders"
-      description="Commerce orders, statuses and totals."
-      icon="send"
-      fields={orderFields}
-      nameKey="orderNumber"
-      statusField="status"
-      synopsis={(r) => r.customer || r.email || ""}
-      moneyColumn={["subtotal", "tax", "shipping", "total"]}
-    />
-  );
-}
-function InvoicesPage() {
-  return (
-    <CrudTablePage
-      resource="invoices"
-      title="Invoices"
-      description="Bill customers and track payments."
-      icon="invoice"
-      fields={invoiceFields}
-      nameKey="number"
-      statusField="status"
-      synopsis={(r) => r.customerName || r.customerEmail || ""}
-      moneyColumn={["amount", "tax"]}
     />
   );
 }
@@ -5634,45 +3794,6 @@ function AttendancePage() {
       nameKey="employee"
       statusField="status"
       synopsis={(r) => r.date || ""}
-    />
-  );
-}
-
-function QuotesPage() {
-  return (
-    <CrudTablePage
-      resource="quotes"
-      title="Quotes"
-      description="Generate and track quotes (estimate-to-contract)."
-      icon="quote"
-      fields={quoteFields}
-      columns={quoteFields.filter((field) =>
-        ["number", "customer", "total", "status", "expiryDate"].includes(
-          field.key,
-        ),
-      )}
-      nameKey="number"
-      statusField="status"
-      synopsis={(r) => r.customer || r.deal || ""}
-      moneyColumn={["total"]}
-      renderEditor={(props) => <QuoteForm {...props} />}
-    />
-  );
-}
-function ContractsPage() {
-  return (
-    <CrudTablePage
-      resource="contracts"
-      title="Contracts"
-      description="Subscription terms, renewals and recurring revenue."
-      icon="contract"
-      fields={contractFields}
-      nameKey="name"
-      statusField="status"
-      synopsis={(r) =>
-        `${r.customer || ""}${r.billingFrequency ? " · " + r.billingFrequency : ""}`
-      }
-      moneyColumn={["value", "mrr"]}
     />
   );
 }
@@ -6075,177 +4196,51 @@ function SurveyResponsesPage() {
 }
 
 function DuplicatesPage() {
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const [scope, setScope] = useState<"contacts" | "companies">("contacts");
-  const [data, setData] = useState<any>(null);
+  const [groups, setGroups] = useState<{ ids: string[]; confidence?: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [skipped, setSkipped] = useState<string[]>([]);
-  const load = () =>
-    api<any>(`/duplicates?resource=${scope}`)
-      .then(setData)
-      .catch((err) => toast(err.message, "error"));
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    const refresh = () => setReload((value) => value + 1);
+    window.addEventListener("tunaxa:resource-changed", refresh);
+    return () => window.removeEventListener("tunaxa:resource-changed", refresh);
+  }, []);
   useEffect(() => {
     setSkipped([]);
-    load();
-    window.addEventListener("tunaxa:resource-changed", load);
-    return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, [scope]);
-  async function mergePair(group: any, keep: Row, merge: Row) {
-    setBusy(true);
-    try {
-      await api(
-        `/duplicates/merge`,
-        json("POST", { resource: scope, keepId: keep.id, mergeId: merge.id }),
-      );
-      toast("Duplicate merged");
-      load();
-      window.dispatchEvent(new Event("tunaxa:resource-changed"));
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-  function skipPair(key: string) {
-    setSkipped((current) => [...current, key]);
-  }
-  const groups = (data?.duplicates || [])
-    .map((group: any) => ({
-      ...group,
-      records:
-        group.records ||
-        group.ids.map((id: string, index: number) => ({
-          id,
-          name: group.names[index],
-        })),
-    }))
-    .flatMap((group: any) =>
-      group.records.slice(1).map((merge: Row) => ({
-        group,
-        keep: group.records[0] as Row,
-        merge,
-        key: `${group.records[0].id}:${merge.id}`,
-      })),
-    )
-    .filter((pair: any) => !skipped.includes(pair.key));
-  const pair = groups[0];
-  const comparisonKeys = pair
-    ? [
-        ...new Set([...Object.keys(pair.keep), ...Object.keys(pair.merge)]),
-      ].filter((key) => key !== "id")
-    : [];
-  const displayName = (record: Row) =>
-    String(record.name || record.email || record.id || "Untitled");
-  const displayValue = (value: unknown) => {
-    if (value === undefined || value === null || value === "") return "—";
-    if (Array.isArray(value)) return value.join(", ");
-    if (typeof value === "object") return JSON.stringify(value);
-    return String(value);
-  };
-  const labelFor = (key: string) =>
-    key
-      .replace(/([A-Z])/g, " $1")
-      .replace(/^./, (value) => value.toUpperCase());
-  return (
-    <div className="page">
-      <PageHeader
-        title="Duplicate Management"
-        description="Find and merge duplicate contacts and companies sharing the same email or name."
-      >
-        <button
-          className={
-            scope === "contacts"
-              ? "btn primary compact"
-              : "btn secondary compact"
-          }
-          onClick={() => setScope("contacts")}
-        >
-          Contacts
-        </button>
-        <button
-          className={
-            scope === "companies"
-              ? "btn primary compact"
-              : "btn secondary compact"
-          }
-          onClick={() => setScope("companies")}
-        >
-          Companies
-        </button>
-      </PageHeader>
-      <section className="surface duplicate-comparison">
-        {pair ? (
-          <>
-            <div className="duplicate-comparison-head">
-              <div>
-                <span className="eyebrow">Potential duplicate</span>
-                <h2>Review these records</h2>
-              </div>
-              <Badge tone="blue">{pair.group.confidence ?? 0}% match</Badge>
-            </div>
-            <div className="duplicate-columns">
-              <article className="duplicate-record keep">
-                <div className="duplicate-record-head">
-                  <Avatar name={displayName(pair.keep)} />
-                  <div>
-                    <small>Record to keep</small>
-                    <h3>{displayName(pair.keep)}</h3>
-                  </div>
-                </div>
-                <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => (
-                    <div className="duplicate-field" key={key}>
-                      <span>{labelFor(key)}</span>
-                      <b>{displayValue(pair.keep[key])}</b>
-                    </div>
-                  ))}
-                </div>
-              </article>
-              <article className="duplicate-record merge">
-                <div className="duplicate-record-head">
-                  <Avatar name={displayName(pair.merge)} />
-                  <div>
-                    <small>Record to merge and delete</small>
-                    <h3>{displayName(pair.merge)}</h3>
-                  </div>
-                </div>
-                <div className="duplicate-fields">
-                  {comparisonKeys.map((key) => (
-                    <div className="duplicate-field" key={key}>
-                      <span>{labelFor(key)}</span>
-                      <b>{displayValue(pair.merge[key])}</b>
-                    </div>
-                  ))}
-                </div>
-              </article>
-            </div>
-            <div className="duplicate-actions">
-              <button
-                className="btn secondary"
-                disabled={busy}
-                onClick={() => skipPair(pair.key)}
-              >
-                <Icon name="close" /> Skip
-              </button>
-              <button
-                className="btn primary"
-                disabled={busy}
-                onClick={() => mergePair(pair.group, pair.keep, pair.merge)}
-              >
-                <Icon name="check" /> Merge
-              </button>
-            </div>
-          </>
-        ) : (
-          <Empty
-            icon="duplicate"
-            title={`No duplicate ${scope} found`}
-            text={`No ${scope} currently share the same email/name. Data is clean.`}
-          />
-        )}
-      </section>
-    </div>
-  );
+  useEffect(() => {
+    const controller = new AbortController();
+    setGroups([]); setError(""); setLoading(true);
+    api<{ duplicates: { ids: string[]; confidence?: number }[] }>(`/duplicates?resource=${scope}`, { signal: controller.signal })
+      .then((result) => {
+        if (!Array.isArray(result.duplicates) || result.duplicates.some((group) => !Array.isArray(group.ids) || group.ids.some((id) => typeof id !== "string"))) throw new Error("Unexpected duplicate response");
+        if (!controller.signal.aborted) setGroups(result.duplicates);
+      })
+      .catch((failure) => { if (!controller.signal.aborted) setError(failure.message); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [scope, reload]);
+  const pairs = groups.flatMap((group) => group.ids.slice(1).filter((id) => id !== group.ids[0]).map((id) => ({ primaryId: group.ids[0], secondaryId: id, key: `${group.ids[0]}:${id}` }))).filter((pair) => !skipped.includes(pair.key));
+  const pair = pairs[0];
+  return <div className="page">
+    <PageHeader title="Duplicate Management" description="Compare duplicate contacts and companies and choose the values to keep.">
+      {(["contacts", "companies"] as const).map((resource) => <button key={resource} type="button" className={scope === resource ? "btn primary compact" : "btn secondary compact"} aria-pressed={scope === resource} disabled={busy} onClick={() => setScope(resource)}>{resource === "contacts" ? "Contacts" : "Companies"}</button>)}
+    </PageHeader>
+    <section className="surface duplicate-comparison">
+      {loading ? <p role="status">Finding duplicates…</p> : error ? <p role="alert">{error} <button type="button" onClick={() => setReload((value) => value + 1)}>Retry</button></p> : pair ? <>
+        <p>{pairs.length} potential duplicate pairs to review</p>
+        <DuplicateResolution key={`${scope}/${pair.key}/${reload}`} resource={scope} primaryId={pair.primaryId} secondaryId={pair.secondaryId}
+          disabled={user?.role !== "admin" && user?.role !== "member"} onBusyChange={setBusy}
+          onSkip={() => setSkipped((current) => [...current, pair.key])}
+          onMerged={() => { toast("Duplicate merged"); window.dispatchEvent(new Event("tunaxa:resource-changed")); }} />
+      </> : <Empty icon="duplicate" title={`No remaining duplicate ${scope} pairs`} text={skipped.length ? "Skipped pairs were left unchanged. Refresh to review them again." : "No potential duplicates found."} />}
+      {!!skipped.length && !busy && <button type="button" className="btn secondary compact" onClick={() => setSkipped([])}>Review skipped pairs</button>}
+    </section>
+  </div>;
 }
 
 function PortalView({
@@ -6557,7 +4552,7 @@ function ForecastPage() {
       .then(([dealResult, pipelineResult]) => {
         const dealItems = Array.isArray(dealResult)
           ? dealResult
-          : dealResult?.items || [];
+          : dealResult?.data || dealResult?.items || [];
         setDeals(dealItems);
 
         const pipelineItems = Array.isArray(pipelineResult)
@@ -7025,8 +5020,8 @@ function AuditPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api<{ items: Row[] }>("/audit")
-      .then((result) => setItems(result.items))
+    api<{ data: Row[] }>("/audit")
+      .then((result) => setItems(result.data))
       .catch((error) => toast((error as Error).message, "error"))
       .finally(() => setLoading(false));
   }, [toast]);
@@ -7600,8 +5595,8 @@ function TemplatesManager() {
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
 
   useEffect(() => {
-    api<Row[]>("/templates")
-      .then(setTemplates)
+    api<{ data: Row[] }>("/templates")
+      .then((result) => setTemplates(result.data))
       .catch(() => {});
   }, []);
 
@@ -7723,11 +5718,7 @@ function SettingsPage() {
         <section className="surface settings-card">Loading…</section>
       </div>
     );
-  function set(key: string, value: any) {
-    setSettings((current) =>
-      current ? { ...current, [key]: value } : current,
-    );
-  }
+
  async function save(data: Record<string, any>) {
   try {
     const saved = await api<Record<string, any>>(
@@ -8116,7 +6107,9 @@ function FormsPage() {
     window.addEventListener("tunaxa:resource-changed", load);
     return () => window.removeEventListener("tunaxa:resource-changed", load);
   }, []);
-  const publicBase = "http://127.0.0.1:3000";
+  // Public form URLs are served by the same origin the SPA is loaded from: the
+  // Vite dev server proxies /api, and in production a reverse proxy fronts both.
+  const publicBase = window.location.origin;
   return (
     <SimpleCards
       title="Forms"
@@ -8393,147 +6386,6 @@ function FormEditor({
   );
 }
 
-function WebhooksPage() {
-  const { toast } = useApp();
-  const { items, create, update, remove } =
-    useResource<Row>("webhookEndpoints");
-  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  return (
-    <SimpleCards
-      title="Webhooks"
-      description="Inbound webhook endpoints that trigger workflows."
-      icon="webhook"
-      items={items}
-      onAdd={() => setEdit(null)}
-      onEdit={setEdit}
-      onDelete={remove}
-      render={(item) => (
-        <>
-          <div className="deal-top">
-            <Badge tone={item.enabled ? "green" : "neutral"}>
-              {item.enabled ? "Active" : "Disabled"}
-            </Badge>
-            <Toggle
-              label={`${item.enabled ? "Disable" : "Enable"} ${item.name || "webhook endpoint"}`}
-              value={Boolean(item.enabled)}
-              onChange={(enabled) => update(item.id, { enabled })}
-            />
-          </div>
-          <h3>{item.name || "Untitled endpoint"}</h3>
-          <p>{item.description || "No description"}</p>
-          <small>
-            {item.requestCount || 0} requests ·{" "}
-            {item.lastReceivedAt
-              ? new Date(item.lastReceivedAt).toLocaleString()
-              : "No deliveries yet"}
-          </small>
-          {item.url ? (
-            <button
-              className="btn ghost compact"
-              onClick={() =>
-                navigator.clipboard
-                  .writeText(item.url)
-                  .then(() => toast("Webhook URL copied"))
-              }
-            >
-              <Icon name="copy" /> Copy URL
-            </button>
-          ) : null}
-        </>
-      )}
-      modal={
-        edit !== undefined ? (
-          <WebhookEditor
-            initial={edit || null}
-            onClose={() => setEdit(undefined)}
-            onSave={async (data) => {
-              edit ? await update(edit.id, data) : await create(data);
-              setEdit(undefined);
-            }}
-          />
-        ) : null
-      }
-    />
-  );
-}
-
-function WebhookEditor({
-  initial,
-  onClose,
-  onSave,
-}: {
-  initial: Row | null;
-  onClose: () => void;
-  onSave: (data: Record<string, any>) => Promise<void>;
-}) {
-  const { toast } = useApp();
-  const [name, setName] = useState(initial?.name || "");
-  const [description, setDescription] = useState(initial?.description || "");
-  const [enabled, setEnabled] = useState(initial?.enabled ?? true);
-  const [busy, setBusy] = useState(false);
-  async function save() {
-    if (!String(name).trim())
-      return toast("Endpoint name is required", "error");
-    setBusy(true);
-    try {
-      await onSave({
-        name: name.trim(),
-        description: description.trim(),
-        enabled,
-      });
-    } catch (error) {
-      toast((error as Error).message, "error");
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Drawer
-      title={initial?.id ? "Edit webhook" : "New webhook"}
-      subtitle="A URL you can POST JSON payloads to in order to trigger workflows."
-      onClose={onClose}
-      footer={
-        <>
-          <button className="btn secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn primary" disabled={busy} onClick={save}>
-            {busy ? "Saving…" : initial?.id ? "Save webhook" : "Create webhook"}
-          </button>
-        </>
-      }
-    >
-      <div className="drawer-form">
-        <label className="field">
-          <span>Endpoint name *</span>
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Product signup webhook"
-          />
-        </label>
-        <label className="field">
-          <span>Description</span>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            placeholder="What triggers this webhook?"
-          />
-        </label>
-        <div className="setting-toggle">
-          <div>
-            <b>Enabled</b>
-            <p>Accept inbound deliveries at this endpoint.</p>
-          </div>
-          <Toggle label="Enable webhook endpoint" value={enabled} onChange={setEnabled} />
-        </div>
-      </div>
-    </Drawer>
-  );
-}
-
 function SimpleCards({
   title,
   description,
@@ -8728,5 +6580,3 @@ export default function App() {
     </AppProvider>
   );
 }
-
-

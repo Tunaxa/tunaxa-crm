@@ -16,7 +16,7 @@ export default function TriggerNode({
       </div>
 
       <div className="workflow-node-body">
-        <strong>{data.event || "No event configured"}</strong>
+        <strong>{typeof data.event === "string" ? data.event || "No event configured" : "No event configured"}</strong>
       </div>
     </div>
   );
