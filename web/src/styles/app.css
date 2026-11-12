@@ -9801,3 +9801,197 @@ summary:focus-visible,
     width: calc(100vw - 32px);
   }
 }
+
+/* ---------- File upload ---------- */
+.file-upload {
+  display: grid;
+  gap: var(--space-3);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+/* tokens.css defines the --color-* scale for light mode only; mirror the
+   theme-aware aliases so the component follows the app's dark theme too. */
+html.dark .file-upload {
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--ink-primary);
+  --color-text-muted: var(--ink-muted);
+  --color-text-faint: var(--ink-faint);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-danger: var(--red);
+  --color-danger-bg: var(--red-bg);
+}
+
+.file-upload-dropzone {
+  display: grid;
+  gap: var(--space-1);
+  place-items: center;
+  padding: var(--space-6);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  text-align: center;
+  cursor: pointer;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.file-upload-dropzone strong {
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.file-upload-dropzone:hover,
+.file-upload-dropzone:focus-visible {
+  border-color: var(--color-accent, var(--brand));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, var(--brand)) 15%, transparent);
+}
+
+.file-upload-dropzone.is-dragging {
+  border-color: var(--color-accent, var(--brand));
+  background: var(--color-surface-2);
+}
+
+.file-upload.is-disabled .file-upload-dropzone {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.file-upload-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.file-upload-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.file-upload-preview,
+.file-upload-file-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  object-fit: cover;
+}
+
+.file-upload-file-icon {
+  display: grid;
+  place-items: center;
+  color: var(--color-text-faint);
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.08em;
+}
+
+.file-upload-info {
+  display: grid;
+  flex: 1 1 auto;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.file-upload-name {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-upload-progress {
+  overflow: hidden;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-2);
+}
+
+.file-upload-progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent, var(--brand));
+  transition: width 0.2s ease;
+}
+
+.file-upload.is-uploading .file-upload-progress-bar {
+  background: linear-gradient(
+    90deg,
+    var(--color-accent, var(--brand)),
+    var(--color-surface-2)
+  );
+  background-size: 200% 100%;
+  animation: file-upload-pulse 1.2s linear infinite;
+}
+
+@keyframes file-upload-pulse {
+  from {
+    background-position: 0% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.file-upload-status {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.file-upload-error {
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.file-upload-batch-error {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-danger-bg);
+}
+
+.file-upload-remove {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.file-upload-remove:hover:not(:disabled) {
+  border-color: var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-danger);
+}
+
+.file-upload-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.file-upload-remove:focus-visible {
+  outline: 2px solid var(--color-accent, var(--brand));
+  outline-offset: 2px;
+}
