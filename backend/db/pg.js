@@ -1,4 +1,5 @@
 import pg from "pg";
+import { PG_DEFAULTS } from "../runtime.js";
 
 const { Pool } = pg;
 
@@ -7,11 +8,11 @@ let pool = null;
 export function getPool() {
   if (!pool) {
     pool = new Pool({
-      host: process.env.PGHOST || "127.0.0.1",
-      port: Number(process.env.PGPORT || 5432),
-      database: process.env.PGDATABASE || "tunaxa",
-      user: process.env.PGUSER || "postgres",
-      password: process.env.PGPASSWORD || "tunaxa2024",
+      host: process.env.PGHOST || PG_DEFAULTS.host,
+      port: Number(process.env.PGPORT || PG_DEFAULTS.port),
+      database: process.env.PGDATABASE || PG_DEFAULTS.database,
+      user: process.env.PGUSER || PG_DEFAULTS.user,
+      password: process.env.PGPASSWORD || PG_DEFAULTS.password,
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,

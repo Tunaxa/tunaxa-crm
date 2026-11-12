@@ -1,0 +1,6 @@
+.bulk-actions { position: sticky; bottom: 16px; z-index: 10; display: flex; flex-wrap: wrap; align-items: end; gap: 12px; padding: 16px; margin-top: 16px; background: var(--surface, #fff); border: 1px solid var(--border, #64748b); border-radius: 12px; box-shadow: 0 4px 20px #0003; }
+.bulk-actions label { display: flex; flex-direction: column; gap: 4px; }
+.bulk-actions input, .bulk-actions select { padding: 8px; }
+.bulk-actions p { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+.bulk-actions :focus-visible, .bulk-select:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+@media (max-width: 650px) { .bulk-actions { bottom: 0; } .bulk-actions label { width: 100%; } }

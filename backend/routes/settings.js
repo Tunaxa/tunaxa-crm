@@ -1,19 +1,43 @@
 import { readDb, mutateDb } from "../store.js";
 import { auth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/rbac.js";
-import { id, now } from "../helpers.js";
+import { id, now, coerceBuiltIns } from "../helpers.js";
 import { getSettings, DEFAULT_SETTINGS } from "../services/config.js";
 import { resetTransporter as resetEmailTransporter } from "../services/email.js";
 import { resetTransporter as resetSmtpTransporter } from "../services/smtp.js";
 import { validate, SettingsSchema } from "../services/validate.js";
-import { BUILT_IN_FIELDS, customFieldSpecs } from "../helpers.js";
+import { BUILT_IN_FIELDS, normalizeFieldSpec, customFieldSpecs } from "../helpers.js";
 import { EVENT_META, ACTION_META } from "../services/workflows.js";
 import { checkOllamaStatus } from "../services/ai.js";
 import { isAiConfigured, isTwilioConfigured } from "../services/config.js";
 import { cacheGet, cacheSet, cacheFlush } from "../services/cache.js";
 import { broadcast } from "./sse.js";
+import { repoFor } from "../db/repositories/index.js";
+import { PG_RESOURCES, pgToLegacy } from "../db/legacy-shape.js";
+import {
+  getFieldPermissions,
+  applyFieldMasking,
+  objectTypeOf,
+} from "./permissions.js";
+
+// Same idiom as tenantOf() in routes/resources.js, duplicated rather than
+// imported: a route module reaching into another route module is how the two
+// tenant checks drift apart. Server-derived, never taken from the body.
+const tenantOf = (req) =>
+  req.user?.workspaceId || req.user?.workspace_id || "default";
+
+// Cap per entity group so one noisy resource cannot crowd out the others in the
+// global search palette.
+const SEARCH_GROUP_LIMIT = 10;
 
 export default function registerSettingsRoutes(app) {
+  /**
+   * GET /api/dashboard
+   * Protected. Aggregated sales/CRM metrics for the dashboard home view
+   * (cached for 60s).
+   * Response: 200 { pipeline, won, qualified, connected, leads, contacts,
+   * companies, tasks, deals, recent }
+   */
   app.get("/api/dashboard", auth, async (req, res) => {
     const cached = await cacheGet("dashboard");
     if (cached) return res.json(cached);
@@ -78,13 +102,23 @@ export default function registerSettingsRoutes(app) {
     res.json(result);
   });
 
-  app.get("/api/search", auth, async (req, res) => {
+  /**
+   * GET /api/search
+   * Protected. Full-text search across leads, contacts, companies, deals,
+   * tasks and recordings, with field masking applied per result.
+   * PostgreSQL-backed entities are searched through their repository and
+   * tenant-scoped in SQL; JSON-store entities are filtered in memory.
+   * Query param: q - search term (required; empty query returns empty groups)
+   * Response: 200 grouped by entity type, e.g.
+   *   { leads: [], contacts: [], companies: [], deals: [], tasks: [], recordings: [] }
+   *   Each group is capped at SEARCH_GROUP_LIMIT (10) entries.
+   */
+  app.get("/api/search", auth, async (req, res, next) => {
     const q = String(req.query.q || "")
       .toLowerCase()
       .trim();
-    if (!q) return res.json([]);
     const db = await readDb();
-    const map = [
+    const groups = [
       ["leads", "Lead", "/leads", ["name", "company", "email", "phone"]],
       [
         "contacts",
@@ -102,34 +136,78 @@ export default function registerSettingsRoutes(app) {
         ["title", "contact", "transcript"],
       ],
     ];
-    const out = [];
-    for (const [key, type, route, fields] of map) {
-      for (const item of db[key]) {
-        if (
-          fields.some((field) =>
-            String(item[field] || "")
-              .toLowerCase()
-              .includes(q),
-          )
-        )
-          out.push({
-            id: item.id,
-            type,
-            route,
-            name: item.name || item.title || item.email || type,
-            detail:
-              item.company || item.email || item.stage || item.status || "",
-          });
-        if (out.length >= 20) break;
+    // Results are returned grouped by entity type so the UI can render
+    // per-type sections. Every group key is always present, even when empty.
+    const out = Object.fromEntries(groups.map(([key]) => [key, []]));
+    if (q) {
+      try {
+        for (const [key, type, route, fields] of groups) {
+          // Field permissions still apply to search results: the palette must
+          // not expose a value the record endpoint would mask.
+          const fieldPerms = getFieldPermissions(
+            db,
+            objectTypeOf(key),
+            req.user.role,
+          );
+          let rows;
+          if (PG_RESOURCES.has(key)) {
+            // Contacts, leads, companies, deals and tasks live in Postgres.
+            // Reading db[key] here would always be empty, and omitting the
+            // tenant would leak another workspace's records.
+            const result = await repoFor(key).findAll({
+              q,
+              workspaceId: tenantOf(req),
+              page: 1,
+              limit: SEARCH_GROUP_LIMIT,
+            });
+            rows = result.data.map((row) =>
+              coerceBuiltIns(key, pgToLegacy(row, key)),
+            );
+          } else {
+            rows = (db[key] || []).filter((item) =>
+              fields.some((field) =>
+                String(item[field] ?? "")
+                  .toLowerCase()
+                  .includes(q),
+              ),
+            );
+          }
+          for (const row of rows) {
+            if (out[key].length >= SEARCH_GROUP_LIMIT) break;
+            const item = applyFieldMasking(row, fieldPerms);
+            out[key].push({
+              id: item.id,
+              type,
+              route,
+              name: item.name || item.title || item.email || type,
+              detail:
+                item.company || item.email || item.stage || item.status || "",
+            });
+          }
+        }
+      } catch (err) {
+        return next(err);
       }
     }
-    res.json(out.slice(0, 20));
+    res.json(out);
   });
 
+  /**
+   * GET /api/settings
+   * Protected. Returns the workspace configuration object.
+   * Response: 200 settings object (see services/config.js)
+   */
   app.get("/api/settings", auth, async (req, res) => {
     res.json(await getSettings());
   });
 
+  /**
+   * PUT /api/settings
+   * Admin-only. Merges workspace settings, validates them, and resets the
+   * email/SMTP transporters.
+   * Body (SettingsSchema): partial settings object
+   * Response: 200 { settings }
+   */
   app.put(
     "/api/settings",
     auth,
@@ -154,21 +232,40 @@ export default function registerSettingsRoutes(app) {
     },
   );
 
+  /**
+   * GET /api/workflows/meta
+   * Protected. Static workflow trigger-event and action metadata for the
+   * visual builder.
+   * Response: 200 { events, actions }
+   */
   app.get("/api/workflows/meta", auth, (req, res) =>
     res.json({ events: EVENT_META, actions: ACTION_META }),
   );
 
+  /**
+   * GET /api/schema/:object
+   * Protected. Returns the field schema (built-in + custom fields) for a CRM
+   * object: leads, contacts, companies or deals.
+   * Path param: :object - CRM object name
+   * Response: 200 { object, fields: [{ key, label, type, required, options? }] }
+   *           404 { error } for unknown objects
+   */
   app.get("/api/schema/:object", auth, async (req, res) => {
     const object = String(req.params.object || "").toLowerCase();
     if (!(object in BUILT_IN_FIELDS))
       return res.status(404).json({ error: "Unknown object" });
     const db = await readDb();
-    res.json({
-      object,
-      fields: [...BUILT_IN_FIELDS[object], ...customFieldSpecs(db, object)],
-    });
+    const fields = [...BUILT_IN_FIELDS[object], ...customFieldSpecs(db, object)]
+      .filter(field => field && typeof field === "object")
+      .map(normalizeFieldSpec);
+    res.json({ object, fields });
   });
 
+  /**
+   * GET /api/twilio/status
+   * Protected. Reports whether Twilio calling is configured.
+   * Response: 200 { configured: boolean, number: string }
+   */
   app.get("/api/twilio/status", auth, async (req, res) => {
     const settings = await getSettings();
     res.json({
@@ -177,6 +274,11 @@ export default function registerSettingsRoutes(app) {
     });
   });
 
+  /**
+   * GET /api/ai/status
+   * Protected. Reports AI/Ollama configuration and connectivity status.
+   * Response: 200 { configured: boolean, ...ollamaStatus }
+   */
   app.get("/api/ai/status", auth, async (req, res) => {
     const settings = await getSettings();
     const status = await checkOllamaStatus(settings);

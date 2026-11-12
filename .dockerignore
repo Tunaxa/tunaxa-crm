@@ -1,0 +1,121 @@
+# Build context exclusions for the production image.
+#
+# Two jobs. The first is correctness: anything that must never be baked into an
+# image is listed here, secrets above all. The second is cache efficiency: the
+# dependency layer should be rebuilt only when the manifests change, so node_modules
+# is excluded and reinstalled inside the image against package-lock.json.
+
+# ---------------------------------------------------------------
+# Secrets - must never reach a layer
+# ---------------------------------------------------------------
+# The image is built with no .env, so every runtime secret has to be injected at
+# run time. Baking one in would persist it in the layer history even if a later
+# layer deleted the file.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+*.keystore
+
+# ---------------------------------------------------------------
+# Dependencies - reinstalled in the build stage from the lockfile
+# ---------------------------------------------------------------
+# Copying the host's node_modules would pull in devDependencies, native builds
+# for the wrong platform, and anything installed globally on the machine.
+node_modules
+**/node_modules
+.npm
+.eslintcache
+
+# ---------------------------------------------------------------
+# Version control and CI
+# ---------------------------------------------------------------
+.git
+.gitignore
+.gitattributes
+.github
+.gitlab-ci.yml
+
+# ---------------------------------------------------------------
+# Tests, coverage and test-only config
+# ---------------------------------------------------------------
+# The runtime image has no test code and no test runner, which keeps the attack
+# surface and the image size down. __tests__ directories and *.test.js cover both
+# the backend and any nested test folders.
+coverage
+.nyc_output
+backend/__tests__
+**/__tests__
+**/__tests__/**
+*.test.js
+*.test.jsx
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.jsx
+*.spec.ts
+*.spec.tsx
+vitest.config.*
+web/vitest.config.js
+test
+tests
+e2e
+cypress
+playwright-report
+
+# ---------------------------------------------------------------
+# Build and tool caches
+# ---------------------------------------------------------------
+dist
+build
+.vite
+.cache
+tmp
+temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ---------------------------------------------------------------
+# Local data, scratch files and editor/agent state
+# ---------------------------------------------------------------
+# db.json, uploads and the local Postgres dumps are runtime state. They belong
+# in a volume, not in the image.
+backend/db.json
+db.json
+uploads
+backend/uploads
+data
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+
+# ---------------------------------------------------------------
+# Documentation
+# ---------------------------------------------------------------
+# Not needed at runtime. Legal and licence files are re-included because some
+# deployments redistribute the image and must ship the notices with it.
+*.md
+!LICENSE*
+!NOTICE*
+!CHANGELOG.md
+
+# ---------------------------------------------------------------
+# Editor, OS and agent scratch state
+# ---------------------------------------------------------------
+.vscode
+.idea
+.vs
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+.system_generated
+.gemini

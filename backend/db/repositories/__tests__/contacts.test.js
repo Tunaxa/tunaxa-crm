@@ -6,7 +6,7 @@ vi.mock("../../pg.js", () => ({ query: pg.query }));
 
 import * as contacts from "../contacts.js";
 
-const { create, findAll, findById, update } = contacts;
+const { create, findAll, findById, findByEmail, update } = contacts;
 const deleteContact = contacts.delete;
 
 function setFindAllResult(total, data = []) {
@@ -110,6 +110,42 @@ describe("contacts repository", () => {
     await expect(findById("missing")).resolves.toBeNull();
   });
 
+  it("scopes findById to a workspace when one is supplied", async () => {
+    const record = { id: "contact-1", workspace_id: "ws_acme" };
+    pg.query.mockResolvedValueOnce({ rows: [record] });
+    await expect(findById("contact-1", "ws_acme")).resolves.toBe(record);
+    expect(pg.query).toHaveBeenLastCalledWith(
+      "SELECT * FROM contacts WHERE id = $1 AND workspace_id = $2",
+      ["contact-1", "ws_acme"],
+    );
+  });
+
+  it("finds a contact by exact email, newest match first", async () => {
+    const record = { id: "contact-2", email: "ada@example.com" };
+    pg.query.mockResolvedValueOnce({ rows: [record] });
+    await expect(findByEmail("  ADA@Example.com ")).resolves.toBe(record);
+    const [sql, params] = pg.query.mock.calls[0];
+    expect(sql).toContain("LOWER(COALESCE(email, '')) = LOWER($1)");
+    expect(sql).not.toContain("ILIKE");
+    expect(sql).toContain("ORDER BY created_at DESC LIMIT 1");
+    expect(sql).not.toContain("workspace_id");
+    expect(params).toEqual(["ADA@Example.com"]);
+  });
+
+  it("scopes the email lookup to a workspace when one is supplied", async () => {
+    const record = { id: "contact-3", workspace_id: "ws_globex" };
+    pg.query.mockResolvedValueOnce({ rows: [record] });
+    await expect(findByEmail("ada@example.com", "ws_globex")).resolves.toBe(record);
+    const [sql, params] = pg.query.mock.calls[0];
+    expect(sql).toContain("AND workspace_id = $2");
+    expect(params).toEqual(["ada@example.com", "ws_globex"]);
+  });
+
+  it("returns null from findByEmail without querying for a blank address", async () => {
+    await expect(findByEmail("   ")).resolves.toBeNull();
+    expect(pg.query).not.toHaveBeenCalled();
+  });
+
   it("creates a contact with parameterized fields", async () => {
     const data = {
       workspace_id: "workspace-1",
@@ -156,11 +192,15 @@ describe("contacts repository", () => {
 
     expect(result).toBe(record);
     const [sql, params] = pg.query.mock.calls[0];
-    expect(sql).toContain("first_name = $1, custom_fields = $2");
+    // custom_fields is merged with the stored bag, not replaced, so a partial
+    // update preserves overflow fields (see update()).
+    expect(sql).toContain(
+      "first_name = $1, custom_fields = COALESCE(custom_fields, '{}'::jsonb) || $2::jsonb",
+    );
     expect(sql).toContain("WHERE id = $3");
     expect(sql).not.toContain("workspace_id = $");
     expect(sql).not.toContain("unknown = $");
-    expect(params).toEqual(["Grace", { verified: true }, "contact-1"]);
+    expect(params).toEqual(["Grace", '{"verified":true}', "contact-1"]);
   });
 
   it("returns null for an update with no allowed fields or no matching record", async () => {

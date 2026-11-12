@@ -144,7 +144,7 @@ export async function syncInboxOnce() {
     if (newActivities.length > 0 || maxUid > lastSeenUid) {
       await mutateDb(db => {
         if (newActivities.length > 0) {
-          db.activities.push(...newActivities);
+          db.activities.unshift(...newActivities.slice().sort((left, right) => right.metadata.uid - left.metadata.uid));
         }
         if (maxUid > lastSeenUid) {
           db.settings ??= {};

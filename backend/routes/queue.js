@@ -1,20 +1,31 @@
 import { readDb, mutateDb } from '../store.js';
 import { auth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
-import { processExecutionQueue, retryExecution } from '../services/queue.js';
-import { id, now } from '../helpers.js';
+import { processExecutionQueue, retryExecution, findRecord } from '../services/queue.js';
+import { getWebhookQueue } from '../services/webhookQueue.js';
+import { id, now, paginateAndSort } from '../helpers.js';
 import { broadcast } from './sse.js';
 
 export default function registerExecutionRoutes(app) {
+  /**
+   * GET /api/executions
+   * Protected. Lists queued workflow executions, optionally filtered by status.
+   * Query params: status - 'pending'|'processing'|'done'|'failed', limit (max 500)
+   * Response: 200 { data: [{ execution }], total: number }
+   */
   app.get('/api/executions', auth, async (req, res) => {
     const db = await readDb();
-    const { status, limit = 50 } = req.query;
+    const { status } = req.query;
     let rows = db.executionQueue || [];
     if (status) rows = rows.filter(item => item.status === status);
-    rows = rows.slice(0, Math.min(Number(limit) || 50, 500));
-    res.json({ data: rows, total: (db.executionQueue || []).length });
+    res.json(paginateAndSort(rows, req.query));
   });
 
+  /**
+   * POST /api/executions/process
+   * Admin/member. Manually drains all due queued actions.
+   * Response: 200 { executed: number }
+   */
   // Manually drain due queued actions
   app.post('/api/executions/process', auth, requireRole('admin', 'member'), async (req, res) => {
     const result = await processExecutionQueue();
@@ -22,12 +33,23 @@ export default function registerExecutionRoutes(app) {
     res.json(result);
   });
 
+  /**
+   * POST /api/executions/:id/retry
+   * Admin/member. Re-queues a failed execution for another run.
+   * Path param: :id - execution id
+   * Response: 200 { execution } | 404 { error }
+   */
   app.post('/api/executions/:id/retry', auth, requireRole('admin', 'member'), async (req, res) => {
     const item = await retryExecution(req.params.id);
     if (!item) return res.status(404).json({ error: 'Queued execution not found' });
     res.json(item);
   });
 
+  /**
+   * DELETE /api/executions
+   * Admin/member. Clears finished items (done/failed) from the queue.
+   * Response: 200 { ok: true }
+   */
   // Clear finished items (done/failed)
   app.delete('/api/executions', auth, requireRole('admin', 'member'), async (req, res) => {
     await mutateDb(db => {
@@ -39,13 +61,57 @@ export default function registerExecutionRoutes(app) {
     res.json({ ok: true });
   });
 
+  /**
+   * POST /api/executions
+   * Admin/member. Queues a one-off execution (used by the visual builder
+   * "Run now" for delay nodes).
+   * Body: { flowId?, resource, recordId?, action: { type, ... }, dueAt?, flowName? }
+   * Response: 201 { execution } | 400 { error }
+   */
+  // BullMQ observability (webhooks queue) — admin only
+  app.get('/api/queue/status', auth, requireRole('admin'), async (req, res) => {
+    try {
+      const queue = getWebhookQueue();
+      if (!queue) {
+        return res.json({
+          waiting: 0,
+          active: 0,
+          failed: 0,
+          failedJobs: [],
+          error: 'Redis/BullMQ not configured',
+        });
+      }
+
+      const counts = await queue.getJobCounts('wait', 'active', 'failed');
+      const failedJobs = await queue.getFailed(0, 9);
+
+      res.json({
+        waiting: counts.wait ?? 0,
+        active: counts.active ?? 0,
+        failed: counts.failed ?? 0,
+        failedJobs: failedJobs.map((job) => ({
+          id: job.id,
+          name: job.name,
+          failedReason: job.failedReason,
+          timestamp: job.timestamp,
+        })),
+      });
+    } catch (err) {
+      console.error('[queue] status check failed:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Queue a one-off execution (used by the visual builder "Run now" for delay nodes)
   app.post('/api/executions', auth, requireRole('admin', 'member'), async (req, res) => {
     const { flowId, resource, recordId, action, dueAt } = req.body || {};
     if (!resource || !action || !action.type) return res.status(400).json({ error: 'resource and action are required' });
+    // Resolved through the repository for PG-backed resources; a JSON-store
+    // lookup would call every lead, contact or ticket "missing" now that those
+    // tables own the data.
+    const record = await findRecord(resource, recordId);
+    if (recordId && !record) return res.status(400).json({ error: 'Record not found' });
     const result = await mutateDb(db => {
-      const record = (db[resource] || []).find(x => x.id === recordId) || null;
-      if (recordId && !record) return { error: 'Record not found' };
       const flow = (db.workflows || []).find(f => f.id === flowId);
       const item = {
         id: id('exec'),

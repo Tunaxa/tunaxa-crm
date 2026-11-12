@@ -1,0 +1,10 @@
+.filter-builder { margin-bottom: 16px; padding: 16px; border: 1px solid var(--border, #64748b); border-radius: 10px; }
+.filter-builder summary { cursor: pointer; font-weight: 600; }
+.filter-count { display: inline-block; border-radius: 12px; padding: 2px 8px; background: #dbeafe; color: #1e40af; margin-left: 8px; }
+.filter-builder form { margin-top: 16px; }
+.filter-builder label { display: flex; flex-direction: column; gap: 6px; }
+.filter-condition { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 12px; align-items: end; margin-top: 12px; }
+.filter-builder input, .filter-builder select { width: 100%; min-width: 0; padding: 8px; }
+.filter-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.filter-builder :focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+@media (max-width: 750px) { .filter-condition { grid-template-columns: 1fr; } }

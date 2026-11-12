@@ -1,4 +1,5 @@
 import { readDb, mutateDb } from '../store.js';
+import { loadRecords, findRecord, saveRecord } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { requireAdmin, requireRole } from '../middleware/rbac.js';
 import { id, now } from '../helpers.js';
@@ -111,7 +112,7 @@ export default function registerLeadScoringRoutes(app) {
     const db = await readDb();
     const rules = db.leadScoringRules?.length ? db.leadScoringRules : DEFAULT_RULES;
     const thresholds = db.leadScoringThresholds || DEFAULT_THRESHOLDS;
-    const record = db.leads.find(x => x.id === req.params.recordId) || db.contacts.find(x => x.id === req.params.recordId);
+    const record = (await findRecord(req.params.recordId, ['leads', 'contacts'], db))?.record;
     if (!record) return res.status(404).json({ error: 'Record not found' });
     const { score, tier } = scoreLead(record, rules, thresholds);
     res.json({ score, tier, recordId: record.id, rules, thresholds });
@@ -119,11 +120,11 @@ export default function registerLeadScoringRoutes(app) {
 
   // Recompute & persist scores for all leads
   app.post('/api/leadscoring/recalculate', auth, requireRole('admin', 'member'), async (req, res) => {
-    const result = await mutateDb(db => {
+    const result = await mutateDb(async db => {
       const rules = db.leadScoringRules?.length ? db.leadScoringRules : DEFAULT_RULES;
       const thresholds = db.leadScoringThresholds || DEFAULT_THRESHOLDS;
       let updated = 0, sql = 0, mql = 0, cold = 0;
-      for (const lead of db.leads) {
+      for (const lead of await loadRecords('leads', db)) {
         const { score, tier } = scoreLead(lead, rules, thresholds);
         lead.leadScore = score;
         lead.leadScoreTier = tier;
@@ -133,10 +134,11 @@ export default function registerLeadScoringRoutes(app) {
         const currentIdx = LIFECYCLE_STAGES.indexOf(lead.lifecycleStage);
         if (tier === 'SQL' && currentIdx < LIFECYCLE_STAGES.indexOf('SQL')) {
           lead.lifecycleStage = 'SQL';
-          db.activities.unshift({ id: id('activity'), title: `Auto SQL by scoring (score ${score})`, type: 'Lead Score', contact: lead.name || lead.email || '', notes: `Score threshold crossed (≥ ${thresholds.salesQualified})`, date: now().slice(0, 10), recordId: lead.id, createdAt: now(), updatedAt: now() });
+          await saveRecord('activities', { title: `Auto SQL by scoring (score ${score})`, type: 'Lead Score', contact: lead.name || lead.email || '', notes: `Score threshold crossed (≥ ${thresholds.salesQualified})`, date: now().slice(0, 10), recordId: lead.id, createdAt: now(), updatedAt: now() }, db);
         } else if (tier === 'MQL' && currentIdx < LIFECYCLE_STAGES.indexOf('MQL')) {
           lead.lifecycleStage = 'MQL';
         }
+        await saveRecord('leads', lead, db);
       }
       db.audit.unshift({ id: id('audit'), action: `Recalculated lead scores for ${updated} leads`, actor: req.user.name, createdAt: now() });
       return { updated, breakdown: { sql, mql, cold } };
