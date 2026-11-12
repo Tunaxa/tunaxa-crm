@@ -1,5 +1,6 @@
 export { CornerBrackets } from './CornerBrackets';
 export { PixelIndicator } from './PixelIndicator';
+export { Chamfer } from "./Chamfer";
 export { CutButton } from './CutButton';
 export { Badge } from './Badge';
 export { RevenueFlowCanvas } from './RevenueFlowCanvas';

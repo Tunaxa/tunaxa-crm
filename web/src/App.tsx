@@ -1,3 +1,4 @@
+import { DesignSystemPage } from "./pages/DesignSystemPage";
 import { Shell } from "./shell/Shell";
 import { WorkflowPicker } from "./pages/workflows/WorkflowPicker";
 import { WorkflowDetailPage } from "./pages/workflows/WorkflowDetailPage";
@@ -814,6 +815,7 @@ return (
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/design-system" element={<DesignSystemPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
                         </Routes>
           </ErrorBoundary>
