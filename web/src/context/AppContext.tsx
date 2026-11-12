@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -32,8 +33,16 @@ const TOAST_DURATION = 3200;
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const timersRef = useRef<Map<number, number>>(new Map());
 
   const dismissToast = useCallback((id: number) => {
+    const timer = timersRef.current.get(id);
+
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      timersRef.current.delete(id);
+    }
+
     setToasts((items) => items.filter((item) => item.id !== id));
   }, []);
 
@@ -51,11 +60,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
       ]);
 
-      window.setTimeout(() => {
+      const timer = window.setTimeout(() => {
         dismissToast(id);
       }, TOAST_DURATION);
+
+      timersRef.current.set(id, timer);
     },
     [dismissToast],
+  );
+
+  useEffect(
+    () => () => {
+      timersRef.current.forEach((timer) => window.clearTimeout(timer));
+      timersRef.current.clear();
+    },
+    [],
   );
 
   const logout = useCallback(async () => {

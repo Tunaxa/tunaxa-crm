@@ -4679,28 +4679,6 @@ tbody tr:hover {
     display: none;
   }
 }
-.toast-stack {
-  position: fixed;
-  right: 22px;
-  bottom: 22px;
-  display: grid;
-  gap: 10px;
-  z-index: 9999;
-}
-.app-toast {
-  min-width: 220px;
-  max-width: 360px;
-  padding: 13px 16px;
-  border-radius: 12px;
-  background: #111827;
-  color: #fff;
-  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.2);
-  font-size: 13px;
-  font-weight: 700;
-}
-.app-toast.error {
-  background: #991b1b;
-}
 .loading-line {
   height: 4px;
   border-radius: 99px;
@@ -7706,15 +7684,6 @@ tbody tr:not(.no-hover):hover {
   width: 60px;
   height: 60px;
   border-radius: 18px;
-}
-
-/* Toasts */
-.app-toast {
-  border-radius: 11px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
-}
-.app-toast.error {
-  background: #b91c1c;
 }
 
 /* Login */
