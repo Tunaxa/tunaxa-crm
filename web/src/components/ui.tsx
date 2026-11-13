@@ -1,5 +1,5 @@
 import { photoInitials, photoPreviewUrl } from "../lib/photoPreview";
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { api } from '../lib/api';
 
@@ -87,9 +87,11 @@ export { CountUpNumber } from './ui/CountUpNumber';
 export { PixelDivider } from './ui/PixelDivider';
 export { SectionHeader } from './ui/SectionHeader';
 export type { SectionHeaderProps } from './ui/SectionHeader';
+export type { DataTableProps, DataTableColumn } from './ui/DataTable';
 
 export function Modal({ title, children, onClose, footer }: { title: string; children: ReactNode; onClose: () => void; footer?: ReactNode }) {
   const modalRef = useFocusTrap();
+  const titleId = useId();
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
@@ -98,8 +100,8 @@ export function Modal({ title, children, onClose, footer }: { title: string; chi
   }, [onClose]);
 
   return <div className="modal-backdrop" onMouseDown={onClose}>
-    <section ref={modalRef} className="modal" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} onMouseDown={event => event.stopPropagation()}>
-      <header><h3>{title}</h3><button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button></header>
+    <section ref={modalRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onMouseDown={event => event.stopPropagation()}>
+      <header><h3 id={titleId}>{title}</h3><button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button></header>
       <div className="modal-body">{children}</div>
       {footer ? <footer>{footer}</footer> : null}
     </section>
@@ -108,6 +110,8 @@ export function Modal({ title, children, onClose, footer }: { title: string; chi
 
 export function Drawer({ title, subtitle, children, onClose, footer, width = 520 }: { title: string; subtitle?: string; children: ReactNode; onClose: () => void; footer?: ReactNode; width?: number }) {
   const drawerRef = useFocusTrap();
+  const titleId = useId();
+  const subtitleId = useId();
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
@@ -120,9 +124,9 @@ export function Drawer({ title, subtitle, children, onClose, footer, width = 520
   }, [onClose]);
 
   return <div className="drawer-backdrop" onMouseDown={onClose}>
-    <aside ref={drawerRef} className="side-drawer" role="dialog" aria-modal="true" tabIndex={-1} style={{ width }} onMouseDown={event => event.stopPropagation()}>
+    <aside ref={drawerRef} className="side-drawer" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={subtitle ? subtitleId : undefined} tabIndex={-1} style={{ width }} onMouseDown={event => event.stopPropagation()}>
       <header className="side-drawer-head">
-        <div><h2>{title}</h2>{subtitle ? <p>{subtitle}</p> : null}</div>
+        <div><h2 id={titleId}>{title}</h2>{subtitle ? <p id={subtitleId}>{subtitle}</p> : null}</div>
         <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
       </header>
       <div className="side-drawer-body">{children}</div>
@@ -232,3 +236,4 @@ export function PhotoField({ label, name, value, radius = 56, onChange, onBusyCh
     </div>
   </div>;
 }
+export { DataTable } from './ui/DataTable';
