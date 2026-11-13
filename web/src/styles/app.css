@@ -9801,3 +9801,87 @@ summary:focus-visible,
     width: calc(100vw - 32px);
   }
 }
+
+.user-form {
+  display: grid;
+  gap: 16px;
+}
+
+.form-field {
+  display: grid;
+  gap: 6px;
+}
+
+.form-field-label {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-primary);
+}
+
+.form-field-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.form-field-error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--red);
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  width: 100%;
+  min-height: 39px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink-primary);
+  font: inherit;
+  transition: border-color 0.15s, outline-color 0.15s;
+}
+
+.form-field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.form-field input::placeholder,
+.form-field textarea::placeholder {
+  color: var(--ink-muted);
+}
+
+.form-field input:hover,
+.form-field select:hover,
+.form-field textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.form-field input:focus-visible,
+.form-field select:focus-visible,
+.form-field textarea:focus-visible {
+  border-color: var(--brand);
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.form-field input:disabled,
+.form-field select:disabled,
+.form-field textarea:disabled {
+  background: var(--surface-2);
+  color: var(--ink-muted);
+  cursor: not-allowed;
+}
+
+.form-field input[aria-invalid="true"],
+.form-field select[aria-invalid="true"],
+.form-field textarea[aria-invalid="true"] {
+  border-color: var(--red);
+}
+
+.user-form .btn {
+  justify-self: start;
+}
