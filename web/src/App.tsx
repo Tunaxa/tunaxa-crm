@@ -2512,9 +2512,7 @@ function RecordDetailPage({
           />
          <div>
   <div className="lead-detail-name">
-<SectionHeader
-  title={recordName}
-/>
+    <SectionHeader as="h1" title={recordName} />
     {resource === "leads" &&
     typeof record.leadScore === "number" ? (
       <span title="AI Score — based on engagement signals">

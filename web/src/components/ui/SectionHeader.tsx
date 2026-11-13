@@ -10,6 +10,12 @@ export interface SectionHeaderProps {
   meta?: string;
   /** Optional CTA slot — e.g. a CutButton */
   action?: React.ReactNode;
+  /**
+   * Heading level for the title. Defaults to `h2` (section-level), but
+   * page-level usages such as record detail pages should pass `h1` so the
+   * document keeps a single top-level heading.
+   */
+  as?: 'h1' | 'h2' | 'h3';
   className?: string;
 }
 
@@ -31,8 +37,10 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
   title,
   meta,
   action,
+  as = 'h2',
   className = '',
 }) => {
+  const Heading = as;
   return (
     <div
       className={`
@@ -61,8 +69,8 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
             <span>{badge}</span>
           </div>
         )}
-        <h2
-          className="font-extrabold uppercase tracking-tight text-[#000000] dark:text-[#f8fafc] mt-1.5"
+        <Heading
+          className="font-extrabold uppercase tracking-tight text-[var(--ink-primary)] mt-1.5"
           style={{
             fontFamily: 'var(--mono)',
             fontSize: '28px',
@@ -70,7 +78,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
           }}
         >
           {title}
-        </h2>
+        </Heading>
       </div>
       <div className="flex items-center gap-4">
         {meta && (
