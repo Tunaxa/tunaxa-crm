@@ -4,13 +4,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { FormInput } from "./FormInput";
 import { FormSelect } from "./FormSelect";
 import { FormTextarea } from "./FormTextarea";
-import {
-  userFormSchema,
-  type UserFormValues,
-} from "./formSchemas";
+import { userFormSchema, type UserFormValues } from "./formSchemas";
 
-interface UserFormProps {
-  onSubmit: (data: UserFormValues) => void;
+export interface UserFormProps {
+  onSubmit: (data: UserFormValues) => void | Promise<void>;
 }
 
 export function UserForm({ onSubmit }: UserFormProps) {
@@ -29,12 +26,19 @@ export function UserForm({ onSubmit }: UserFormProps) {
   });
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+    <form
+      className="user-form"
+      onSubmit={handleSubmit(onSubmit)}
+      aria-busy={isSubmitting || undefined}
+      noValidate
+    >
       <FormInput
         name="name"
         control={control}
         label="Nom"
         placeholder="Votre nom"
+        autoComplete="name"
+        required
       />
 
       <FormInput
@@ -43,6 +47,8 @@ export function UserForm({ onSubmit }: UserFormProps) {
         label="Email"
         type="email"
         placeholder="exemple@email.com"
+        autoComplete="email"
+        required
       />
 
       <FormSelect
@@ -53,6 +59,7 @@ export function UserForm({ onSubmit }: UserFormProps) {
           { value: "admin", label: "Administrateur" },
           { value: "user", label: "Utilisateur" },
         ]}
+        required
       />
 
       <FormTextarea
@@ -62,7 +69,7 @@ export function UserForm({ onSubmit }: UserFormProps) {
         placeholder="Description..."
       />
 
-      <button type="submit" disabled={isSubmitting}>
+      <button type="submit" className="btn primary" disabled={isSubmitting}>
         {isSubmitting ? "Envoi..." : "Enregistrer"}
       </button>
     </form>

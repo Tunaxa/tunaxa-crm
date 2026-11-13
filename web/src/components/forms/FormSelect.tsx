@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import {
   useController,
   type Control,
@@ -6,18 +6,22 @@ import {
   type FieldValues,
 } from "react-hook-form";
 
-interface FormSelectOption {
+export interface FormSelectOption {
   value: string;
   label: string;
 }
 
-interface FormSelectProps<T extends FieldValues> {
+export interface FormSelectProps<T extends FieldValues>
+  extends Omit<
+    React.SelectHTMLAttributes<HTMLSelectElement>,
+    "name" | "id" | "value" | "defaultValue"
+  > {
   name: FieldPath<T>;
   control: Control<T>;
   label: string;
   options: FormSelectOption[];
+  hint?: string;
   placeholder?: string;
-  disabled?: boolean;
 }
 
 export function FormSelect<T extends FieldValues>({
@@ -25,26 +29,40 @@ export function FormSelect<T extends FieldValues>({
   control,
   label,
   options,
+  hint,
   placeholder = "Select an option",
   disabled = false,
+  required,
+  ...rest
 }: FormSelectProps<T>) {
   const {
     field,
     fieldState: { error },
   } = useController({ name, control });
 
-  const errorId = `${String(name)}-error`;
+  const fieldId = useId();
+  const hintId = `${fieldId}-hint`;
+  const errorId = `${fieldId}-error`;
+  const describedBy =
+    [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") ||
+    undefined;
 
   return (
     <div className="form-field">
-      <label htmlFor={String(name)}>{label}</label>
+      <label className="form-field-label" htmlFor={fieldId}>
+        {label}
+      </label>
 
       <select
+        {...rest}
         {...field}
-        id={String(name)}
+        id={fieldId}
         disabled={disabled}
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? errorId : undefined}
+        required={required}
+        value={field.value ?? ""}
+        aria-invalid={error ? true : undefined}
+        aria-required={required || undefined}
+        aria-describedby={describedBy}
       >
         <option value="">{placeholder}</option>
 
@@ -55,11 +73,17 @@ export function FormSelect<T extends FieldValues>({
         ))}
       </select>
 
-      {error && (
+      {hint ? (
+        <p id={hintId} className="form-field-hint">
+          {hint}
+        </p>
+      ) : null}
+
+      {error ? (
         <p id={errorId} role="alert" className="form-field-error">
           {error.message}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

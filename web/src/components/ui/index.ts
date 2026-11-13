@@ -17,6 +17,21 @@ export type {
   UploadedFile,
 } from '../FileUpload';
 export { Modal, Drawer, PageHeader, Empty, Avatar, Toggle, PhotoField, money } from '../ui';
+export {
+  FormInput,
+  FormSelect,
+  FormTextarea,
+  UserForm,
+  userFormSchema,
+} from '../forms';
+export type {
+  FormInputProps,
+  FormSelectOption,
+  FormSelectProps,
+  FormTextareaProps,
+  UserFormProps,
+  UserFormValues,
+} from '../forms';
 
 export { DataTable } from './DataTable';
 export type { DataTableProps, DataTableColumn } from './DataTable';

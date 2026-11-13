@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import {
   useController,
   type Control,
@@ -6,49 +6,73 @@ import {
   type FieldValues,
 } from "react-hook-form";
 
-interface FormInputProps<T extends FieldValues> {
+export interface FormInputProps<T extends FieldValues>
+  extends Omit<
+    React.InputHTMLAttributes<HTMLInputElement>,
+    "name" | "id" | "value" | "defaultValue"
+  > {
   name: FieldPath<T>;
   control: Control<T>;
   label: string;
-  type?: React.InputHTMLAttributes<HTMLInputElement>["type"];
-  placeholder?: string;
-  disabled?: boolean;
+  hint?: string;
 }
 
 export function FormInput<T extends FieldValues>({
   name,
   control,
   label,
+  hint,
   type = "text",
   placeholder,
   disabled = false,
+  required,
+  ...rest
 }: FormInputProps<T>) {
   const {
     field,
     fieldState: { error },
   } = useController({ name, control });
 
-  const errorId = `${String(name)}-error`;
+  // Ids are generated per instance so multiple forms can coexist on one page
+  // without colliding on id / htmlFor / aria-describedby.
+  const fieldId = useId();
+  const hintId = `${fieldId}-hint`;
+  const errorId = `${fieldId}-error`;
+  const describedBy =
+    [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") ||
+    undefined;
 
   return (
     <div className="form-field">
-      <label htmlFor={String(name)}>{label}</label>
+      <label className="form-field-label" htmlFor={fieldId}>
+        {label}
+      </label>
 
       <input
+        {...rest}
         {...field}
-        id={String(name)}
+        id={fieldId}
         type={type}
         placeholder={placeholder}
         disabled={disabled}
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? errorId : undefined}
+        required={required}
+        value={field.value ?? ""}
+        aria-invalid={error ? true : undefined}
+        aria-required={required || undefined}
+        aria-describedby={describedBy}
       />
 
-      {error && (
+      {hint ? (
+        <p id={hintId} className="form-field-hint">
+          {hint}
+        </p>
+      ) : null}
+
+      {error ? (
         <p id={errorId} role="alert" className="form-field-error">
           {error.message}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

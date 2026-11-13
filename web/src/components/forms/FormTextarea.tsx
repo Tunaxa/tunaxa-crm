@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 import {
   useController,
   type Control,
@@ -6,49 +6,71 @@ import {
   type FieldValues,
 } from "react-hook-form";
 
-interface FormTextareaProps<T extends FieldValues> {
+export interface FormTextareaProps<T extends FieldValues>
+  extends Omit<
+    React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+    "name" | "id" | "value" | "defaultValue"
+  > {
   name: FieldPath<T>;
   control: Control<T>;
   label: string;
-  placeholder?: string;
-  rows?: number;
-  disabled?: boolean;
+  hint?: string;
 }
 
 export function FormTextarea<T extends FieldValues>({
   name,
   control,
   label,
+  hint,
   placeholder,
   rows = 4,
   disabled = false,
+  required,
+  ...rest
 }: FormTextareaProps<T>) {
   const {
     field,
     fieldState: { error },
   } = useController({ name, control });
 
-  const errorId = `${String(name)}-error`;
+  const fieldId = useId();
+  const hintId = `${fieldId}-hint`;
+  const errorId = `${fieldId}-error`;
+  const describedBy =
+    [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") ||
+    undefined;
 
   return (
     <div className="form-field">
-      <label htmlFor={String(name)}>{label}</label>
+      <label className="form-field-label" htmlFor={fieldId}>
+        {label}
+      </label>
 
       <textarea
+        {...rest}
         {...field}
-        id={String(name)}
+        id={fieldId}
         placeholder={placeholder}
         rows={rows}
         disabled={disabled}
-        aria-invalid={Boolean(error)}
-        aria-describedby={error ? errorId : undefined}
+        required={required}
+        value={field.value ?? ""}
+        aria-invalid={error ? true : undefined}
+        aria-required={required || undefined}
+        aria-describedby={describedBy}
       />
 
-      {error && (
+      {hint ? (
+        <p id={hintId} className="form-field-hint">
+          {hint}
+        </p>
+      ) : null}
+
+      {error ? (
         <p id={errorId} role="alert" className="form-field-error">
           {error.message}
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
