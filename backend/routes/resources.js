@@ -20,6 +20,7 @@ import {
   applyPartialUpdate,
   resources,
   paginateAndSort,
+  SERVER_OWNED_FIELDS,
 } from "../helpers.js";
 import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
 import { triggerWorkflows, createdEvent } from "../services/workflows.js";
@@ -490,6 +491,454 @@ export default function registerResourceRoutes(app) {
       }
     }
   });
+
+  // Bulk batch operations. Registered before every `/:id` route so the literal
+  // segment "batch" is never captured as a record id.
+  //
+  // Both handlers mirror the single-record contracts: the tenant is always
+  // server-derived, server-owned fields are stripped from the payload, write
+  // field masks are enforced, and PostgreSQL-backed resources go through their
+  // repository instead of the legacy JSON array. A record that exists only in
+  // another tenant is reported exactly like a missing one.
+  const FORBIDDEN_UPDATE_KEYS = new Set([
+    "__proto__",
+    "constructor",
+    "prototype",
+  ]);
+
+  function tenantMatches(record, tenantId) {
+    const recordTenant = record?.workspaceId ?? record?.workspace_id;
+
+    // Rows written before workspaces existed carry no tenant and belong to the
+    // default workspace, matching the SQL predicate in update-builder.js.
+    if (recordTenant === undefined || recordTenant === null) {
+      return tenantId === "default";
+    }
+
+    return recordTenant === tenantId;
+  }
+
+  function batchIds(req, res) {
+    const { ids } = req.body || {};
+
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
+      res.status(400).json({
+        error: "ids must be an array containing between 1 and 100 items",
+      });
+      return null;
+    }
+
+    if (
+      ids.some(
+        (value) => typeof value !== "string" || value.trim().length === 0,
+      )
+    ) {
+      res.status(400).json({ error: "ids must contain non-empty strings" });
+      return null;
+    }
+
+    // Duplicate ids would apply the mutation twice, or report a false failure
+    // on the second delete, for one logical operation.
+    return [...new Set(ids.map((value) => value.trim()))];
+  }
+
+  function batchUpdateData(req, res) {
+    const { data } = req.body || {};
+
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      res.status(400).json({ error: "data must be an object" });
+      return null;
+    }
+
+    // Object.fromEntries never invokes a prototype setter, and the explicit
+    // denylist keeps the delta free of keys that could reach Object.prototype.
+    // SERVER_OWNED_FIELDS stops a caller from moving a record to another
+    // workspace or pinning its timestamps.
+    return Object.fromEntries(
+      Object.entries(data).filter(
+        ([key]) =>
+          !FORBIDDEN_UPDATE_KEYS.has(key) && !SERVER_OWNED_FIELDS.has(key),
+      ),
+    );
+  }
+
+  function broadcastBatch(event, payload, req) {
+    const workspaceId = req.user?.workspaceId;
+
+    // Never fall back to a shared "default" room: sockets without a workspace
+    // join a user-scoped room, so a "default" broadcast would either be lost or
+    // leak across tenants.
+    if (!workspaceId) return;
+
+    broadcast(event, payload, { workspaceId });
+  }
+
+  /**
+   * PATCH /api/:resource/batch
+   * Admin/member. Applies one partial delta to up to 100 tenant-scoped records.
+   * "batch" is a literal segment, not a record id, so this route is registered
+   * above the parameterized routes.
+   * Body: { ids: string[], data: object }
+   * Response: 200 when every record updated, 207 when some were rejected, 400
+   * when every id failed. { successCount, errorCount, errors: [{ id, reason }] }
+   */
+  app.patch(
+    "/api/:resource/batch",
+    auth,
+    attachFieldPerms,
+    requireRole("admin", "member"),
+    // The delta lives under `data`, not at the top level, so the mask has to be
+    // pointed at it explicitly. Checking `req.body` would only ever see the
+    // `ids`/`data` keys.
+    checkWriteFieldMask(undefined, (req) => req.body?.data),
+    async (req, res, next) => {
+      const resource = req.params.resource;
+
+      if (
+        resource === "__proto__" ||
+        resource === "constructor" ||
+        resource === "prototype"
+      ) {
+        return next();
+      }
+      if (!resources.has(resource)) return next();
+
+      const ids = batchIds(req, res);
+      if (!ids) return;
+
+      const update = batchUpdateData(req, res);
+      if (!update) return;
+
+      const tenantId = tenantOf(req);
+      const errors = [];
+      const updated = [];
+
+      if (PG_RESOURCES.has(resource)) {
+        const repo = repoFor(resource);
+        const pgDelta = coerceBuiltIns(
+          resource,
+          legacyToPg({ ...update }, resource, { partial: true }),
+        );
+
+        for (const idVal of ids) {
+          try {
+            const stored = await repo.findById(idVal, tenantId);
+            if (!stored) {
+              errors.push({ id: idVal, reason: "Record not found" });
+              continue;
+            }
+
+            const previous = pgToLegacy(stored, resource);
+            const row =
+              Object.keys(pgDelta).length > 0
+                ? await repo.update(idVal, pgDelta, tenantId)
+                : stored;
+            if (!row) {
+              errors.push({ id: idVal, reason: "Record not found" });
+              continue;
+            }
+
+            updated.push({
+              id: idVal,
+              previous,
+              item: coerceBuiltIns(resource, pgToLegacy(row, resource)),
+            });
+          } catch {
+            // One bad row must not abort the batch, and the reason stays
+            // generic so a database error is not reflected to the caller.
+            errors.push({ id: idVal, reason: "Update failed" });
+          }
+        }
+
+        if (updated.length) {
+          await mutateDb((db) => {
+            for (const entry of updated) {
+              entry.revisionId = recordRevision(
+                db,
+                resource,
+                entry.previous,
+                entry.item,
+                req.user,
+              );
+              db.audit.unshift(
+                auditEntry({
+                  action:
+                    `Updated ${resource.slice(0, -1)}` +
+                    (ids.length > 1 ? " (batch)" : ""),
+                  actor: req.user.name,
+                  req,
+                  resourceId: entry.id,
+                }),
+              );
+            }
+          });
+        }
+      } else {
+        await mutateDb((db) => {
+          const rows = db[resource] || [];
+
+          for (const idVal of ids) {
+            const index = rows.findIndex(
+              (item) => item.id === idVal && tenantMatches(item, tenantId),
+            );
+            if (index < 0) {
+              errors.push({ id: idVal, reason: "Record not found" });
+              continue;
+            }
+
+            const previous = { ...rows[index] };
+            const merged = applyPartialUpdate(
+              rows[index],
+              coerceBuiltIns(
+                resource,
+                coerceCustomFields(db, resource, { ...update }),
+              ),
+            );
+            // Re-asserted rather than spread: the delta cannot carry them, but
+            // a stored record missing one keeps the value it had.
+            merged.id = rows[index].id;
+            if (rows[index].createdAt !== undefined) {
+              merged.createdAt = rows[index].createdAt;
+            }
+            merged.updatedAt = now();
+            rows[index] = merged;
+
+            updated.push({
+              id: idVal,
+              previous,
+              item: merged,
+              revisionId: recordRevision(
+                db,
+                resource,
+                previous,
+                merged,
+                req.user,
+              ),
+            });
+            db.audit.unshift(
+              auditEntry({
+                action:
+                  `Updated ${resource.slice(0, -1)}` +
+                  (ids.length > 1 ? " (batch)" : ""),
+                actor: req.user.name,
+                req,
+                resourceId: idVal,
+              }),
+            );
+          }
+        });
+      }
+
+      if (updated.length) {
+        cacheFlush(resource);
+        for (const entry of updated) {
+          broadcastBatch(
+            "record.updated",
+            { resource, item: entry.item, revisionId: entry.revisionId },
+            req,
+          );
+        }
+        broadcastBatch(
+          "records.batch",
+          { resource, count: updated.length, operation: "patch" },
+          req,
+        );
+      }
+
+      const status =
+        errors.length === 0
+          ? 200
+          : errors.length === ids.length
+            ? 400
+            : 207;
+      res.status(status).json({
+        successCount: updated.length,
+        errorCount: errors.length,
+        errors,
+      });
+    },
+  );
+
+  /**
+   * DELETE /api/:resource/batch
+   * Admin/member. Deletes up to 100 tenant-scoped records. PostgreSQL-backed
+   * resources go through their repository; JSON-backed resources also drop the
+   * same derived rows and uploaded files as the single-record route.
+   * Body: { ids: string[] }
+   * Response: 200 / 207 / 400 with { successCount, errorCount, errors }.
+   */
+  app.delete(
+    "/api/:resource/batch",
+    auth,
+    attachFieldPerms,
+    requireRole("admin", "member"),
+    async (req, res, next) => {
+      const resource = req.params.resource;
+
+      if (
+        resource === "__proto__" ||
+        resource === "constructor" ||
+        resource === "prototype"
+      ) {
+        return next();
+      }
+      if (!resources.has(resource)) return next();
+
+      const ids = batchIds(req, res);
+      if (!ids) return;
+
+      const tenantId = tenantOf(req);
+      const errors = [];
+      const deletedIds = [];
+      let files = [];
+
+      if (PG_RESOURCES.has(resource)) {
+        const repo = repoFor(resource);
+
+        for (const idVal of ids) {
+          try {
+            const deleted = await repo.delete(idVal, tenantId);
+            if (!deleted) {
+              errors.push({ id: idVal, reason: "Record not found" });
+              continue;
+            }
+
+            deletedIds.push(idVal);
+          } catch {
+            errors.push({ id: idVal, reason: "Delete failed" });
+          }
+        }
+
+        if (deletedIds.length) {
+          await mutateDb((db) => {
+            for (const idVal of deletedIds) {
+              db.audit.unshift(
+                auditEntry({
+                  action:
+                    `Deleted ${resource.slice(0, -1)}` +
+                    (ids.length > 1 ? " (batch)" : ""),
+                  actor: req.user.name,
+                  req,
+                  resourceId: idVal,
+                }),
+              );
+            }
+          });
+        }
+      } else {
+        files = await mutateDb((db) => {
+          const rows = db[resource] || [];
+          const removedFiles = [];
+
+          for (const idVal of ids) {
+            const index = rows.findIndex(
+              (item) => item.id === idVal && tenantMatches(item, tenantId),
+            );
+            if (index < 0) {
+              errors.push({ id: idVal, reason: "Record not found" });
+              continue;
+            }
+
+            const [removed] = rows.splice(index, 1);
+            deletedIds.push(idVal);
+
+            if (resource === "calls") {
+              db.activities = db.activities.filter(
+                (item) => item.callId !== removed.id,
+              );
+
+              const linked = db.recordings.filter(
+                (item) => item.callId === removed.id,
+              );
+
+              removedFiles.push(
+                ...linked.map((item) => item.fileUrl).filter(Boolean),
+              );
+
+              db.recordings = db.recordings.filter(
+                (item) => item.callId !== removed.id,
+              );
+            }
+
+            if (resource === "recordings") {
+              if (removed.fileUrl) {
+                removedFiles.push(removed.fileUrl);
+              }
+
+              if (removed.callId) {
+                const call = db.calls.find(
+                  (item) => item.callId === removed.id,
+                );
+
+                if (call?.recordingId === removed.id) {
+                  delete call.recordingId;
+                }
+              }
+            }
+
+            if (resource === "messages") {
+              db.activities = db.activities.filter(
+                (item) => item.messageId !== removed.id,
+              );
+            }
+
+            db.audit.unshift(
+              auditEntry({
+                action:
+                  `Deleted ${resource.slice(0, -1)}` +
+                  (ids.length > 1 ? " (batch)" : ""),
+                actor: req.user.name,
+                req,
+                resourceId: removed.id,
+              }),
+            );
+          }
+
+          return removedFiles;
+        });
+
+        await Promise.all(
+          files.map(async (fileUrl) => {
+            const name = path.basename(String(fileUrl));
+
+            if (!name) return;
+
+            try {
+              await fs.unlink(path.join(uploadDir, name));
+            } catch (error) {
+              if (process.env.NODE_ENV !== "production") {
+                console.warn("Failed to remove uploaded file", error.message);
+              }
+            }
+          }),
+        );
+      }
+
+      if (deletedIds.length) {
+        cacheFlush(resource);
+        for (const idVal of deletedIds) {
+          broadcastBatch("record.deleted", { resource, id: idVal }, req);
+        }
+        broadcastBatch(
+          "records.batch",
+          { resource, count: deletedIds.length, operation: "delete" },
+          req,
+        );
+      }
+
+      const status =
+        errors.length === 0
+          ? 200
+          : errors.length === ids.length
+            ? 400
+            : 207;
+      res.status(status).json({
+        successCount: deletedIds.length,
+        errorCount: errors.length,
+        errors,
+      });
+    },
+  );
 
   /**
    * GET /api/:resource/:id
