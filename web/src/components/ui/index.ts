@@ -9,5 +9,12 @@ export { CountUpNumber } from './CountUpNumber';
 export { PixelDivider } from './PixelDivider';
 export { SectionHeader } from './SectionHeader';
 export type { SectionHeaderProps } from './SectionHeader';
+export { default as FileUpload } from '../FileUpload';
+export type {
+  FileUploadItem,
+  FileUploadProps,
+  FileUploadStatus,
+  UploadedFile,
+} from '../FileUpload';
 export { Modal, Drawer, PageHeader, Empty, Avatar, Toggle, PhotoField, money } from '../ui';
 
