@@ -19,6 +19,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.9.2",
     "@react-pdf/renderer": "^4.9.0",
     "@sentry/node": "^10.71.0",
     "@sentry/react": "^10.71.0",
