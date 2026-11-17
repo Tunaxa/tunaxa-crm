@@ -9,6 +9,12 @@ import { FilterBuilder, type FilterGroup } from "../../components/FilterBuilder"
 import { useResource } from "../../lib/useResource";
 
 type Row = { id: string; [key: string]: any };
+
+function savedPageSize() {
+  const value = Number(localStorage.getItem("tunaxa.pageSize"));
+  return Number.isInteger(value) && value > 0 ? value : 25;
+}
+
 export type FieldSpec = {
   key: string;
   label: string;
@@ -444,11 +450,40 @@ export function CompaniesPage() {
     { key: "owner", label: "Owner" },
   ];
   const [filters, setFilters] = useState<FilterGroup | null>(null);
-  const { items, loading, error, load, create, update, remove } = useResource<Row>("companies", { filters, all: true });
+  const [pageSize, setPageSize] = useState(savedPageSize);
+  const [page, setPage] = useState(1);
+  const {
+    items,
+    loading,
+    error,
+    load,
+    create,
+    update,
+    remove,
+    total,
+    totalPages,
+  } = useResource<Row>("companies", { page, limit: pageSize, filters });
   const { toast, user } = useApp();
   const navigate = useNavigate();
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
   const custom = useSchema("companies");
+
+  // Re-query from the first page whenever the filter or page size changes, and
+  // pull the page back into range if a delete shrinks the result set.
+  useEffect(() => {
+    setPage(1);
+  }, [filters, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  function changePageSize(value: number) {
+    setPageSize(value);
+    setPage(1);
+    localStorage.setItem("tunaxa.pageSize", String(value));
+  }
+
   const nonPhoto = fields.filter((f) => f.key !== "logo");
   const photoField = fields.find((f) => f.key === "logo")!;
   const allFields = [
@@ -456,7 +491,7 @@ export function CompaniesPage() {
     ...nonPhoto,
     ...custom.filter((field) => !fields.some((base) => base.key === field.key)),
   ];
-  const bulk = useBulkSelection(JSON.stringify(["companies", filters]), items.map((row) => row.id));
+  const bulk = useBulkSelection(JSON.stringify(["companies", filters, page]), items.map((row) => row.id));
   const canBulk = user?.role === "admin" || user?.role === "member";
   async function exportCsv() {
     if (!items.length) return;
@@ -484,6 +519,20 @@ export function CompaniesPage() {
         </button>
       </PageHeader>
       <FilterBuilder fields={allFields} value={filters} onChange={(next) => { if (!bulk.busy) setFilters(next); }} />
+      <div className="table-toolbar">
+        <span className="table-count">{total} total</span>
+        <select
+          value={pageSize}
+          onChange={(e) => changePageSize(Number(e.target.value))}
+          className="table-page-size"
+          aria-label="Rows per page"
+        >
+          <option value={10}>10</option>
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+        </select>
+      </div>
       {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
       {canBulk && <label><SelectPage ids={items.map((row) => row.id)} selected={bulk.selected} onChange={bulk.setSelected} disabled={bulk.busy || loading} /> Select visible companies (maximum 100)</label>}
       {loading ? <div role="status">Loading…</div> : items.length ? (
@@ -565,6 +614,25 @@ export function CompaniesPage() {
             </button>
           }
         />
+      )}
+      {items.length > 0 && (
+        <div className="table-pagination">
+          <button
+            className="btn secondary compact"
+            disabled={page <= 1}
+            onClick={() => setPage((current) => current - 1)}
+          >
+            Previous
+          </button>
+          <span>Page {page} of {totalPages}</span>
+          <button
+            className="btn secondary compact"
+            disabled={page >= totalPages}
+            onClick={() => setPage((current) => current + 1)}
+          >
+            Next
+          </button>
+        </div>
       )}
       {canBulk && <BulkActions resource="companies" ids={bulk.selected} busy={bulk.busy} setBusy={bulk.setBusy} onSelection={bulk.setSelected} onReload={load} />}
       {edit !== undefined ? (

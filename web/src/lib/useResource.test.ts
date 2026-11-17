@@ -45,18 +45,22 @@ function Probe({ resource, options }: { resource: string; options: Options }) {
 
 const originalWindow = (globalThis as { window?: unknown }).window;
 
-function mount(options: Options = {}): ReactTestRenderer {
+function mount(options: Options = {}, resource = "contacts"): ReactTestRenderer {
   let renderer!: ReactTestRenderer;
   act(() => {
-    renderer = create(createElement(Probe, { resource: "contacts", options }));
+    renderer = create(createElement(Probe, { resource, options }));
   });
   mounted.push(renderer);
   return renderer;
 }
 
-function rerender(renderer: ReactTestRenderer, options: Options): void {
+function rerender(
+  renderer: ReactTestRenderer,
+  options: Options,
+  resource = "contacts",
+): void {
   act(() => {
-    renderer.update(createElement(Probe, { resource: "contacts", options }));
+    renderer.update(createElement(Probe, { resource, options }));
   });
 }
 
@@ -109,11 +113,12 @@ describe("useResource server-side pagination", () => {
       $and: [{ field: "status", operator: "eq", value: "Active" }],
     };
 
-    mount({ page: 2, limit: 10, q: "  acme  ", filters });
+    // landingPages is a legacy JSON resource, so filters are server-side.
+    mount({ page: 2, limit: 10, q: "  acme  ", filters }, "landingPages");
     await settle();
 
     expect(mocks.api).toHaveBeenCalledTimes(1);
-    expect(mocks.api.mock.calls[0][0].startsWith("/contacts?")).toBe(true);
+    expect(mocks.api.mock.calls[0][0].startsWith("/landingPages?")).toBe(true);
     const params = paramsOf(0);
     expect(params.get("page")).toBe("2");
     expect(params.get("limit")).toBe("10");
@@ -121,6 +126,64 @@ describe("useResource server-side pagination", () => {
     expect(params.get("filters")).toBe(JSON.stringify(filters));
     expect(params.get("sortBy")).toBe("createdAt");
     expect(params.get("sortDir")).toBe("desc");
+  });
+
+  it("omits filters for PG-backed resources and applies them locally", async () => {
+    mocks.api.mockResolvedValue({
+      data: [
+        { id: "1", name: "Acme" },
+        { id: "2", name: "Globex" },
+      ],
+      total: 2,
+      page: 1,
+      limit: 25,
+    });
+    const filters: FilterGroup = {
+      $and: [{ field: "name", operator: "contains", value: "acme" }],
+    };
+
+    // The list route answers 400 for any filters on a PG-backed resource.
+    mount({ filters }, "companies");
+    await settle();
+
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    expect(paramsOf(0).has("filters")).toBe(false);
+    expect(latest.items).toEqual([{ id: "1", name: "Acme" }]);
+    expect(latest.error).toBe("");
+  });
+
+  it("drops incomplete rules and never serializes an empty group", async () => {
+    mocks.api.mockResolvedValue({ data: [], total: 0, page: 1, limit: 25 });
+    const filters = {
+      $and: [
+        { field: "status", operator: "eq", value: "" },
+        { field: "owner", operator: "eq" },
+      ],
+    } as unknown as FilterGroup;
+
+    mount({ filters }, "landingPages");
+    await settle();
+
+    expect(paramsOf(0).has("filters")).toBe(false);
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes only the valid rules from a partially filled group", async () => {
+    mocks.api.mockResolvedValue({ data: [], total: 0, page: 1, limit: 25 });
+    const filters = {
+      $or: [
+        { field: "status", operator: "eq", value: "Active" },
+        { field: "name", operator: "contains", value: "  " },
+      ],
+    } as unknown as FilterGroup;
+
+    mount({ filters }, "landingPages");
+    await settle();
+
+    const clean: FilterGroup = {
+      $or: [{ field: "status", operator: "eq", value: "Active" }],
+    };
+    expect(paramsOf(0).get("filters")).toBe(JSON.stringify(clean));
   });
 
   it("computes totalPages and hasMore from the paginated response", async () => {
