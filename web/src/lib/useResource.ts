@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilterGroup } from "../components/FilterBuilder";
 import { api, json } from "./api";
 import { useApp } from "../context/AppContext";
+import {
+  applyFilterGroup,
+  PG_FILTER_RESOURCES,
+  sanitizeFilterGroup,
+} from "./filterGroup";
 
 type ResourceOptions = {
   page?: number;
@@ -20,6 +25,11 @@ type ResourceResponse<T> = {
   limit: number;
 };
 
+function positiveInteger(value: number | undefined, fallback: number): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
 export function useResource<T extends { id: string }>(
   resource: string,
   options: ResourceOptions = {},
@@ -30,13 +40,19 @@ export function useResource<T extends { id: string }>(
   const [total, setTotal] = useState(0);
   const [error, setError] = useState("");
   const requestVersion = useRef(0);
-  const filters = options.filters ? JSON.stringify(options.filters) : "";
+  // Only complete, backend-valid conditions may be serialized. Sending a
+  // half-filled rule makes parseFilters() answer 400.
+  const sanitizedFilters = sanitizeFilterGroup(options.filters);
+  const filters = sanitizedFilters ? JSON.stringify(sanitizedFilters) : "";
+  // PG-backed resources reject any advanced `filters` param, so those groups
+  // are evaluated locally instead of being sent to the server.
+  const localFilters = PG_FILTER_RESOURCES.has(resource);
   const all = options.all === true;
-  const page = options.page || 1;
-  const limit = options.limit || 25;
+  const page = positiveInteger(options.page, 1);
+  const limit = positiveInteger(options.limit, 25);
   const sortBy = options.sortBy || "createdAt";
   const sortDir = options.sortDir || "desc";
-  const q = options.q || "";
+  const q = (options.q ?? "").trim();
 
   const load = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -52,13 +68,20 @@ export function useResource<T extends { id: string }>(
       });
       if (all) { params.delete("page"); params.delete("limit"); }
       if (q) params.set("q", q);
-      if (filters) params.set("filters", filters);
+      if (filters && !localFilters) params.set("filters", filters);
       const result = await api<ResourceResponse<T> | T[]>(`/${resource}?${params}`);
       if (version !== requestVersion.current) return;
       const rows = Array.isArray(result) ? result : result.data;
       if (!Array.isArray(rows)) throw new Error("Invalid list response");
-      setItems(rows);
-      setTotal(Array.isArray(result) ? result.length : result.total);
+      const visible =
+        localFilters && filters
+          ? applyFilterGroup(rows, JSON.parse(filters) as FilterGroup)
+          : rows;
+      setItems(visible);
+      // For array responses the whole set was fetched, so the local filter
+      // result is the accurate count. Paginated responses keep the server
+      // total (the filter only narrows the rows already on this page).
+      setTotal(Array.isArray(result) ? visible.length : result.total);
     } catch (error) {
       if (version !== requestVersion.current) return;
       setError((error as Error).message);
@@ -129,5 +152,25 @@ export function useResource<T extends { id: string }>(
     }
   }
 
-  return { items, setItems, loading, error, total, page, limit, load, create, update, remove };
+  // With all: true the full dataset is already in `items`, so there is one
+  // logical page and nothing left to fetch.
+  const totalPages = all ? 1 : Math.max(1, Math.ceil(total / limit));
+  const hasMore = all ? false : page < totalPages;
+
+  return {
+    items,
+    setItems,
+    loading,
+    error,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasMore,
+    load,
+    reload: load,
+    create,
+    update,
+    remove,
+  };
 }
