@@ -21,8 +21,11 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useId,
+  useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type CSSProperties,
   type FormEvent,
   type ReactNode,
@@ -960,35 +963,176 @@ const SEARCH_GROUPS: { key: keyof SearchGroups; label: string }[] = [
   { key: "recordings", label: "Recordings" },
 ];
 
-function GlobalSearch({ onClose }: { onClose: () => void }) {
+type SearchOption = SearchResult & {
+  index: number;
+  optionId: string;
+  groupLabel: string;
+};
+
+type SearchOptionGroup = {
+  key: keyof SearchGroups;
+  label: string;
+  items: SearchOption[];
+};
+
+export function GlobalSearch({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
+  const baseId = useId();
+  const listboxId = baseId + "-listbox";
+  const statusId = baseId + "-status";
+  const inputRef = useRef<HTMLInputElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const requestIdRef = useRef(0);
+
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchGroups>(EMPTY_SEARCH_GROUPS);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
   useEffect(() => {
-    const timer = window.setTimeout(
-      () =>
-        q.trim()
-          ? api<SearchGroups>(`/search?q=${encodeURIComponent(q)}`).then(
-              setResults,
-            )
-          : setResults(EMPTY_SEARCH_GROUPS),
-      180,
-    );
+    restoreFocusRef.current =
+      typeof document === "undefined"
+        ? null
+        : (document.activeElement as HTMLElement | null);
+    return () => {
+      restoreFocusRef.current?.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    const term = q.trim();
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
+    if (!term) {
+      setResults(EMPTY_SEARCH_GROUPS);
+      setLoading(false);
+      setError(null);
+      setSelectedIndex(0);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const timer = window.setTimeout(() => {
+      api<SearchGroups>(`/search?q=${encodeURIComponent(term)}`)
+        .then((data) => {
+          if (requestId !== requestIdRef.current) return;
+          setResults({
+            leads: Array.isArray(data?.leads) ? data.leads : [],
+            contacts: Array.isArray(data?.contacts) ? data.contacts : [],
+            companies: Array.isArray(data?.companies) ? data.companies : [],
+            deals: Array.isArray(data?.deals) ? data.deals : [],
+            tasks: Array.isArray(data?.tasks) ? data.tasks : [],
+            recordings: Array.isArray(data?.recordings) ? data.recordings : [],
+          });
+          setSelectedIndex(0);
+        })
+        .catch((reason: unknown) => {
+          if (requestId !== requestIdRef.current) return;
+          setResults(EMPTY_SEARCH_GROUPS);
+          setError(
+            reason instanceof Error ? reason.message : "Search is unavailable",
+          );
+        })
+        .finally(() => {
+          if (requestId === requestIdRef.current) setLoading(false);
+        });
+    }, 180);
+
     return () => window.clearTimeout(timer);
   }, [q]);
+
+  const groups = useMemo<SearchOptionGroup[]>(() => {
+    let index = 0;
+    return SEARCH_GROUPS.map(({ key, label }) => ({
+      key,
+      label,
+      items: results[key].map((item) => {
+        const option: SearchOption = {
+          ...item,
+          index,
+          optionId: baseId + "-option-" + index,
+          groupLabel: label,
+        };
+        index += 1;
+        return option;
+      }),
+    }));
+  }, [results, baseId]);
+
+  const options = useMemo<SearchOption[]>(
+    () => groups.flatMap((group) => group.items),
+    [groups],
+  );
+
+  const openResult = (item: SearchResult) => {
+    if (!item.route) return;
+    navigate(item.route);
+    onClose();
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    const target = event.target as { type?: string } | null;
+    if (target?.type === "button" || options.length === 0) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setSelectedIndex((current) => (current + 1) % options.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setSelectedIndex(
+        (current) => (current - 1 + options.length) % options.length,
+      );
+    } else if (event.key === "Enter") {
+      const selected = options[selectedIndex];
+      if (selected) {
+        event.preventDefault();
+        openResult(selected);
+      }
+    }
+  };
+
+  const activeOption =
+    options.length > 0 ? (options[selectedIndex]?.optionId ?? null) : null;
+  const hasQuery = Boolean(q.trim());
+
   return (
     <div className="search-overlay" onMouseDown={onClose}>
-      <div className="global-search" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="global-search"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Global search"
+        onMouseDown={(event) => event.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
         <div className="global-search-input">
           <Icon name="search" />
           <input
+            ref={inputRef}
             autoFocus
+            role="combobox"
             aria-label="Search workspace"
+            aria-autocomplete="list"
+            aria-controls={listboxId}
+            aria-expanded={options.length > 0}
+            aria-activedescendant={activeOption ?? undefined}
+            aria-describedby={loading || error ? statusId : undefined}
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(event) => setQ(event.target.value)}
             placeholder="Search leads, contacts, deals, tasks..."
           />
           <button
+            type="button"
             className="icon-btn tiny"
             aria-label="Close search"
             onClick={onClose}
@@ -996,27 +1140,47 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
             <Icon name="close" />
           </button>
         </div>
-        <div className="search-results">
-          {!q ? (
+
+        {loading || error ? (
+          <div
+            id={statusId}
+            className={
+              error ? "search-status search-status-error" : "search-status"
+            }
+            role={error ? "alert" : "status"}
+            aria-live={error ? "assertive" : "polite"}
+          >
+            {error ? "Search failed: " + error : "Searching…"}
+          </div>
+        ) : null}
+
+        <div
+          id={listboxId}
+          className="search-results"
+          role="listbox"
+          aria-label="Search results"
+        >
+          {!hasQuery ? (
             <Empty
               icon="search"
               title="Search your workspace"
               text="Start typing to search stored CRM records."
             />
-          ) : SEARCH_GROUPS.some(({ key }) => results[key].length) ? (
-            SEARCH_GROUPS.map(({ key, label }) => {
-              const items = results[key];
-              if (!items.length) return null;
-              return (
-                <Fragment key={key}>
-                  <small>{label}</small>
-                  {items.map((item) => (
+          ) : options.length > 0 ? (
+            groups.map((group) =>
+              group.items.length > 0 ? (
+                <div key={group.key} role="group" aria-label={group.label}>
+                  <small className="search-group-label">{group.label}</small>
+                  {group.items.map((item) => (
                     <button
-                      key={`${item.type}-${item.id}`}
-                      onClick={() => {
-                        navigate(item.route);
-                        onClose();
-                      }}
+                      type="button"
+                      key={item.type + "-" + item.id}
+                      id={item.optionId}
+                      role="option"
+                      aria-selected={item.index === selectedIndex}
+                      className={item.index === selectedIndex ? "active" : undefined}
+                      onMouseEnter={() => setSelectedIndex(item.index)}
+                      onClick={() => openResult(item)}
                     >
                       <span>
                         <Icon
@@ -1039,15 +1203,15 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
                         <b>{item.name}</b>
                         <small>
                           {item.type}
-                          {item.detail ? ` · ${item.detail}` : ""}
+                          {item.detail ? " · " + item.detail : ""}
                         </small>
                       </div>
                       <Icon name="arrowRight" />
                     </button>
                   ))}
-                </Fragment>
-              );
-            })
+                </div>
+              ) : null,
+            )
           ) : (
             <Empty
               icon="search"
@@ -1055,7 +1219,7 @@ function GlobalSearch({ onClose }: { onClose: () => void }) {
               text="No results found for your search."
             />
           )}
-        </div>git
+        </div>
       </div>
     </div>
   );

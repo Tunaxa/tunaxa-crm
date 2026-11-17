@@ -10045,6 +10045,27 @@ html.dark .file-upload {
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
+  /* AXA-311: global search stays usable on small viewports. */
+  .search-overlay {
+    padding: 12px;
+  }
+
+  .global-search {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .search-group-label {
+    padding: 6px 10px 4px;
+    font-size: 9px;
+  }
+
+  .search-results button {
+    padding: 10px;
+  }
+
+  .search-status {
+    padding: 8px 10px;
+  }
 }
 
 .data-table-container {
@@ -10273,4 +10294,70 @@ html.dark .file-upload {
 
 .user-form .btn {
   justify-self: start;
+}
+
+/* AXA-311: GlobalSearch grouped results, keyboard highlight, status rows. */
+.search-results [role='group'] + [role='group'] {
+  margin-top: 6px;
+}
+
+.search-group-label {
+  display: block;
+  padding: 8px 12px 4px;
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.search-results button.active,
+.search-results button:focus-visible {
+  background: var(--surface-2);
+  border-left: 2px solid var(--brand);
+  color: var(--ink-primary);
+}
+
+.search-results button.active b {
+  color: var(--brand);
+}
+
+.search-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.search-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+.search-status-error {
+  background: var(--surface);
+  color: var(--red);
+}
+
+.search-status-error::before {
+  background: var(--red);
+}
+
+html.dark .search-status {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--ink-muted);
+}
+
+html.dark .search-status-error {
+  color: var(--red);
 }
