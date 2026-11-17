@@ -20,6 +20,11 @@ type ResourceResponse<T> = {
   limit: number;
 };
 
+function positiveInteger(value: number | undefined, fallback: number): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
 export function useResource<T extends { id: string }>(
   resource: string,
   options: ResourceOptions = {},
@@ -32,11 +37,11 @@ export function useResource<T extends { id: string }>(
   const requestVersion = useRef(0);
   const filters = options.filters ? JSON.stringify(options.filters) : "";
   const all = options.all === true;
-  const page = options.page || 1;
-  const limit = options.limit || 25;
+  const page = positiveInteger(options.page, 1);
+  const limit = positiveInteger(options.limit, 25);
   const sortBy = options.sortBy || "createdAt";
   const sortDir = options.sortDir || "desc";
-  const q = options.q || "";
+  const q = (options.q ?? "").trim();
 
   const load = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -129,5 +134,25 @@ export function useResource<T extends { id: string }>(
     }
   }
 
-  return { items, setItems, loading, error, total, page, limit, load, create, update, remove };
+  // With all: true the full dataset is already in `items`, so there is one
+  // logical page and nothing left to fetch.
+  const totalPages = all ? 1 : Math.max(1, Math.ceil(total / limit));
+  const hasMore = all ? false : page < totalPages;
+
+  return {
+    items,
+    setItems,
+    loading,
+    error,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasMore,
+    load,
+    reload: load,
+    create,
+    update,
+    remove,
+  };
 }

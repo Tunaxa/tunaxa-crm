@@ -144,6 +144,17 @@ function savePageSize(pageSize: number) {
   localStorage.setItem("tunaxa.pageSize", String(pageSize));
   api("/users/me/preferences", json("PUT", { pageSize })).catch(() => {});
 }
+
+// Keep server requests in step with typing without firing one per keystroke.
+function useDebouncedValue<T>(value: T, delay = 250): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 function AuthScreen({
   onNavigateToHome,
   onNavigateToPricing,
@@ -1734,14 +1745,28 @@ function CrudTablePage({
     onSave: (data: Record<string, any>) => Promise<void>;
   }) => ReactNode;
 }) {
-  const { items, loading, load, create, update, remove } =
-    useResource<Row>(resource);
   const { toast } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
-const [pageSize, setPageSize] = useState(getPageSize());
-const [page, setPage] = useState(1);
-const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const [pageSize, setPageSize] = useState(getPageSize());
+  const [page, setPage] = useState(1);
+  const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const debouncedQuery = useDebouncedValue(query.trim());
+  const {
+    items,
+    loading,
+    error,
+    load,
+    create,
+    update,
+    remove,
+    total,
+    totalPages,
+  } = useResource<Row>(resource, {
+    page,
+    limit: pageSize,
+    q: debouncedQuery,
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const cols = columns || fields;
   const mCols = new Set(moneyColumn || cols.map((c) => c.key));
@@ -1767,20 +1792,18 @@ const [edit, setEdit] = useState<Row | null | undefined>(undefined);
             value === "Terminated"
           ? "red"
           : "blue");
-const filteredRows = items.filter(
-  (row) =>
-    !query || JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
-);
+// Search and pagination now run on the server: `items` is the current page
+// and `total`/`totalPages` describe the whole filtered result set.
+const rows = items;
 
-const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-
-const rows = filteredRows.slice(
-  (page - 1) * pageSize,
-  page * pageSize,
-);
 useEffect(() => {
   setPage(1);
-}, [query, pageSize, resource]);
+}, [debouncedQuery, pageSize, resource]);
+
+// A delete on the last page can shrink the result set below the current page.
+useEffect(() => {
+  if (page > totalPages) setPage(totalPages);
+}, [page, totalPages]);
 
 function changePageSize(value: number) {
   setPageSize(value);
@@ -1813,23 +1836,13 @@ function changePageSize(value: number) {
       if (inputRef.current) inputRef.current.value = "";
     }
   }
-  function exportCsv() {
-    if (!items.length) return toast("Nothing to export", "error");
-    const keys = fields.map((x) => x.key);
-    const csv = [
-      keys.join(","),
-      ...items.map((row) =>
-        keys
-          .map((key) => `"${String(row[key] || "").replace(/"/g, '""')}"`)
-          .join(","),
-      ),
-    ].join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${resource}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  async function exportCsv() {
+    try {
+      // Export the full dataset server-side, not just the visible page.
+      await downloadResourceCsv(resource);
+    } catch (error) {
+      toast((error as Error).message, "error");
+    }
   }
 
   function cell(row: Row, field: FieldSpec) {
@@ -1878,6 +1891,8 @@ function changePageSize(value: number) {
         </button>
       </PageHeader>
 
+      {error && <p role="alert">{error} <button type="button" onClick={() => load()}>Retry</button></p>}
+
       <section className="surface table-surface">
         <div className="table-toolbar">
           <div className="header-search">
@@ -1892,7 +1907,7 @@ function changePageSize(value: number) {
           </div>
 
           <span className="table-count">
-            {filteredRows.length} total
+            {total} total
           </span>
 
           <select
@@ -2149,14 +2164,29 @@ function PeoplePage({
   fields: FieldSpec[];
 }) {
   const [filters, setFilters] = useState<FilterGroup | null>(null);
-  const { items, loading, error, load, create, update, remove } =
-    useResource<Row>(resource, { filters, all: true });
   const { toast, user } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [pageSize, setPageSize] = useState(getPageSize());
   const [page, setPage] = useState(1);
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
+  const debouncedQuery = useDebouncedValue(query.trim());
+  const {
+    items,
+    loading,
+    error,
+    load,
+    create,
+    update,
+    remove,
+    total,
+    totalPages,
+  } = useResource<Row>(resource, {
+    page,
+    limit: pageSize,
+    q: debouncedQuery,
+    filters,
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const custom = useSchema(resource);
   const allFields = [
@@ -2171,27 +2201,24 @@ function PeoplePage({
   const synopsis = (row: Row) => row.company || row.role || "";
   const statusField = "status";
   const toneOf = (value?: string): BadgeTone => value === "Active" ? "green" : "blue";
-const filteredRows = items.filter(
-  (row) =>
-    !query ||
-    JSON.stringify(row).toLowerCase().includes(query.toLowerCase()),
-);
-
-const rows = filteredRows.slice(
-  (page - 1) * pageSize,
-  page * pageSize,
-);
+// Server-side search, filters and pagination: `items` is the current page.
+const rows = items;
 
 useEffect(() => {
   setPage(1);
-}, [query, pageSize, resource, filters]);
+}, [debouncedQuery, pageSize, resource, filters]);
+
+// Keep the page in range after a delete removes the last row on a page.
+useEffect(() => {
+  if (page > totalPages) setPage(totalPages);
+}, [page, totalPages]);
 
 function changePageSize(value: number) {
   setPageSize(value);
   setPage(1);
   savePageSize(value);
 }
-  const bulk = useBulkSelection(JSON.stringify([resource, query, filters]), rows.map((row) => row.id));
+  const bulk = useBulkSelection(JSON.stringify([resource, debouncedQuery, filters, page]), rows.map((row) => row.id));
   const canBulk = user?.role === "admin" || user?.role === "member";
   async function importCsv(file: File) {
     try {
@@ -2274,7 +2301,7 @@ function changePageSize(value: number) {
             />
           </div>
 <span className="table-count">
-  {filteredRows.length} total
+  {total} total
 </span>
 
 <select
@@ -2381,6 +2408,25 @@ function changePageSize(value: number) {
               ) : undefined
             }
           />
+        )}
+        {rows.length > 0 && (
+          <div className="table-pagination">
+            <button
+              className="btn secondary compact"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => current - 1)}
+            >
+              Previous
+            </button>
+            <span>Page {page} of {totalPages}</span>
+            <button
+              className="btn secondary compact"
+              disabled={page >= totalPages}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+            </button>
+          </div>
         )}
       </section>
       {canBulk && <BulkActions resource={resource} ids={bulk.selected} statuses={allFields.find((field) => field.key === "status")?.options} busy={bulk.busy} setBusy={bulk.setBusy} onSelection={bulk.setSelected} onReload={load} />}
