@@ -15,12 +15,14 @@ export function EmailComposerDrawer({
   recipient,
   contact,
   entity = "contact",
+  recordId,
   onClose,
   onSent,
 }: {
   recipient: string;
   contact: string;
   entity?: "contact" | "lead";
+  recordId?: string;
   onClose: () => void;
   onSent: (message: Message) => void;
 }) {
@@ -46,8 +48,16 @@ export function EmailComposerDrawer({
 
   async function send(payload: EmailPayload) {
     if (!allowed) throw new Error("You do not have permission to send emails.");
-    return sendRecordEmail(payload, (value) =>
-      api("/messages/send", json("POST", value)),
+    const record = recordId
+      ? { recordId, entityType: entity, entityId: recordId }
+      : undefined;
+    return sendRecordEmail(
+      payload,
+      (value) => api("/messages/send", json("POST", value)),
+      {
+        record,
+        logActivity: (activity) => api("/activities", json("POST", activity)),
+      },
     );
   }
 

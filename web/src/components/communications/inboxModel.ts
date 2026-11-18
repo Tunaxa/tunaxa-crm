@@ -193,6 +193,100 @@ export function emailPayload(
 
 export type EmailPayload = ReturnType<typeof emailPayload>;
 
+/** Record context passed from a Contact/Lead detail page into the composer. */
+export type RecordEmailContext = {
+  recordId: string;
+  entityType: "contact" | "lead";
+  entityId: string;
+};
+
+export type RecordLinkFields = {
+  recordId: string;
+  entityType: "contact" | "lead";
+  entityId: string;
+  contactId?: string;
+  leadId?: string;
+};
+
+export type LinkedEmailPayload = EmailPayload & RecordLinkFields;
+
+/**
+ * Dev's MessageSchema is `.passthrough()`, so these linkage fields are accepted
+ * by POST /api/messages/send. The send route does not persist them on the
+ * message, which is why a separate linked activity is also required.
+ */
+export function withRecordLinkage(
+  payload: EmailPayload,
+  record: RecordEmailContext,
+): LinkedEmailPayload {
+  return {
+    ...payload,
+    recordId: record.recordId,
+    entityType: record.entityType,
+    entityId: record.entityId,
+    ...(record.entityType === "contact"
+      ? { contactId: record.entityId }
+      : { leadId: record.entityId }),
+  };
+}
+
+export type EmailActivity = {
+  title: string;
+  type: "Email";
+  contact: string;
+  recordId: string;
+  entityType: "contact" | "lead";
+  entityId: string;
+  contactId?: string;
+  leadId?: string;
+  subject: string;
+  notes: string;
+  messageId: string;
+  date: string;
+  to: string;
+  metadata: {
+    recipient: string;
+    channel: "Email";
+    messageId: string;
+    status: string;
+  };
+};
+
+/**
+ * The activity timeline matches `recordId` OR `contact` (the record's display
+ * name), with a case-insensitive `type=Email` filter. Setting both makes the
+ * email visible in ALL and EMAILS on the originating record.
+ */
+export function recordEmailActivity(
+  message: Message,
+  record: RecordEmailContext,
+  contactName = "",
+): EmailActivity {
+  const displayName = contactName || message.contact || "";
+  return {
+    title: `Email to ${message.to}${displayName ? ` · ${displayName}` : ""}`,
+    type: "Email",
+    contact: displayName,
+    recordId: record.recordId,
+    entityType: record.entityType,
+    entityId: record.entityId,
+    ...(record.entityType === "contact"
+      ? { contactId: record.entityId }
+      : { leadId: record.entityId }),
+    subject: message.subject,
+    notes: message.subject || message.body,
+    messageId: message.id,
+    date: (message.createdAt || new Date().toISOString()).slice(0, 10),
+    to: message.to,
+    metadata: {
+      recipient: message.to,
+      channel: "Email",
+      messageId: message.id,
+      status: message.status,
+    },
+  };
+}
+
 export function assertEmailResponse(
   value: unknown,
   payload: EmailPayload,

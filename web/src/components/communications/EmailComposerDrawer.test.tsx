@@ -8,7 +8,10 @@ import {
   deliveryLabel,
   emailPayload,
   fetchInbox,
+  recordEmailActivity,
+  withRecordLinkage,
   type EmailPayload,
+  type LinkedEmailPayload,
   type Message,
 } from "./inboxModel";
 import { RESOURCE_CHANGED_EVENT, sendRecordEmail } from "./sendRecordEmail";
@@ -143,6 +146,9 @@ function installApiMock(status = state.sendStatus) {
       if (path === "/messages/send") {
         const payload = JSON.parse(String(options?.body)) as EmailPayload;
         return responseFor(payload, status);
+      }
+      if (path === "/activities") {
+        return JSON.parse(String(options?.body)) as Record<string, unknown>;
       }
       throw new Error(`Unexpected API path: ${path}`);
     },
@@ -334,6 +340,67 @@ describe("inboxModel", () => {
       assertEmailResponse(responseFor(payload, "Unexpected"), payload),
     ).toThrow("Email result could not be confirmed");
   });
+
+  it("adds contact/lead linkage fields to the send payload", () => {
+    const payload = emailPayload(
+      "customer@example.com",
+      "Hi",
+      "Body",
+      "key-1",
+      "Customer Example",
+    );
+    const contactRecord = {
+      recordId: "contact-42",
+      entityType: "contact" as const,
+      entityId: "contact-42",
+    };
+    const leadRecord = {
+      recordId: "lead-7",
+      entityType: "lead" as const,
+      entityId: "lead-7",
+    };
+
+    expect(withRecordLinkage(payload, contactRecord)).toEqual({
+      ...payload,
+      recordId: "contact-42",
+      entityType: "contact",
+      entityId: "contact-42",
+      contactId: "contact-42",
+    });
+    expect(withRecordLinkage(payload, leadRecord)).toEqual({
+      ...payload,
+      recordId: "lead-7",
+      entityType: "lead",
+      entityId: "lead-7",
+      leadId: "lead-7",
+    });
+  });
+
+  it("builds a timeline activity the record detail filters will match", () => {
+    const activity = recordEmailActivity(
+      message("message-1"),
+      {
+        recordId: "contact-42",
+        entityType: "contact",
+        entityId: "contact-42",
+      },
+      "Customer Example",
+    );
+
+    expect(activity).toMatchObject({
+      type: "Email",
+      contact: "Customer Example",
+      recordId: "contact-42",
+      entityType: "contact",
+      entityId: "contact-42",
+      contactId: "contact-42",
+      messageId: "message-1",
+      to: "customer@example.com",
+      subject: "Subject message-1",
+      date: "2026-11-18",
+    });
+    expect(activity.title).toContain("customer@example.com");
+  });
 });
 
 describe("sendRecordEmail", () => {
@@ -344,12 +411,95 @@ describe("sendRecordEmail", () => {
     );
 
     expect(result.status).toBe("Sent");
-    expect(state.dispatchEvent).toHaveBeenCalledTimes(1);
+    expect(state.dispatchEvent).toHaveBeenCalledTimes(2);
     expect(state.dispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         type: RESOURCE_CHANGED_EVENT,
         detail: { resource: "messages" },
       }),
+    );
+    expect(state.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: RESOURCE_CHANGED_EVENT,
+        detail: { resource: "activities" },
+      }),
+    );
+  });
+
+  it("sends record linkage, persists a linked activity, then refreshes", async () => {
+    const payload = emailPayload(
+      "customer@example.com",
+      "Hi",
+      "Body",
+      "key-1",
+      "Customer Example",
+    );
+    const record = {
+      recordId: "lead-7",
+      entityType: "lead" as const,
+      entityId: "lead-7",
+    };
+    const request = vi.fn(async (sent: EmailPayload) => responseFor(sent, "Sent"));
+    const logActivity = vi.fn(async () => ({ id: "activity-1" }));
+
+    const result = await sendRecordEmail(payload, request, {
+      record,
+      logActivity,
+    });
+
+    const sentPayload = request.mock.calls[0][0] as LinkedEmailPayload;
+    expect(sentPayload).toMatchObject({
+      channel: "Email",
+      to: "customer@example.com",
+      contact: "Customer Example",
+      idempotencyKey: "key-1",
+      recordId: "lead-7",
+      entityType: "lead",
+      entityId: "lead-7",
+      leadId: "lead-7",
+    });
+    expect(logActivity).toHaveBeenCalledTimes(1);
+    expect(logActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "Email",
+        contact: "Customer Example",
+        recordId: "lead-7",
+        entityType: "lead",
+        entityId: "lead-7",
+        leadId: "lead-7",
+        messageId: result.id,
+        to: "customer@example.com",
+      }),
+    );
+    expect(state.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: RESOURCE_CHANGED_EVENT,
+        detail: { resource: "activities" },
+      }),
+    );
+  });
+
+  it("still refreshes and reports when the activity write fails", async () => {
+    const payload = emailPayload("customer@example.com", "Hi", "Body", "key-1");
+
+    await expect(
+      sendRecordEmail(
+        payload,
+        async (sent) => responseFor(sent, "Sent"),
+        {
+          record: {
+            recordId: "contact-42",
+            entityType: "contact",
+            entityId: "contact-42",
+          },
+          logActivity: async () => {
+            throw new Error("activity failed");
+          },
+        },
+      ),
+    ).rejects.toThrow("could not be added to this record's timeline");
+    expect(state.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { resource: "messages" } }),
     );
   });
 
@@ -496,9 +646,9 @@ describe("EmailComposerDrawer", () => {
     expect(state.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("submits, acknowledges, refreshes, and closes on success", async () => {
+  it("persists a linked activity and refreshes when sending from a record", async () => {
     installApiMock("Sent");
-    const renderer = mountComposer();
+    const renderer = mountComposer({ recordId: "contact-42" });
     await flushEffects();
 
     const textarea = renderer.root.findByType("textarea");
@@ -511,11 +661,52 @@ describe("EmailComposerDrawer", () => {
       await form.props.onSubmit({ preventDefault: () => {} });
     });
 
-    expect(
-      state.api.mock.calls.some(([path]) => path === "/messages/send"),
-    ).toBe(true);
+    const sendCall = state.api.mock.calls.find(
+      ([path]) => path === "/messages/send",
+    );
+    expect(sendCall).toBeTruthy();
+    const sent = JSON.parse(String(sendCall?.[1]?.body)) as LinkedEmailPayload;
+    expect(sent).toMatchObject({
+      to: "customer@example.com",
+      contact: "Customer Example",
+      recordId: "contact-42",
+      entityType: "contact",
+      entityId: "contact-42",
+      contactId: "contact-42",
+    });
+
+    const activityCall = state.api.mock.calls.find(
+      ([path]) => path === "/activities",
+    );
+    expect(activityCall).toBeTruthy();
+    expect(activityCall?.[1]).toMatchObject({
+      method: "POST",
+    });
+    const activity = JSON.parse(
+      String(activityCall?.[1]?.body),
+    ) as Record<string, unknown>;
+    expect(activity).toMatchObject({
+      type: "Email",
+      contact: "Customer Example",
+      recordId: "contact-42",
+      entityType: "contact",
+      entityId: "contact-42",
+      contactId: "contact-42",
+      messageId: "message-1",
+      to: "customer@example.com",
+    });
+
     expect(state.dispatchEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ type: RESOURCE_CHANGED_EVENT }),
+      expect.objectContaining({
+        type: RESOURCE_CHANGED_EVENT,
+        detail: { resource: "messages" },
+      }),
+    );
+    expect(state.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: RESOURCE_CHANGED_EVENT,
+        detail: { resource: "activities" },
+      }),
     );
     expect(state.toast).toHaveBeenCalledWith("Email sent");
     expect(state.onSent).toHaveBeenCalledWith(

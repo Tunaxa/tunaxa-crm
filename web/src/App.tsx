@@ -95,7 +95,7 @@ import { QuoteForm } from "./components/quotes/QuoteForm";
 import { GenerateInvoiceButton } from "./components/quotes/GenerateInvoiceButton";
 import { ContractDetails, contractSummaryValue } from "./components/contracts/ContractDetails";
 import { EmailComposerDrawer } from "./components/communications/EmailComposerDrawer";
-import { canSendEmail } from "./components/communications/inboxModel";
+import { canSendEmail, mailbox } from "./components/communications/inboxModel";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
@@ -2576,16 +2576,46 @@ function RecordDetailPage({
     if (!record?.email || tab !== "Emails") return;
     const controller = new AbortController();
     setEmailLoading(true); setEmailError(false);
-    api<Row[] | { data: Row[] }>("/messages", { signal: controller.signal })
+    api<Row[] | { data: Row[] }>("/messages?type=email&limit=100", { signal: controller.signal })
       .then((response) => {
         const items = Array.isArray(response) ? response : response.data;
         if (!Array.isArray(items)) throw new Error("Invalid message response");
-        if (!controller.signal.aborted) setMessages(items.filter((message) => message.to === record.email && (!message.channel || message.channel.toLowerCase() === "email")));
+        const recordEmail = mailbox(String(record.email || ""));
+        const recordName = String(record.name || record.title || "")
+          .trim()
+          .toLowerCase();
+        if (!controller.signal.aborted) setMessages(items.filter((message) => {
+          const isEmail = !message.channel || String(message.channel).toLowerCase() === "email";
+          const sameRecipient = recordEmail
+            ? mailbox(String(message.to || "")) === recordEmail
+            : false;
+          const sameContact = recordName
+            ? String(message.contact || "").trim().toLowerCase() === recordName
+            : false;
+          return isEmail && (sameRecipient || sameContact);
+        }));
       })
       .catch(() => { if (!controller.signal.aborted) setEmailError(true); })
       .finally(() => { if (!controller.signal.aborted) setEmailLoading(false); });
     return () => controller.abort();
   }, [record?.id, record?.email, tab, emailRetry]);
+
+  useEffect(() => {
+    if (!record) return;
+    const refresh = (event: Event) => {
+      const changed = (event as CustomEvent<{ resource?: string }>).detail
+        ?.resource;
+      if (!changed) return;
+      if (changed === "messages") setEmailRetry((value) => value + 1);
+      if (changed === "activities") setActivityRetry((value) => value + 1);
+      if (changed === "contacts" || changed === "leads") {
+        setActivityRetry((value) => value + 1);
+        setEmailRetry((value) => value + 1);
+      }
+    };
+    window.addEventListener("tunaxa:resource-changed", refresh);
+    return () => window.removeEventListener("tunaxa:resource-changed", refresh);
+  }, [record]);
 
   useEffect(() => {
     setRevisions([]);
@@ -3016,10 +3046,10 @@ function RecordDetailPage({
           recipient={String(record.email || "")}
           contact={recordName}
           entity={resource === "contacts" ? "contact" : "lead"}
+          recordId={String(record.id)}
           onClose={() => setComposeEmail(false)}
           onSent={() => {
-            setEmailRetry((value) => value + 1);
-            setActivityRetry((value) => value + 1);
+            // Timeline/inbox refresh is driven by tunaxa:resource-changed.
           }}
         />
       ) : null}
