@@ -94,6 +94,8 @@ import {
 import { QuoteForm } from "./components/quotes/QuoteForm";
 import { GenerateInvoiceButton } from "./components/quotes/GenerateInvoiceButton";
 import { ContractDetails, contractSummaryValue } from "./components/contracts/ContractDetails";
+import { EmailComposerDrawer } from "./components/communications/EmailComposerDrawer";
+import { canSendEmail } from "./components/communications/inboxModel";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
@@ -2496,6 +2498,7 @@ function RecordDetailPage({
   const [revisions, setRevisions] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
+  const [composeEmail, setComposeEmail] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
   const showActivityFilters =
@@ -2517,6 +2520,7 @@ function RecordDetailPage({
     setRecord(null);
     setTab(resource === "contacts" ? "Activity" : "Overview");
     setNoteText("");
+    setComposeEmail(false);
     setActivityFilter("All");
     const controller = new AbortController();
     api<Row>(`/${resource}/${id}`, { signal: controller.signal })
@@ -2751,6 +2755,18 @@ function RecordDetailPage({
           <div className="detail-actions">
             {resource === "quotes" ? (
               <GenerateInvoiceButton key={record.id} quote={record} />
+            ) : null}
+            {(resource === "contacts" || resource === "leads") &&
+            record.email &&
+            canSendEmail(user?.role) ? (
+              <button
+                type="button"
+                className="btn secondary compact"
+                aria-label={`Send email to ${recordName}`}
+                onClick={() => setComposeEmail(true)}
+              >
+                <Icon name="send" /> Send email
+              </button>
             ) : null}
             {record.status ? (
               <Badge
@@ -2994,6 +3010,19 @@ function RecordDetailPage({
           </div>
         )}
       </div>
+
+      {composeEmail && (resource === "contacts" || resource === "leads") ? (
+        <EmailComposerDrawer
+          recipient={String(record.email || "")}
+          contact={recordName}
+          entity={resource === "contacts" ? "contact" : "lead"}
+          onClose={() => setComposeEmail(false)}
+          onSent={() => {
+            setEmailRetry((value) => value + 1);
+            setActivityRetry((value) => value + 1);
+          }}
+        />
+      ) : null}
 
         </section>
       </div>

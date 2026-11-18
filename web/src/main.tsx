@@ -8,6 +8,7 @@ import "./styles/fonts.css";
 import "./styles/app.css";
 import "./styles/tokens.css";
 import "./styles/blueprint.css";
+import "./styles/inbox.css";
 
 if (localStorage.getItem("tunaxa.theme") === "dark")
   document.documentElement.classList.add("dark");
