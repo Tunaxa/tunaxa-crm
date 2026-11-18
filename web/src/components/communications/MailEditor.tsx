@@ -1,8 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { api } from "../../lib/api";
-import { emailPayload, type EmailPayload, type Message } from "./inboxModel";
-
-type Template = { id: string; name: string; subject: string; body: string };
+import {
+  emailPayload,
+  parseEmailTemplates,
+  type EmailPayload,
+  type EmailTemplate,
+  type Message,
+} from "./inboxModel";
 
 function createIdempotencyKey() {
   const random =
@@ -41,7 +45,7 @@ export function MailEditor({
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [templateError, setTemplateError] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(true);
@@ -53,23 +57,9 @@ export function MailEditor({
     const abort = new AbortController();
     setTemplateLoading(true);
     setTemplateError(false);
-    api<unknown>("/templates", { signal: abort.signal })
+    api<unknown>("/templates?limit=100", { signal: abort.signal })
       .then((value) => {
-        if (!Array.isArray(value)) throw new Error("Invalid templates response");
-        const rows = value
-          .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
-          .filter(
-            (row) =>
-              typeof row.id === "string" &&
-              (!row.channel || String(row.channel).toLowerCase() === "email"),
-          )
-          .map((row) => ({
-            id: row.id as string,
-            name: String(row.name || "Untitled template"),
-            subject: String(row.subject || ""),
-            body: String(row.body || ""),
-          }));
-        if (!abort.signal.aborted) setTemplates(rows);
+        if (!abort.signal.aborted) setTemplates(parseEmailTemplates(value));
       })
       .catch(() => {
         if (!abort.signal.aborted) setTemplateError(true);
@@ -132,7 +122,6 @@ export function MailEditor({
         void send();
       }}
     >
-      <h3>{reply ? "Reply inline" : "Compose email"}</h3>
       {error ? (
         <p role="alert" aria-live="assertive">
           {error}
@@ -172,7 +161,13 @@ export function MailEditor({
         <select
           id={templateId}
           value={selectedTemplate}
-          disabled={busy || disabled || templateLoading || templateError}
+          disabled={
+            busy ||
+            disabled ||
+            templateLoading ||
+            templateError ||
+            templates.length === 0
+          }
           onChange={(event) => {
             setSelectedTemplate(event.target.value);
             const template = templates.find((row) => row.id === event.target.value);
@@ -204,6 +199,9 @@ export function MailEditor({
             Retry templates
           </button>
         </p>
+      ) : null}
+      {!templateLoading && !templateError && templates.length === 0 ? (
+        <p role="status">No templates available</p>
       ) : null}
       <label htmlFor={bodyId}>
         <span>Message *</span>

@@ -132,7 +132,14 @@ function responseFor(payload: EmailPayload, status = state.sendStatus): Message 
 function installApiMock(status = state.sendStatus) {
   state.api.mockImplementation(
     async (path: string, options?: { body?: string }) => {
-      if (path === "/templates") return templates;
+      if (path === "/templates?limit=100") {
+        return {
+          data: templates,
+          total: templates.length,
+          page: 1,
+          limit: 100,
+        };
+      }
       if (path === "/messages/send") {
         const payload = JSON.parse(String(options?.body)) as EmailPayload;
         return responseFor(payload, status);
@@ -190,6 +197,24 @@ function alertText(renderer: ReactTestRenderer) {
     .findAll((node) => node.type === "p" && node.props.role === "alert")
     .map((node) => node.children.join(""))
     .join(" ");
+}
+
+function statusText(renderer: ReactTestRenderer) {
+  return renderer.root
+    .findAll((node) => node.type === "p" && node.props.role === "status")
+    .map((node) => node.children.join(""))
+    .join(" ");
+}
+
+function retryButton(renderer: ReactTestRenderer) {
+  const button = renderer.root
+    .findAll(
+      (node) =>
+        node.type === "button" &&
+        node.children.join("").includes("Retry templates"),
+    )[0];
+  if (!button) throw new Error("Retry templates button not found");
+  return button;
 }
 
 beforeEach(() => {
@@ -339,14 +364,26 @@ describe("sendRecordEmail", () => {
 });
 
 describe("EmailComposerDrawer", () => {
-  it("prefills recipient/contact context and applies a selected template", async () => {
+  it("loads dev's paginated templates, applies one, and has no duplicate heading", async () => {
     installApiMock();
     const renderer = mountComposer();
     await flushEffects();
 
+    expect(
+      state.api.mock.calls.some(([path]) => path === "/templates?limit=100"),
+    ).toBe(true);
+    expect(statusText(renderer)).not.toContain("Templates could not be loaded");
+
     const dialog = renderer.root.findByProps({ role: "dialog" });
+    expect(dialog.props["aria-label"]).toBe("Compose email");
     expect(dialog.props["data-subtitle"]).toContain("Customer Example");
     expect(dialog.props["data-subtitle"]).toContain("contact");
+    expect(
+      renderer.root.findAll(
+        (node) =>
+          node.type === "h3" && node.children.join("") === "Compose email",
+      ),
+    ).toHaveLength(0);
     expect(inputByType(renderer, "email").props.value).toBe(
       "customer@example.com",
     );
@@ -355,6 +392,69 @@ describe("EmailComposerDrawer", () => {
     act(() => select.props.onChange({ target: { value: "welcome" } }));
 
     expect(subjectInput(renderer).props.value).toBe("Welcome aboard");
+    expect(renderer.root.findByType("textarea").props.value).toBe(
+      "Welcome body",
+    );
+  });
+
+  it("treats an empty dev template page as an empty state", async () => {
+    state.api.mockImplementation(async (path: string) => {
+      if (path === "/templates?limit=100") {
+        return { data: [], total: 0, page: 1, limit: 100 };
+      }
+      throw new Error(`Unexpected API path: ${path}`);
+    });
+
+    const renderer = mountComposer();
+    await flushEffects();
+
+    expect(statusText(renderer)).toContain("No templates available");
+    expect(statusText(renderer)).not.toContain("Templates could not be loaded");
+    expect(renderer.root.findByType("select").props.disabled).toBe(true);
+  });
+
+  it("recovers from a template load error via the Retry templates button", async () => {
+    let templateCalls = 0;
+    state.api.mockImplementation(
+      async (path: string, options?: { body?: string }) => {
+        if (path === "/templates?limit=100") {
+          templateCalls += 1;
+          if (templateCalls === 1) throw new Error("network down");
+          return {
+            data: templates,
+            total: templates.length,
+            page: 1,
+            limit: 100,
+          };
+        }
+        if (path === "/messages/send") {
+          const payload = JSON.parse(String(options?.body)) as EmailPayload;
+          return responseFor(payload, state.sendStatus);
+        }
+        throw new Error(`Unexpected API path: ${path}`);
+      },
+    );
+
+    const renderer = mountComposer();
+    await flushEffects();
+
+    expect(statusText(renderer)).toContain("Templates could not be loaded");
+    const retry = retryButton(renderer);
+    expect(retry.props.type).toBe("button");
+
+    await act(async () => {
+      retry.props.onClick();
+    });
+    await flushEffects();
+
+    expect(templateCalls).toBe(2);
+    expect(statusText(renderer)).not.toContain("Templates could not be loaded");
+    expect(
+      state.api.mock.calls.some(([path]) => path === "/messages/send"),
+    ).toBe(false);
+
+    const select = renderer.root.findByType("select");
+    act(() => select.props.onChange({ target: { value: "welcome" } }));
     expect(renderer.root.findByType("textarea").props.value).toBe(
       "Welcome body",
     );

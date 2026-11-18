@@ -129,6 +129,38 @@ export async function fetchInbox(
   );
 }
 
+export type EmailTemplate = {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+};
+
+/**
+ * Dev's GET /api/templates uses paginateAndSort and returns
+ * `{ data, total, page, limit }`, not a bare array. Accepting an array too
+ * keeps this resilient to older callers/tests.
+ */
+export function parseEmailTemplates(value: unknown): EmailTemplate[] {
+  const source = value as { data?: unknown } | null | undefined;
+  const rows = Array.isArray(value) ? value : source?.data;
+  if (!Array.isArray(rows)) throw new Error("Invalid templates response");
+
+  return rows
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+    .filter(
+      (row) =>
+        typeof row.id === "string" &&
+        (!row.channel || String(row.channel).toLowerCase() === "email"),
+    )
+    .map((row) => ({
+      id: row.id as string,
+      name: String(row.name || "Untitled template"),
+      subject: String(row.subject || ""),
+      body: String(row.body || ""),
+    }));
+}
+
 export function mailbox(value: string) {
   if (/[\r\n,;]/u.test(value)) return "";
   const address =
