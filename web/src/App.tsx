@@ -94,6 +94,8 @@ import {
 import { QuoteForm } from "./components/quotes/QuoteForm";
 import { GenerateInvoiceButton } from "./components/quotes/GenerateInvoiceButton";
 import { ContractDetails, contractSummaryValue } from "./components/contracts/ContractDetails";
+import { EmailComposerDrawer } from "./components/communications/EmailComposerDrawer";
+import { canSendEmail, mailbox } from "./components/communications/inboxModel";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import i18n from "./i18n";
@@ -2496,6 +2498,7 @@ function RecordDetailPage({
   const [revisions, setRevisions] = useState<Row[]>([]);
   const [noteText, setNoteText] = useState("");
   const [noteBusy, setNoteBusy] = useState(false);
+  const [composeEmail, setComposeEmail] = useState(false);
 
   const recordName = record?.name || record?.title || "Untitled";
   const showActivityFilters =
@@ -2517,6 +2520,7 @@ function RecordDetailPage({
     setRecord(null);
     setTab(resource === "contacts" ? "Activity" : "Overview");
     setNoteText("");
+    setComposeEmail(false);
     setActivityFilter("All");
     const controller = new AbortController();
     api<Row>(`/${resource}/${id}`, { signal: controller.signal })
@@ -2572,16 +2576,46 @@ function RecordDetailPage({
     if (!record?.email || tab !== "Emails") return;
     const controller = new AbortController();
     setEmailLoading(true); setEmailError(false);
-    api<Row[] | { data: Row[] }>("/messages", { signal: controller.signal })
+    api<Row[] | { data: Row[] }>("/messages?type=email&limit=100", { signal: controller.signal })
       .then((response) => {
         const items = Array.isArray(response) ? response : response.data;
         if (!Array.isArray(items)) throw new Error("Invalid message response");
-        if (!controller.signal.aborted) setMessages(items.filter((message) => message.to === record.email && (!message.channel || message.channel.toLowerCase() === "email")));
+        const recordEmail = mailbox(String(record.email || ""));
+        const recordName = String(record.name || record.title || "")
+          .trim()
+          .toLowerCase();
+        if (!controller.signal.aborted) setMessages(items.filter((message) => {
+          const isEmail = !message.channel || String(message.channel).toLowerCase() === "email";
+          const sameRecipient = recordEmail
+            ? mailbox(String(message.to || "")) === recordEmail
+            : false;
+          const sameContact = recordName
+            ? String(message.contact || "").trim().toLowerCase() === recordName
+            : false;
+          return isEmail && (sameRecipient || sameContact);
+        }));
       })
       .catch(() => { if (!controller.signal.aborted) setEmailError(true); })
       .finally(() => { if (!controller.signal.aborted) setEmailLoading(false); });
     return () => controller.abort();
   }, [record?.id, record?.email, tab, emailRetry]);
+
+  useEffect(() => {
+    if (!record) return;
+    const refresh = (event: Event) => {
+      const changed = (event as CustomEvent<{ resource?: string }>).detail
+        ?.resource;
+      if (!changed) return;
+      if (changed === "messages") setEmailRetry((value) => value + 1);
+      if (changed === "activities") setActivityRetry((value) => value + 1);
+      if (changed === "contacts" || changed === "leads") {
+        setActivityRetry((value) => value + 1);
+        setEmailRetry((value) => value + 1);
+      }
+    };
+    window.addEventListener("tunaxa:resource-changed", refresh);
+    return () => window.removeEventListener("tunaxa:resource-changed", refresh);
+  }, [record]);
 
   useEffect(() => {
     setRevisions([]);
@@ -2751,6 +2785,18 @@ function RecordDetailPage({
           <div className="detail-actions">
             {resource === "quotes" ? (
               <GenerateInvoiceButton key={record.id} quote={record} />
+            ) : null}
+            {(resource === "contacts" || resource === "leads") &&
+            record.email &&
+            canSendEmail(user?.role) ? (
+              <button
+                type="button"
+                className="btn secondary compact"
+                aria-label={`Send email to ${recordName}`}
+                onClick={() => setComposeEmail(true)}
+              >
+                <Icon name="send" /> Send email
+              </button>
             ) : null}
             {record.status ? (
               <Badge
@@ -2994,6 +3040,19 @@ function RecordDetailPage({
           </div>
         )}
       </div>
+
+      {composeEmail && (resource === "contacts" || resource === "leads") ? (
+        <EmailComposerDrawer
+          recipient={String(record.email || "")}
+          contact={recordName}
+          entity={resource === "contacts" ? "contact" : "lead"}
+          recordId={String(record.id)}
+          onClose={() => setComposeEmail(false)}
+          onSent={() => {
+            // Timeline/inbox refresh is driven by tunaxa:resource-changed.
+          }}
+        />
+      ) : null}
 
         </section>
       </div>
