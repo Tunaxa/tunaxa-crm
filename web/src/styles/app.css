@@ -10063,6 +10063,18 @@ html.dark .file-upload {
     padding: 10px;
   }
 
+  /* AXA-312: keep the connectivity banner readable on narrow screens. */
+  .offline-banner {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .offline-banner__status {
+    flex: 1 1 100%;
+  }
+
   .search-status {
     padding: 8px 10px;
   }
@@ -10360,4 +10372,59 @@ html.dark .search-status {
 
 html.dark .search-status-error {
   color: var(--red);
+}
+
+/* AXA-312: accessible offline connectivity banner. */
+.offline-banner {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--red-bg);
+  color: var(--ink-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.offline-banner__status {
+  min-width: 0;
+  color: var(--ink-primary);
+}
+
+.offline-banner__retry {
+  flex: none;
+  min-height: 28px;
+  padding: 4px 12px;
+  border: 1px solid var(--red);
+  background: var(--surface);
+  color: var(--ink-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.offline-banner__retry:hover {
+  background: var(--surface-2);
+}
+
+.offline-banner__retry:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+html.dark .offline-banner,
+html.dark .offline-banner__retry {
+  border-color: var(--border);
+  background: var(--red-bg);
+  color: var(--ink-primary);
+}
+
+html.dark .offline-banner__status {
+  color: var(--ink-primary);
 }
