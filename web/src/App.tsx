@@ -1,3 +1,4 @@
+import { OfflineBanner } from "./components/OfflineBanner";
 import { DesignSystemPage } from "./pages/DesignSystemPage";
 import { Shell } from "./shell/Shell";
 import { WorkflowPicker } from "./pages/workflows/WorkflowPicker";
@@ -463,6 +464,7 @@ return (
     renderQuickCreate={(onClose) => <QuickCreate onClose={onClose} />}
     renderGlobalSearch={(onClose) => <GlobalSearch onClose={onClose} />}
   >
+      <OfflineBanner />
       <ErrorBoundary>
             <Routes>
               <Route index element={<Navigate to="/dashboard" replace />} />
