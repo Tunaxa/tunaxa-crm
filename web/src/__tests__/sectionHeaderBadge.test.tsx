@@ -115,6 +115,22 @@ describe("Badge", () => {
     expect(html).toContain("#3b82f6");
   });
 
+  it("uses the blue variant classes by default", () => {
+    const html = renderToStaticMarkup(<Badge>Default</Badge>);
+
+    expect(html).toContain("text-[#2563eb]");
+  });
+
+  it("applies the red variant classes over a legacy tone", () => {
+    const html = renderToStaticMarkup(
+      <Badge variant="red" tone="green">
+        Error
+      </Badge>,
+    );
+
+    expect(html).toContain("text-red-700");
+  });
+
   it("prefers an explicit variant over the legacy tone", () => {
     const html = renderToStaticMarkup(
       <Badge tone="red" variant="emerald">
