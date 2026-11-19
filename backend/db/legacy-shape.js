@@ -972,6 +972,7 @@ export function legacyToPg(body, resource, options = {}) {
   const mapping = mappingFor(resource);
   if (!mapping) return genericLegacyToPg(body, resource);
 
+  const aliases = GENERIC_ALIASES[resource] || {};
   const out = {};
   const extra = {};
   for (const [key, value] of Object.entries(body || {})) {
@@ -984,7 +985,7 @@ export function legacyToPg(body, resource, options = {}) {
       }
       continue;
     }
-    const column = mapping.toPg[key] || key;
+    const column = aliases[key] || mapping.toPg[key] || key;
     if (mapping.columnSet.has(column) && column !== "custom_fields") {
       if (column === "items") {
         // `lineItems` and `items` both land here; anything that is not already
@@ -1087,12 +1088,18 @@ const GENERIC_COLUMNS = {
   ]),
 };
 
+const GENERIC_ALIASES = {
+  contacts: { firstName: "first_name", lastName: "last_name" },
+  leads: { firstName: "first_name", lastName: "last_name" },
+};
+
 function genericLegacyToPg(body, resource) {
   const source = { ...(body || {}) };
   const name = source.name;
   delete source.name;
 
   const columns = GENERIC_COLUMNS[resource] || null;
+  const aliases = GENERIC_ALIASES[resource] || {};
   const out = {};
   const extra = {};
 
@@ -1105,11 +1112,12 @@ function genericLegacyToPg(body, resource) {
       }
       continue;
     }
-    if (columns && !columns.has(key)) {
+    const column = aliases[key] || key;
+    if (columns && !columns.has(column)) {
       extra[key] = value;
       continue;
     }
-    out[key] = value;
+    out[column] = value;
   }
 
   // Reconstruct first_name / last_name from the legacy `name` field, matching

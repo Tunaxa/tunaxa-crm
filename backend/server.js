@@ -16,6 +16,7 @@ import registerAuthRoutes from "./routes/auth.js";
 import registerHealthRoutes from "./routes/health.js";
 import registerResourceRoutes from "./routes/resources.js";
 import registerSettingsRoutes from "./routes/settings.js";
+import registerSchemaRoutes from "./routes/schema.js";
 import registerCallRoutes from "./routes/calls.js";
 import registerRecordingRoutes from "./routes/recordings.js";
 import registerMessageRoutes from "./routes/messages.js";
@@ -299,6 +300,7 @@ registerWebhookEndpointRoutes(app);
 registerQuoteRoutes(app);
 registerContactRoutes(app);
 registerGoalRoutes(app);
+registerSchemaRoutes(app);
 registerResourceRoutes(app);
 
 // ============================================

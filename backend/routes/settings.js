@@ -6,7 +6,6 @@ import { getSettings, DEFAULT_SETTINGS } from "../services/config.js";
 import { resetTransporter as resetEmailTransporter } from "../services/email.js";
 import { resetTransporter as resetSmtpTransporter } from "../services/smtp.js";
 import { validate, SettingsSchema } from "../services/validate.js";
-import { BUILT_IN_FIELDS, normalizeFieldSpec, customFieldSpecs } from "../helpers.js";
 import { EVENT_META, ACTION_META } from "../services/workflows.js";
 import { checkOllamaStatus } from "../services/ai.js";
 import { isAiConfigured, isTwilioConfigured } from "../services/config.js";
@@ -241,25 +240,6 @@ export default function registerSettingsRoutes(app) {
   app.get("/api/workflows/meta", auth, (req, res) =>
     res.json({ events: EVENT_META, actions: ACTION_META }),
   );
-
-  /**
-   * GET /api/schema/:object
-   * Protected. Returns the field schema (built-in + custom fields) for a CRM
-   * object: leads, contacts, companies or deals.
-   * Path param: :object - CRM object name
-   * Response: 200 { object, fields: [{ key, label, type, required, options? }] }
-   *           404 { error } for unknown objects
-   */
-  app.get("/api/schema/:object", auth, async (req, res) => {
-    const object = String(req.params.object || "").toLowerCase();
-    if (!(object in BUILT_IN_FIELDS))
-      return res.status(404).json({ error: "Unknown object" });
-    const db = await readDb();
-    const fields = [...BUILT_IN_FIELDS[object], ...customFieldSpecs(db, object)]
-      .filter(field => field && typeof field === "object")
-      .map(normalizeFieldSpec);
-    res.json({ object, fields });
-  });
 
   /**
    * GET /api/twilio/status
