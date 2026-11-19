@@ -7,6 +7,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **CSV Import Engine (`backend/routes/import.js`, `backend/services/csvImport.js`):**
+  - Added tenant-scoped CSV import for `contacts`, `leads`, `companies`, and `deals` via `POST /api/import/:resource` with JSON or multipart uploads, schema-aware default/custom column mapping, validation, and RFC4180 parsing (BOM, quoted commas/escaped quotes, embedded newlines, CRLF/LF).
+  - Enforced strict guards and security controls: `auth` + `requireRole('admin','member')`, 5 MB / 1000-row limits, explicit resource allowlist, rejection of dangerous/tenant-override mapping keys, server-derived workspace stamping, RBAC write-field-mask enforcement, and deal pipeline validation/defaulting.
+  - Implemented `dryRun` with a structural zero-write guarantee (no DB/store writes, audit entries, or broadcasts), downloadable tenant-scoped error reports (`GET /api/import/errors/:reportId`, `POST /api/import/error-report`), and preview support for JSON/multipart on `GET|POST /api/import/preview`.
 - **Persistent User Preferences (`backend/routes/userPreferences.js`, `backend/services/userPreferences.js`, `backend/db/migrations/015_user_preferences.sql`):**
   - Added authenticated, per-user `GET`, `PUT`, and `PATCH /api/user/preferences` scoped to `req.user.id` so UI preferences (`theme: light|dark|system`, `density: compact|comfortable|spacious`, `columnVisibility`) persist server-side across browsers and sessions.
   - Enforced strict request validation and guards: plain-object bodies, 64KB payload cap (`413`), unknown-key rejection (`400`), enum/bounds checks (including column-visibility resource/column limits and safe keys), and explicit rejection/stripping of prototype-pollution keys (`__proto__`, `constructor`, `prototype`) with deep-merge upsert semantics that preserve legacy stored keys.
