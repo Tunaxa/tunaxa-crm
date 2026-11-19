@@ -8,6 +8,7 @@
  * mutateDb / writeDb) so the Phase 3 Postgres migration has a single chokepoint.
  */
 import crypto from 'node:crypto';
+import { assertNoArrayQueryParams, normalizeSortBy } from './middleware/pagination.js';
 
 export const now = () => new Date().toISOString();
 export const id = prefix => `${prefix}_${crypto.randomUUID()}`;
@@ -383,12 +384,19 @@ const compareValues = (a, b) => {
 export const paginateAndSort = (items = [], query = {}) => {
   const rows = Array.isArray(items) ? items : [];
 
+  // Repeated list controls are a client error, not something to coerce into a
+  // page number or field name. The Express guard rejects them before routes;
+  // this keeps direct callers of the helper equally safe.
+  assertNoArrayQueryParams(query);
+
   const q = String(query.q || '').toLowerCase().trim();
   let filtered = q
     ? rows.filter(item => JSON.stringify(item).toLowerCase().includes(q))
     : rows;
 
-  const sortBy = String(query.sortBy || 'createdAt');
+  // Only a single safe identifier may be used as an in-memory sort key, so a
+  // prototype-pollution name or dotted path can never reach `item[sortBy]`.
+  const sortBy = normalizeSortBy(query.sortBy);
   const sortDir = String(query.sortDir || 'desc').toLowerCase() === 'asc' ? 1 : -1;
   const direction = sortDir === 1 ? 1 : -1;
 

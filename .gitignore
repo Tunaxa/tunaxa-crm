@@ -5,6 +5,7 @@ dist/
 .vscode
 *.log
 docs/*
+!docs/api-query-params.md
 backend/uploads/
 backend/backups/
 backend/data/db.json

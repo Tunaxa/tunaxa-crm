@@ -11,6 +11,7 @@ import { ensureSettingsDefaults } from "./services/config.js";
 import { startRateLimitSweeper } from "./services/rateLimit.js";
 import { backupDb } from "./services/backup.js";
 import { cleanupExpiredSessions } from "./middleware/auth.js";
+import { paginationGuard } from "./middleware/pagination.js";
 import registerAuthRoutes from "./routes/auth.js";
 import registerHealthRoutes from "./routes/health.js";
 import registerResourceRoutes from "./routes/resources.js";
@@ -250,6 +251,8 @@ app.use(
 // rather than on "/api" so that req.path still carries the /api prefix the
 // exempt patterns match against. Must be registered before any route.
 app.use(originGuard());
+// Reject repeated list controls once, before any route can coerce them.
+app.use(paginationGuard());
 
 // V1 Dynamic Object API (PostgreSQL + JSONB) — registered BEFORE legacy routes
 registerV1ObjectRoutes(app);
