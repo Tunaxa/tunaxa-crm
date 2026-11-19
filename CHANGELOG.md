@@ -6,6 +6,12 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+- **Ticket Kanban Stage Model & SLA Breach Engine (`backend/routes/tickets.js`, `backend/services/ticket-stages.js`, `backend/services/sla.js`, `backend/db/migrations/014_ticket_kanban_sla.sql`):**
+  - Implemented a tenant-scoped Kanban stage state machine for tickets (`New`, `In Progress`, `Awaiting Client`, `Resolved`, dynamic `Closed`) with validated/idempotent transitions, stage history, and transition side effects (`firstResponseAt`, `resolvedAt`, `closedAt`).
+  - Added a pure SLA engine for priority-tier due-date computation and first-response/resolution breach evaluation, persisted due dates/breach state, and tenant-scoped `GET /api/tickets/sla/summary` plus enriched ticket detail/read-time SLA fields.
+  - Hardened ticket endpoints with strict request validation (rejecting prototype-pollution keys, invalid transitions, and out-of-range SLA hours), RBAC/write-field masking on mutations, and workspace-scoped repository operations returning 404 for cross-tenant IDs.
+
 ### Security
 - Authentication security: implemented SHA-256 hashed refresh tokens, single-use rotation, reuse detection with automatic session invalidation, and global logout-all.
 - Security hardening: tightened Helmet CSP headers with `script-src-attr` restrictions and an explicit image allow-list, and enhanced the Origin/Referer CSRF guard with null-origin and `Sec-Fetch-Site: cross-site` protections.

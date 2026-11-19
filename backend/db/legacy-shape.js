@@ -593,8 +593,13 @@ export const RESOURCE_MAPPINGS = {
       "contact_email",
       "comments",
       "first_response_at",
+      "first_response_due_at",
       "resolved_at",
       "resolved_by",
+      "sla_due_at",
+      "sla_breached",
+      "closed_at",
+      "stage_history",
       "status",
       "custom_fields",
       "created_at",
@@ -606,8 +611,13 @@ export const RESOURCE_MAPPINGS = {
       status: "stage",
       contactEmail: "contact_email",
       firstResponseAt: "first_response_at",
+      firstResponseDueAt: "first_response_due_at",
       resolvedAt: "resolved_at",
       resolvedBy: "resolved_by",
+      slaDueAt: "sla_due_at",
+      slaBreached: "sla_breached",
+      closedAt: "closed_at",
+      stageHistory: "stage_history",
       createdAt: "created_at",
       updatedAt: "updated_at",
     },
@@ -615,8 +625,13 @@ export const RESOURCE_MAPPINGS = {
       stage: "stage",
       contact_email: "contactEmail",
       first_response_at: "firstResponseAt",
+      first_response_due_at: "firstResponseDueAt",
       resolved_at: "resolvedAt",
       resolved_by: "resolvedBy",
+      sla_due_at: "slaDueAt",
+      sla_breached: "slaBreached",
+      closed_at: "closedAt",
+      stage_history: "stageHistory",
       created_at: "createdAt",
       updated_at: "updatedAt",
     },
@@ -815,12 +830,15 @@ const TEMPORAL_COLUMNS = new Set([
   "start_date",
   "end_date",
   "paid_at",
-  // Added with migration 007. routes/tickets.js seeded firstResponseAt and
+  // Added with migration 007/014. routes/tickets.js seeded firstResponseAt and
   // resolvedAt with empty strings, and a legacy client may send "" for
   // submitted_at too; without these the empty string reaches a timestamptz
   // column and the server rejects it with 22007 invalid datetime format.
   "first_response_at",
+  "first_response_due_at",
   "resolved_at",
+  "sla_due_at",
+  "closed_at",
   "submitted_at",
 ]);
 
