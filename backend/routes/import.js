@@ -12,6 +12,8 @@
 // tenant.
 
 import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { readDb, mutateDb } from "../store.js";
 import { query } from "../db/pg.js";
 import { auth } from "../middleware/auth.js";
@@ -48,9 +50,28 @@ const limiter = createRateLimiter({
 
 const errorReports = createErrorReportStore();
 const REPORT_ID_RE = /^[A-Za-z0-9_-]+$/;
+const uploadRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "uploads",
+);
 
 const asBoolean = (value) =>
   value === true || value === "true" || value === "1";
+
+function safeUploadPath(filePath) {
+  if (typeof filePath !== "string" || filePath.length === 0) return null;
+  const resolved = path.resolve(filePath);
+  const root = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
+  if (resolved !== uploadRoot && !resolved.startsWith(root)) return null;
+  return resolved;
+}
+
+async function cleanupUploadFile(req) {
+  const filePath = safeUploadPath(req?.file?.path);
+  if (!filePath) return;
+  await fs.unlink(filePath).catch(() => {});
+}
 
 function tenantOf(req) {
   return req.user?.workspaceId || req.user?.workspace_id || "default";
@@ -75,8 +96,12 @@ function safeReport(req, reportId) {
 
 async function readCsvInput(req) {
   if (req.file) {
-    const csv = await fs.readFile(req.file.path, "utf-8");
-    await fs.unlink(req.file.path).catch(() => {});
+    const filePath = safeUploadPath(req.file.path);
+    if (!filePath) {
+      throw new ImportError("Uploaded file path is invalid", 400);
+    }
+    const csv = await fs.readFile(filePath, "utf-8");
+    await fs.unlink(filePath).catch(() => {});
     return csv;
   }
   const body = req.body || {};
@@ -244,6 +269,7 @@ export default function registerImportRoutes(app, upload) {
     "/api/import/errors/:reportId",
     auth,
     requireRole("admin", "member"),
+    limiter,
     (req, res) => {
       const report = safeReport(req, req.params.reportId);
       if (!report) {
@@ -259,6 +285,7 @@ export default function registerImportRoutes(app, upload) {
     "/api/import/error-report",
     auth,
     requireRole("admin", "member"),
+    limiter,
     (req, res) => {
       const report = safeReport(req, req.body?.reportId);
       if (!report) {
@@ -483,9 +510,7 @@ export default function registerImportRoutes(app, upload) {
           errorCsv: summary.errorCsv || undefined,
         });
       } catch (err) {
-        if (req.file?.path) {
-          await fs.unlink(req.file.path).catch(() => {});
-        }
+        await cleanupUploadFile(req);
         if (err instanceof ImportError) {
           return res.status(err.status).json({ error: err.message });
         }
@@ -534,9 +559,7 @@ async function handlePreview(req, res) {
       ...(defaultMapping ? { defaultMapping } : {}),
     });
   } catch (err) {
-    if (req.file?.path) {
-      await fs.unlink(req.file.path).catch(() => {});
-    }
+    await cleanupUploadFile(req);
     if (err instanceof ImportError) {
       return res.status(err.status).json({ error: err.message });
     }
