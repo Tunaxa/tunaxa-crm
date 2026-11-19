@@ -64,7 +64,9 @@ function safeUploadPath(filePath) {
   const resolved = path.resolve(filePath);
   const root = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
   if (resolved !== uploadRoot && !resolved.startsWith(root)) return null;
-  return resolved;
+  // Reconstruct from a server-owned directory + basename so downstream file
+  // operations never use attacker-influenced path segments.
+  return path.join(uploadRoot, path.basename(resolved));
 }
 
 async function cleanupUploadFile(req) {
