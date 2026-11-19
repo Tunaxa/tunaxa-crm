@@ -23,6 +23,7 @@ import {
   SERVER_OWNED_FIELDS,
 } from "../helpers.js";
 import { validate, ResourceSchema, BatchSchema } from "../services/validate.js";
+import { validateDealPipeline } from "./pipeline-definitions.js";
 import { triggerWorkflows, createdEvent } from "../services/workflows.js";
 import { broadcast } from "./sse.js";
 import { cacheFlush } from "../services/cache.js";
@@ -591,6 +592,7 @@ export default function registerResourceRoutes(app) {
     // pointed at it explicitly. Checking `req.body` would only ever see the
     // `ids`/`data` keys.
     checkWriteFieldMask(undefined, (req) => req.body?.data),
+    validateDealPipeline,
     async (req, res, next) => {
       const resource = req.params.resource;
 
@@ -994,6 +996,7 @@ export default function registerResourceRoutes(app) {
     requireRole("admin", "member"),
     checkWriteFieldMask(),
     validate(ResourceSchema),
+    validateDealPipeline,
     async (req, res, next) => {
       const resource = req.params.resource;
 
@@ -1098,6 +1101,7 @@ export default function registerResourceRoutes(app) {
     // masked field past a check that only inspects the first object.
     checkWriteFieldMask(),
     validate(BatchSchema),
+    validateDealPipeline,
     async (req, res, next) => {
       const resource = req.params.resource;
 
@@ -1179,6 +1183,7 @@ export default function registerResourceRoutes(app) {
     requireRole("admin", "member"),
     checkWriteFieldMask(),
     validate(ResourceSchema),
+    validateDealPipeline,
     async (req, res, next) => {
       const resource = req.params.resource;
       if (!resources.has(resource)) return next();
@@ -1285,6 +1290,7 @@ export default function registerResourceRoutes(app) {
     // stays writable through the effective PATCH handler.
     checkWriteFieldMask(),
     validate(ResourceSchema),
+    validateDealPipeline,
     updateRecord,
   );
 
@@ -1294,6 +1300,7 @@ export default function registerResourceRoutes(app) {
     requireRole("admin", "member"),
     checkWriteFieldMask(),
     validate(ResourceSchema),
+    validateDealPipeline,
     async (req, res, next) => {
       const resource = req.params.resource;
       if (!resources.has(resource)) return next();
