@@ -58,6 +58,7 @@ import registerWebhookEndpointRoutes from "./routes/webhookendpoints.js";
 import registerQuoteRoutes from "./routes/quotes.js";
 import registerContactRoutes from "./routes/contacts.js";
 import registerGoalRoutes from "./routes/goals.js";
+import registerUserPreferencesRoutes from "./routes/userPreferences.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { originGuard } from "./middleware/csrf.js";
 import {
@@ -301,6 +302,7 @@ registerQuoteRoutes(app);
 registerContactRoutes(app);
 registerGoalRoutes(app);
 registerSchemaRoutes(app);
+registerUserPreferencesRoutes(app);
 registerResourceRoutes(app);
 
 // ============================================

@@ -7,6 +7,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Persistent User Preferences (`backend/routes/userPreferences.js`, `backend/services/userPreferences.js`, `backend/db/migrations/015_user_preferences.sql`):**
+  - Added authenticated, per-user `GET`, `PUT`, and `PATCH /api/user/preferences` scoped to `req.user.id` so UI preferences (`theme: light|dark|system`, `density: compact|comfortable|spacious`, `columnVisibility`) persist server-side across browsers and sessions.
+  - Enforced strict request validation and guards: plain-object bodies, 64KB payload cap (`413`), unknown-key rejection (`400`), enum/bounds checks (including column-visibility resource/column limits and safe keys), and explicit rejection/stripping of prototype-pollution keys (`__proto__`, `constructor`, `prototype`) with deep-merge upsert semantics that preserve legacy stored keys.
+  - Synchronized representable shared fields with legacy `/api/users/me/preferences` and `db.settings.userPreferences[userId]` storage to prevent split-brain while keeping legacy callers/tests and storage behavior intact; migration is idempotent and atomic-runner compatible (no raw `BEGIN`/`COMMIT`).
 - **Schema Reflection API (`backend/routes/schema.js`, `backend/services/schema.js`):**
   - Added tenant-scoped `GET /api/schema/:resource` (auth required) returning per-resource field metadata for `contacts`, `leads`, `companies`, `deals`, `tickets`, `quotes`, `tasks`, and `activities`, including `name`/`key`, `label`, `type`, `required`, `readOnly`, `options`, and mapping metadata so clients can render forms/tables without hardcoded field lists.
   - Resolved dynamic vocabulary from authoritative sources: ticket stages from `services/ticket-stages.js`, ticket SLA priorities from `services/sla.js`, and deal stages/pipeline options from tenant-scoped pipeline definitions (Postgres/JSON fallback/default).
