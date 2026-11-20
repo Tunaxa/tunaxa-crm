@@ -21,8 +21,6 @@ import {
   transitionPatch,
 } from '../services/sla.js';
 
-// Guards against a misreported `total` turning the paging loop into an infinite
-// walk. A truncated SLA/board summary is worse than a failed request.
 const MAX_PAGES = 1000;
 const DEFAULT_WORKSPACE = 'default';
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -160,7 +158,6 @@ export default function registerTicketRoutes(app) {
       const tickets = (await loadTickets(filters, workspaceId)).map((t) =>
         withSla(t, settings),
       );
-      // Stage counts describe the whole filtered board, not just the page.
       const stages = buildStageSummary(tickets);
       res.json({ ...paginateAndSort(tickets, req.query), stages, sla: settings });
     } catch (error) {
@@ -188,7 +185,6 @@ export default function registerTicketRoutes(app) {
         const workspaceId = workspaceOf(req);
         const db = await readDb();
         const settings = db.ticketSla || DEFAULT_SLA;
-        // Only an explicit workspace override replaces the priority tier.
         const due = computeSlaDueDates({
           priority,
           createdAt,
@@ -220,7 +216,7 @@ export default function registerTicketRoutes(app) {
           type: 'Ticket',
           workspace_id: workspaceId,
           contact: contact || contactEmail || '',
-          notes: `Priority ${priority} Â· ${source}`,
+          notes: `Priority ${priority} · ${source}`,
           date: createdAt.slice(0, 10),
           ticketId: ticket.id,
           createdAt,
@@ -244,8 +240,6 @@ export default function registerTicketRoutes(app) {
     },
   );
 
-  // SLA settings (workspace-wide) live in the JSON store. Registered before
-  // /api/tickets/:id so "sla" is not swallowed as an id.
   app.put('/api/tickets/sla', auth, requireRole('admin', 'owner'), async (req, res) => {
     try {
       const body = validateBody(slaConfigSchema, req.body);
@@ -303,11 +297,7 @@ export default function registerTicketRoutes(app) {
           }
         }
 
-        // Preserve dev behavior for clients that don't model transitions but
-        // still set stages/timestamps directly.
-        if (!stageChanged || targetStage === existing.stage) {
-          // no-op transition path keeps history unchanged
-        } else {
+        if (stageChanged && targetStage !== existing.stage) {
           const history = Array.isArray(existing.stageHistory) ? existing.stageHistory : [];
           sideEffects.stageHistory = [
             ...history,
@@ -315,15 +305,10 @@ export default function registerTicketRoutes(app) {
           ];
         }
 
-        // Only keys the client sent reach update; request body wins over derived
-        // side effects so explicit stamps can be supplied.
         const patch = { ...sideEffects, ...body, updatedAt: nowIso };
-        // Tenant is server-derived, never client-supplied.
         delete patch.workspace_id;
         delete patch.workspaceId;
 
-        // Back-compat: leaving "New" counts as first response, resolving stamps
-        // resolution once (when not already derived).
         if (patch.stage && patch.stage !== 'New' && !existing.firstResponseAt && !patch.firstResponseAt) {
           patch.firstResponseAt = nowIso;
         }
@@ -335,7 +320,6 @@ export default function registerTicketRoutes(app) {
           patch.closedAt = nowIso;
         }
 
-        // Backfill due dates for pre-P2-BE2-02 rows.
         if (!existing.firstResponseDueAt || !existing.slaDueAt) {
           const due = computeSlaDueDates({
             priority: patch.priority || existing.priority,
@@ -353,7 +337,6 @@ export default function registerTicketRoutes(app) {
         const merged = { ...existing, ...patch };
         patch.slaBreached = evaluateSlaBreach(merged, { now: nowIso, settings }).isBreached;
 
-        // For idempotent same-stage updates, avoid duplicating history.
         if (stageChanged && targetStage === existing.stage) {
           delete patch.stageHistory;
         }
@@ -424,7 +407,6 @@ export default function registerTicketRoutes(app) {
     }
   });
 
-  // SLA summary board (tenant-scoped)
   app.get('/api/tickets/sla/summary', auth, async (req, res) => {
     const workspaceId = workspaceOf(req);
     try {

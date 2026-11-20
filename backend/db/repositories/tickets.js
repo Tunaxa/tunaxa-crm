@@ -35,7 +35,6 @@ const UPDATE_FIELDS = [
   "status",
   "custom_fields",
 ];
-// timestamptz columns that reject empty string meaning "not set".
 const TIMESTAMP_FIELDS = new Set([
   "first_response_at",
   "first_response_due_at",
@@ -192,8 +191,6 @@ export async function create(data = {}) {
 }
 
 export async function update(id, data = {}, workspaceId) {
-  // buildUpdateStatement respects workspace scoping and only updates provided
-  // allowed fields. Serialize timestamps/jsonb safely.
   const statement = buildUpdateStatement({
     id,
     table: "tickets",
@@ -213,10 +210,6 @@ export async function update(id, data = {}, workspaceId) {
   return result.rows[0] || null;
 }
 
-/**
- * Append a comment newest-first and stamp first_response_at on first comment,
- * scoped to the caller's workspace.
- */
 export async function addComment(id, comment, workspaceId) {
   const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(

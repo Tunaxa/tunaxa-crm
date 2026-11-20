@@ -1,6 +1,3 @@
-// SLA evaluation engine for support tickets (P2-BE2-02).
-// Pure, deterministic, no timers/schedulers/IO.
-
 import { isTerminalStage } from './ticket-stages.js';
 
 export const DEFAULT_SLA_TARGETS = {
@@ -11,7 +8,6 @@ export const DEFAULT_SLA_TARGETS = {
   low: { firstResponseHours: 8, resolutionHours: 72 },
 };
 
-// Workspace-level settings object (stored in JSON db.ticketSla).
 export const DEFAULT_SLA = { firstResponseHours: 4, resolutionHours: 48 };
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -32,7 +28,6 @@ function positiveHours(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-/** Lower-case priority key, falling back to `normal` for unknown values. */
 export function normalizePriority(priority) {
   const key = String(priority ?? '').trim().toLowerCase();
   return Object.prototype.hasOwnProperty.call(DEFAULT_SLA_TARGETS, key)
@@ -40,10 +35,6 @@ export function normalizePriority(priority) {
     : 'normal';
 }
 
-/**
- * Resolve target hours. An explicit workspace override wins for every priority;
- * otherwise the priority tier is used.
- */
 export function resolveSlaTarget(priority, settings) {
   const tier = DEFAULT_SLA_TARGETS[normalizePriority(priority)];
   const base = settings && typeof settings === 'object' ? settings : null;
@@ -56,7 +47,6 @@ export function resolveSlaTarget(priority, settings) {
   };
 }
 
-/** Compute first-response and resolution deadlines for a ticket. */
 export function computeSlaDueDates({ priority, createdAt, settings } = {}) {
   const start = toDate(createdAt) || new Date();
   const target = resolveSlaTarget(priority, settings);
@@ -71,11 +61,6 @@ export function computeSlaDueDates({ priority, createdAt, settings } = {}) {
   };
 }
 
-/**
- * Breach state at a point in time. Accepts camelCase or snake_case fields.
- * - firstResponseBreached: due passed and no first response recorded.
- * - resolutionBreached/isBreached: slaDueAt passed and ticket not terminal.
- */
 export function evaluateSlaBreach(ticket, { now = new Date(), settings } = {}) {
   const current = toDate(now) || new Date();
   const terminal = isTerminalStage(ticket?.stage);
@@ -122,10 +107,6 @@ export function evaluateSlaBreach(ticket, { now = new Date(), settings } = {}) {
   };
 }
 
-/**
- * Side effects of moving a ticket into `targetStage`. Caller may override with
- * explicit timestamps. Records first response, resolution/closed stamps.
- */
 export function transitionPatch(ticket, targetStage, { actor, at } = {}) {
   const when = toDate(at) || new Date();
   const iso = when.toISOString();

@@ -24,9 +24,6 @@ import {
   isValidStage,
 } from '../services/ticket-stages.js';
 
-// P2-BE2-02: pure engine + tenant-scoped API behavior on top of dev's ticket
-// contract (always-on {data,total,page,limit} list envelope, default limit 25).
-
 let app;
 let adminToken;
 let memberToken;
@@ -73,7 +70,7 @@ beforeAll(async () => {
   const mod = await import('../server.js');
   app = mod.app;
   await seedTestUser();
-  adminToken = await loginAs(app); // Owner/admin-equivalent in default workspace
+  adminToken = await loginAs(app);
   memberToken = await createUser({
     email: 'member-ticket@test.com',
     role: 'member',
@@ -92,7 +89,7 @@ afterAll(async () => {
       "DELETE FROM tickets WHERE workspace_id IN ('default', 'tenant-b')",
     );
   } catch {
-    // JSON/optional PG harness
+    void 0;
   }
   await mutateDb((db) => {
     db.tickets = (db.tickets || []).filter(
@@ -349,7 +346,6 @@ describe('tickets Kanban & SLA API (tenant-scoped, dev-compatible)', () => {
         [id],
       );
     } catch {
-      // If PG unavailable, skip DB-level breach assertion; engine covered above.
       return;
     }
     const res = await getTicket(adminToken, id);
@@ -385,7 +381,7 @@ describe('tickets security, validation, and tenant isolation', () => {
       .send(
         JSON.parse('{"firstResponseHours":2,"resolutionHours":4,"__proto__":{"x":1}}'),
       );
-    expect([400, 403]).toContain(proto.status); // must not be 200
+    expect([400, 403]).toContain(proto.status);
     expect(proto.status).not.toBe(200);
   });
 
@@ -428,7 +424,6 @@ describe('tickets security, validation, and tenant isolation', () => {
       .get('/api/tickets/sla/summary')
       .set(as(tenantBToken));
     expect(summaryB.status).toBe(200);
-    // Tenant B has no tickets; summary must reflect only B's scope.
     expect(summaryB.body.open).toBe(0);
     expect(summaryB.body.resolved).toBe(0);
 
@@ -452,7 +447,6 @@ describe('tickets security, validation, and tenant isolation', () => {
       .set(as(tenantBToken));
     expect(delB.status).toBe(404);
 
-    // A can still read its own ticket.
     const getA = await getTicket(adminToken, aId);
     expect(getA.status).toBe(200);
   });
