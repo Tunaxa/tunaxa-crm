@@ -50,7 +50,12 @@ async function deliverInviteEmail(invite, token, inviterName) {
   try {
     result = await sendEmail(settings, { to: invite.email, ...message });
   } catch (error) {
-    result = { delivered: false, status: 'Failed', error: error.message };
+    console.error('[invitations] email delivery threw:', error);
+    result = { delivered: false, status: 'Failed', error: 'Email delivery failed' };
+  }
+  if (result && result.error && result.error !== 'Email delivery failed') {
+    console.error('[invitations] email delivery failed:', result.error);
+    result = { ...result, error: 'Email delivery failed' };
   }
   await mutateDb((db) => {
     const outbox = db.emailOutbox || (db.emailOutbox = []);

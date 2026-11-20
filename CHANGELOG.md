@@ -7,6 +7,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Streaming Export Engine (P2-BE1-06, `backend/routes/export.js`, `backend/services/exportStream.js`, `backend/__tests__/streaming-export.test.js`):**
+  - Added authenticated, tenant-scoped `GET /api/export/:resource` for CSV/JSON downloads with strict resource/format/column validation, sanitized `Content-Disposition` filenames, `X-Content-Type-Options: nosniff`, and rate limiting.
+  - Implemented memory-bounded streaming (batched reads, RFC-4180 CSV/streaming JSON serialization, backpressure-aware writes, and client-disconnect abort handling) so large exports do not materialize full result sets in memory.
+  - Enforced RBAC field-permission masking on exports (masked/hidden fields excluded from default output, stripped from emitted records, and rejected with 403 when explicitly requested) and server-derived workspace scoping across Postgres/JSON-store paths.
+  - Hardened unexpected route/service error responses to avoid leaking internal details while preserving existing validation/auth/permission contracts.
 - **Team Invitations (P2-BE1-05, `backend/routes/invitations.js`, `backend/services/invitations.js`, `backend/db/migrations/016_invitations.sql`):**
   - Added tenant-scoped team invitation management for admins (`POST/GET /api/team/invites`, resend/revoke, with legacy `/api/users/invite` and `/api/users/invites` aliases): cryptographic 256-bit tokens stored only as SHA-256 hashes, derived expiry, resend rotation (+7 days), soft revocation/single-use acceptance, and sanitized responses that never expose token secrets.
   - Added public token validation and acceptance (`GET /api/invitations/:token`, `POST /api/invitations/accept`, alias `POST /api/auth/accept-invite`) with rate limiting, tenant/workspace binding, email-bound redemption, role assignment (`admin|member|viewer`, no Owner escalation), and #450-compatible session issuance (`refreshToken` + cookie).

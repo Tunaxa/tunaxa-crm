@@ -60,6 +60,7 @@ import registerQuoteRoutes from "./routes/quotes.js";
 import registerContactRoutes from "./routes/contacts.js";
 import registerGoalRoutes from "./routes/goals.js";
 import registerUserPreferencesRoutes from "./routes/userPreferences.js";
+import registerExportRoutes from "./routes/export.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { originGuard } from "./middleware/csrf.js";
 import {
@@ -304,6 +305,7 @@ registerContactRoutes(app);
 registerGoalRoutes(app);
 registerSchemaRoutes(app);
 registerUserPreferencesRoutes(app);
+registerExportRoutes(app);
 registerInvitationRoutes(app);
 registerResourceRoutes(app);
 

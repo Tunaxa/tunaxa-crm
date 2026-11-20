@@ -54,7 +54,8 @@ export default function registerUserPreferencesRoutes(app) {
       const storedSettings = db.settings?.userPreferences?.[req.user.id];
       res.json({ preferences: effectivePreferences(user, storedSettings) });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('[userPreferences] read failed:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -77,7 +78,8 @@ export default function registerUserPreferencesRoutes(app) {
       if (!saved) return res.status(404).json({ error: 'User not found' });
       res.json({ preferences: saved });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('[userPreferences] save failed:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   };
 

@@ -409,7 +409,8 @@ export async function runImport({
       await persist(record);
       importedCount += 1;
     } catch (err) {
-      const message = `Could not be saved: ${err.message}`;
+      console.error(`[import] failed to persist a ${resource} row:`, err);
+      const message = "Could not be saved";
       errors.push({ row: row.index, errors: [message] });
       failedRows.push({ values: row.values, errors: [message] });
       if (failureStrategy === "abort") break;
