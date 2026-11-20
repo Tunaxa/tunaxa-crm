@@ -1,23 +1,3 @@
-// CSV import service (P2-BE2-04).
-//
-// Pure, transport-agnostic engine behind CSV import routes:
-//
-//   * `parseCsv`            - RFC-4180-ish reader (BOM, quoted commas, escaped
-//                             quotes, embedded newlines, CRLF/LF).
-//   * `buildDefaultMapping` - case-insensitive auto-mapping of CSV headers onto
-//                             the reflected resource schema (`services/schema.js`).
-//   * `resolveMapping`      - validates an explicit `{ "CSV Header": "field" }`
-//                             mapping, rejecting unknown/dangerous columns/fields.
-//   * `validateRecord`      - schema-driven row validation (required, email,
-//                             numeric/positive, date, select options).
-//   * `runImport`           - one pass over the rows that produces metrics and
-//                             an error CSV. When `dryRun` is true `persist` is
-//                             never called, so the caller can guarantee zero
-//                             writes to the database or JSON store.
-//
-// Nothing here touches Express, Postgres or the JSON store, which keeps the
-// dry-run isolation guarantee structural rather than a matter of discipline.
-
 import { id } from "../helpers.js";
 
 export const IMPORT_RESOURCES = ["contacts", "leads", "companies", "deals"];
@@ -28,12 +8,8 @@ export const ERROR_REPORT_TTL_MS = 30 * 60 * 1000;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Per-resource numeric fields that must be strictly positive when present.
-// Deal value is the canonical example: a negative or zero pipeline amount is
-// almost always a bad export rather than a legitimate record.
 const POSITIVE_NUMBER_FIELDS = { deals: ["value"] };
 
-// Mapping targets that must never be set from untrusted CSV input.
 export const FORBIDDEN_MAPPING_KEYS = new Set([
   "__proto__",
   "constructor",
@@ -42,10 +18,6 @@ export const FORBIDDEN_MAPPING_KEYS = new Set([
   "workspace_id",
 ]);
 
-// Friendly aliases layered on top of the schema's own name/label/mapsTo so
-// "Work Email", "Full Name" or "Amount" land on the right field without the
-// caller having to spell out a mapping. Keyed by the schema field name; only
-// consulted when that field exists on the target resource.
 const FIELD_ALIASES = {
   email: ["e-mail", "work email", "email address", "e mail"],
   phone: ["telephone", "mobile", "cell", "cell phone", "phone number", "tel"],
@@ -76,7 +48,6 @@ const FIELD_ALIASES = {
   closeDate: ["expected close date", "close date"],
 };
 
-/** Error carrying the HTTP status the route should surface. */
 export class ImportError extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -85,7 +56,6 @@ export class ImportError extends Error {
   }
 }
 
-/** Strip case and punctuation so "Work Email", "work_email" and "WorkEmail" match. */
 function normalizeToken(value) {
   return String(value ?? "")
     .toLowerCase()
@@ -96,10 +66,6 @@ function isForbiddenMappingKey(value) {
   return FORBIDDEN_MAPPING_KEYS.has(normalizeToken(value));
 }
 
-// Fields a caller may set from a CSV: everything except the system-managed
-// columns (`id`, timestamps). Relation/id fields stay mappable explicitly but
-// are excluded from automatic matching so a "Company" text column never lands
-// a company *name* in a `*_id` column.
 function mappableFields(schema) {
   return (schema?.fields || []).filter(
     (field) =>
@@ -119,14 +85,6 @@ function addToken(lookup, raw, fieldName) {
   lookup.set(token, fieldName);
 }
 
-/**
- * Read a CSV string into `{ headers, rows }`.
- *
- * `rows[i]` is `{ index, values }` where `index` is the 1-based data-row number
- * (the header is not counted) and `values` are the raw cells in header order.
- * A row whose length does not match the header is kept as-is; `runImport`
- * flags it rather than silently dropping it.
- */
 export function parseCsv(text) {
   if (typeof text !== "string") {
     throw new ImportError("CSV content must be a string");
@@ -158,8 +116,6 @@ export function parseCsv(text) {
       continue;
     }
     if (ch === '"') {
-      // Only a quote at the start of a field opens a quoted section; elsewhere
-      // it is a literal (lenient with malformed exports).
       if (field.length === 0) {
         inQuotes = true;
         i += 1;
@@ -213,12 +169,6 @@ export function parseCsv(text) {
   return { headers, rows };
 }
 
-/**
- * Intelligent default mapping: match each header to a schema field by name,
- * label, `mapsTo` or a friendly alias, all case/punctuation-insensitively.
- * Relation and `*Id` fields are skipped (see `isAutoMatchable`); a name or
- * label always beats an alias, and the first claim on a token wins.
- */
 export function buildDefaultMapping(headers, schema) {
   const fields = schema?.fields ? schema.fields.filter((f) => !f.readOnly) : [];
   const lookup = new Map();
@@ -244,11 +194,6 @@ export function buildDefaultMapping(headers, schema) {
   return mapping;
 }
 
-/**
- * Turn an explicit (or default) mapping into `[{ index, field }]` assignments.
- * Throws `ImportError(400)` for a mapping that names a column the CSV does not
- * have or a field the resource does not expose (including read-only fields).
- */
 export function resolveMapping(mapping, headers, schema) {
   if (mapping === undefined || mapping === null) {
     const detected = buildDefaultMapping(headers, schema);
@@ -297,7 +242,6 @@ function toAssignments(mapping, headers, schema) {
   return assignments;
 }
 
-/** Project one parsed row onto a record keyed by public field names. */
 export function mapRow(row, assignments) {
   const record = {};
   for (const { index, field } of assignments) {
@@ -308,10 +252,6 @@ export function mapRow(row, assignments) {
   return record;
 }
 
-/**
- * Validate one mapped record against the reflected schema. Returns an array of
- * human-readable messages (empty when the row is valid).
- */
 export function validateRecord(record, schema, resource) {
   const errors = [];
   const positive = POSITIVE_NUMBER_FIELDS[resource] || [];
@@ -365,10 +305,6 @@ const escapeCell = (value) => {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 
-/**
- * Render the failed rows in their original column layout with an appended
- * `_errors` column. Pure and download-ready (`text/csv`).
- */
 export function buildErrorCsv(headers, failedRows) {
   const lines = [[...headers, "_errors"].map(escapeCell).join(",")];
   for (const row of failedRows) {
@@ -414,11 +350,6 @@ export function createErrorReportStore({
   };
 }
 
-/**
- * Run a complete import. Returns metrics plus the error CSV; never persists
- * when `dryRun` is true. `persist(record)` is supplied by the caller so this
- * function stays free of database coupling.
- */
 export async function runImport({
   csv,
   resource,

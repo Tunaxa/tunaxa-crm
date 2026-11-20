@@ -11,9 +11,6 @@ import {
   validateRecord,
 } from "../services/csvImport.js";
 
-// CSV import backend (P2-BE2-04). Integration tests over the HTTP surface:
-// RFC4180 parsing/mapping/validation, dry-run isolation, real-run persistence,
-// tenant isolation/error-report scoping, RBAC/write-field masks, and bounds.
 
 let app;
 let ownerToken;
@@ -79,7 +76,6 @@ async function login(appInstance, email, password = "test123") {
 }
 
 async function cleanupTenantState() {
-  // Defensive cleanup for tables/state not fully reset by base setup in some envs.
   await query("DELETE FROM contacts WHERE workspace_id IN ($1,$2)", [ACME, GLOBEX]).catch(() => {});
   await query("DELETE FROM leads WHERE workspace_id IN ($1,$2)", [ACME, GLOBEX]).catch(() => {});
   await query("DELETE FROM companies WHERE workspace_id IN ($1,$2)", [ACME, GLOBEX]).catch(() => {});
@@ -134,7 +130,7 @@ beforeAll(async () => {
   await resetTestDb();
   const mod = await import("../server.js");
   app = mod.app;
-  await seedTestUser(); // default workspace owner (Tenant A/default)
+  await seedTestUser();
   ownerToken = await loginAs(app);
 
   await ensureTenantUser({
@@ -321,7 +317,6 @@ describe("dry-run vs real-run and persistence", () => {
 
 describe("tenant isolation", () => {
   it("stamps imported records with caller workspaceId and ignores/rejects spoofed workspace fields", async () => {
-    // Spoofed workspace_id column/mapping must not place record in another tenant.
     const spoofCsv = "First Name,Email,Workspace Id\nMallory,spoof@example.com,ws_globex\n";
     const res = await doImport(
       "contacts",
@@ -332,7 +327,6 @@ describe("tenant isolation", () => {
       },
       acmeMemberToken,
     );
-    // Mapping to forbidden tenant override key should be rejected.
     expect(res.status).toBe(400);
     expect((res.body.error || "").toLowerCase()).toMatch(/forbidden|unknown|read-only|workspace/);
 

@@ -1,15 +1,3 @@
-// CSV import router (P2-BE2-04).
-//
-//   POST /api/import/:resource          multipart file OR JSON { csv, mapping, dryRun, failureStrategy }
-//   GET|POST /api/import/preview        header + first rows (multipart file or JSON { csv })
-//   GET  /api/import/errors/:reportId   download the generated error CSV (tenant-scoped)
-//   POST /api/import/error-report       download by { reportId } (POST-friendly alias)
-//
-// The heavy lifting lives in `services/csvImport.js`, which is pure: a dry run
-// never calls the persistence callback, so "zero writes during a dry run" is a
-// property of the code path rather than an assumption. Error reports are held
-// in an in-memory registry (also no writes) and are scoped to the requesting
-// tenant.
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -64,8 +52,6 @@ function safeUploadPath(filePath) {
   const resolved = path.resolve(filePath);
   const root = uploadRoot.endsWith(path.sep) ? uploadRoot : `${uploadRoot}${path.sep}`;
   if (resolved !== uploadRoot && !resolved.startsWith(root)) return null;
-  // Reconstruct from a server-owned directory + basename so downstream file
-  // operations never use attacker-influenced path segments.
   return path.join(uploadRoot, path.basename(resolved));
 }
 
@@ -248,7 +234,6 @@ async function validateDealRecords(records, req) {
 }
 
 export default function registerImportRoutes(app, upload) {
-  // Literal routes first so "/:resource" never shadows them.
   app.get(
     "/api/import/preview",
     auth,
@@ -335,9 +320,6 @@ export default function registerImportRoutes(app, upload) {
             .json({ error: `Schema for "${resource}" is unavailable` });
         }
 
-        // Parse/map once for security checks (field masks, tenant overrides,
-        // deal pipeline rules) on the effective records. Dry-run execution
-        // below remains the source for user-visible metrics.
         const { headers, rows } = parseCsv(csv);
         if (headers.length === 0)
           throw new ImportError("CSV must include a header row");
@@ -382,8 +364,6 @@ export default function registerImportRoutes(app, upload) {
 
         let defaultPipelineId = null;
         if (resource === "deals") {
-          // Reject invalid/cross-tenant pipeline IDs even when rows have other
-          // schema errors, so imports never accept a foreign/unknown pipeline.
           const tenant = tenantOf(req);
           const defs = await listPipelineDefinitions(tenant);
           const byId = new Map(defs.map((d) => [d.id, d]));
@@ -405,7 +385,6 @@ export default function registerImportRoutes(app, upload) {
           if (dealCheck.failure) {
             return res.status(dealCheck.failure.status).json(dealCheck.failure.body);
           }
-          // keep computed default (in case validateDealRecords recalculated consistently)
           defaultPipelineId = dealCheck.defaultPipelineId || defaultPipelineId;
         }
 
@@ -550,7 +529,7 @@ async function handlePreview(req, res) {
         const schema = buildResourceSchema(resource, { db });
         if (schema) defaultMapping = buildDefaultMapping(headers, schema);
       } catch {
-        // preview should still succeed without schema hints
+        void 0;
       }
     }
     return res.json({
