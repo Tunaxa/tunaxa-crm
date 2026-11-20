@@ -349,6 +349,18 @@ export default function registerAuthRoutes(app) {
       if (typeof pageSize === 'number' && Number.isFinite(pageSize) && pageSize > 0) next.tablePageSize = pageSize;
       db.settings.userPreferences[req.user.id] = next;
 
+      if (user.preferences && typeof user.preferences === 'object' && !Array.isArray(user.preferences)) {
+        const up = { ...user.preferences };
+        if (theme === 'light' || theme === 'dark') up.theme = theme;
+        if (typeof sidebarCollapsed === 'boolean') up.sidebarCollapsed = sidebarCollapsed;
+        if (typeof pageSize === 'number' && Number.isFinite(pageSize) && pageSize > 0) {
+          up.tablePageSize = pageSize;
+          up.pageSize = pageSize;
+        }
+        user.preferences = up;
+        user.updatedAt = now();
+      }
+
       return next;
     });
 
