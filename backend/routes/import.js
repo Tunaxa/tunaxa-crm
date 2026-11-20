@@ -544,6 +544,7 @@ async function handlePreview(req, res) {
     if (err instanceof ImportError) {
       return res.status(err.status).json({ error: err.message });
     }
-    return res.status(400).json({ error: `Preview failed: ${err.message}` });
+    console.error("[import] preview failed:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }

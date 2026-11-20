@@ -115,7 +115,8 @@ export default function registerSchemaRoutes(app) {
 
       res.json(schema);
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('[schema] reflection failed:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 }
