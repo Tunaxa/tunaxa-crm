@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
+import crypto from 'node:crypto';
 import { resetTestDb, cleanupTestDb, seedTestUser, loginAs } from './setup.js';
 import { mutateDb, readDb } from '../store.js';
-import { sendEmail } from '../services/smtp.js';
+import { sendEmail } from '../services/email.js';
 
 // Never send real email during tests; capture the payload instead.
-vi.mock('../services/smtp.js', async (importOriginal) => {
+vi.mock('../services/email.js', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
@@ -17,7 +18,10 @@ let app;
 let token;
 let inviteToken;
 
-const ACCEPT_BASE = 'https://app.example.com/accept-invite?token=';
+const tokenFromJoinUrl = (url) => {
+  const match = String(url || '').match(/token=([a-f0-9]{64})/i);
+  return match ? match[1] : null;
+};
 
 beforeAll(async () => {
   await resetTestDb();
@@ -30,13 +34,9 @@ beforeAll(async () => {
   token = await loginAs(app);
 });
 
-beforeEach(() => {
-  sendEmail.mockClear();
-});
-
 afterAll(() => cleanupTestDb());
 
-describe('Team invitations', () => {
+describe('Team invitations (compat endpoints)', () => {
   it('POST /api/users/invite requires authentication and admin role', async () => {
     const noAuth = await request(app).post('/api/users/invite').send({ email: 'x@example.com' });
     expect(noAuth.status).toBe(401);
@@ -76,35 +76,40 @@ describe('Team invitations', () => {
     expect(res.status).toBe(409);
   });
 
-  it('POST /api/users/invite persists the invite and emails the accept link', async () => {
+  it('POST /api/users/invite persists a hashed invite and provides a join link', async () => {
+    sendEmail.mockClear();
     const res = await request(app)
       .post('/api/users/invite')
       .set('Authorization', `Bearer ${token}`)
       .send({ email: 'New.Hire@Example.com' })
       .expect(201);
-    expect(res.body.ok).toBe(true);
-    expect(res.body.email).toBe('new.hire@example.com');
-    expect(new Date(res.body.expiresAt).getTime()).toBeGreaterThan(
-      Date.now() + 47 * 60 * 60 * 1000,
-    );
-    expect(res.body.token).toBeUndefined();
+
+    expect(res.body.invite).toBeTruthy();
+    expect(res.body.invite.email).toBe('new.hire@example.com');
+    expect(res.body.invite.status).toBe('pending');
+    expect(res.body.invite).not.toHaveProperty('token');
+    expect(res.body.invite).not.toHaveProperty('tokenHash');
+    expect(new Date(res.body.invite.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    expect(res.body.joinUrl).toContain('https://app.example.com/accept-invite?token=');
+
+    inviteToken = tokenFromJoinUrl(res.body.joinUrl);
+    expect(inviteToken).toMatch(/^[a-f0-9]{64}$/i);
 
     const db = await readDb();
-    expect(db.invites).toHaveLength(1);
-    const invite = db.invites[0];
+    const invitations = db.invitations || [];
+    expect(invitations).toHaveLength(1);
+    const invite = invitations[0];
     expect(invite.email).toBe('new.hire@example.com');
-    expect(invite.token).toMatch(/^[0-9a-f]{64}$/);
-    expect(invite.createdBy).toBe('usr_test');
+    expect(invite.token).toBeUndefined();
+    expect(invite.tokenHash).toBe(crypto.createHash('sha256').update(inviteToken).digest('hex'));
+    expect(invite.invitedBy).toBe('usr_test');
     expect(invite.createdAt).toBeTruthy();
 
     expect(sendEmail).toHaveBeenCalledTimes(1);
     const mail = sendEmail.mock.calls[0][1];
     expect(mail.to).toBe('new.hire@example.com');
-    expect(mail.subject).toContain('invited');
-    expect(mail.text).toContain(ACCEPT_BASE);
-    const match = mail.text.match(/token=([0-9a-f]{64})/);
-    expect(match).toBeTruthy();
-    inviteToken = match[1];
+    expect(String(mail.subject || '')).toMatch(/invited/i);
+    expect(String(mail.text || '') + String(mail.html || '')).toContain(inviteToken);
   });
 
   it('POST /api/auth/accept-invite provisions the member and returns a session', async () => {
@@ -113,8 +118,10 @@ describe('Team invitations', () => {
       name: '  New Hire  ',
       password: 'secret123',
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(201);
     expect(res.body.token).toBeTruthy();
+    expect(res.body.refreshToken).toBeTruthy();
+    expect(typeof res.body.expiresIn).toBe('number');
     expect(res.body.user.name).toBe('New Hire');
     expect(res.body.user.email).toBe('new.hire@example.com');
     expect(res.body.user.role).toBe('member');
@@ -134,7 +141,8 @@ describe('Team invitations', () => {
     expect(member).toBeTruthy();
     expect(member.role).toBe('member');
     expect(member.status).toBe('Active');
-    expect(db.invites.some((entry) => entry.token === inviteToken)).toBe(false);
+    const invite = (db.invitations || []).find((i) => i.email === 'new.hire@example.com');
+    expect(invite?.status).toBe('accepted');
   });
 
   it('POST /api/auth/accept-invite rejects a used token', async () => {
@@ -143,7 +151,7 @@ describe('Team invitations', () => {
       name: 'Again',
       password: 'secret123',
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
   });
 
   it('POST /api/auth/accept-invite rejects an unknown token', async () => {
@@ -152,7 +160,7 @@ describe('Team invitations', () => {
       name: 'Ghost',
       password: 'secret123',
     });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
   });
 
   it('POST /api/auth/accept-invite requires name and password', async () => {
@@ -171,14 +179,17 @@ describe('Team invitations', () => {
 
   it('POST /api/auth/accept-invite rejects an expired token', async () => {
     await mutateDb((db) => {
-      db.invites = db.invites || [];
-      db.invites.push({
+      db.invitations = db.invitations || [];
+      db.invitations.push({
         id: 'inv_expired',
         email: 'expired@example.com',
-        token: 'a'.repeat(64),
+        role: 'member',
+        tokenHash: crypto.createHash('sha256').update('a'.repeat(64)).digest('hex'),
+        status: 'pending',
+        workspaceId: 'default',
         expiresAt: new Date(Date.now() - 60_000).toISOString(),
         createdAt: new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString(),
-        createdBy: 'usr_test',
+        invitedBy: 'usr_test',
       });
     });
     const res = await request(app).post('/api/auth/accept-invite').send({
@@ -191,14 +202,17 @@ describe('Team invitations', () => {
 
   it('POST /api/auth/accept-invite rejects an invite whose email already has a user', async () => {
     await mutateDb((db) => {
-      db.invites = db.invites || [];
-      db.invites.push({
+      db.invitations = db.invitations || [];
+      db.invitations.push({
         id: 'inv_dup',
         email: 'member-one@example.com',
-        token: 'b'.repeat(64),
+        role: 'member',
+        tokenHash: crypto.createHash('sha256').update('b'.repeat(64)).digest('hex'),
+        status: 'pending',
+        workspaceId: 'default',
         expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
         createdAt: new Date().toISOString(),
-        createdBy: 'usr_test',
+        invitedBy: 'usr_test',
       });
     });
     const res = await request(app).post('/api/auth/accept-invite').send({

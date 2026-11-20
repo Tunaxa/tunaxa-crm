@@ -7,6 +7,9 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Team Invitations (P2-BE1-05, `backend/routes/invitations.js`, `backend/services/invitations.js`, `backend/db/migrations/016_invitations.sql`):**
+  - Added tenant-scoped team invitation management for admins (`POST/GET /api/team/invites`, resend/revoke, with legacy `/api/users/invite` and `/api/users/invites` aliases): cryptographic 256-bit tokens stored only as SHA-256 hashes, derived expiry, resend rotation (+7 days), soft revocation/single-use acceptance, and sanitized responses that never expose token secrets.
+  - Added public token validation and acceptance (`GET /api/invitations/:token`, `POST /api/invitations/accept`, alias `POST /api/auth/accept-invite`) with rate limiting, tenant/workspace binding, email-bound redemption, role assignment (`admin|member|viewer`, no Owner escalation), and #450-compatible session issuance (`refreshToken` + cookie).
 - **CSV Import Engine (`backend/routes/import.js`, `backend/services/csvImport.js`):**
   - Added tenant-scoped CSV import for `contacts`, `leads`, `companies`, and `deals` via `POST /api/import/:resource` with JSON or multipart uploads, schema-aware default/custom column mapping, validation, and RFC4180 parsing (BOM, quoted commas/escaped quotes, embedded newlines, CRLF/LF).
   - Enforced strict guards and security controls: `auth` + `requireRole('admin','member')`, 5 MB / 1000-row limits, explicit resource allowlist, rejection of dangerous/tenant-override mapping keys, server-derived workspace stamping, RBAC write-field-mask enforcement, and deal pipeline validation/defaulting.

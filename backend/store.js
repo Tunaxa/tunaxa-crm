@@ -35,6 +35,8 @@ export const EMPTY_DB = {
   messages: [],
   sequences: [],
   team: [],
+  invitations: [],
+  emailOutbox: [],
   customFields: [],
   audit: [],
   lists: [],
