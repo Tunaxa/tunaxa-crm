@@ -9,7 +9,11 @@ const SORT_COLUMNS = new Set([
   "stage",
   "priority",
   "source",
+  "first_response_due_at",
+  "sla_due_at",
+  "sla_breached",
   "resolved_at",
+  "closed_at",
 ]);
 const UPDATE_FIELDS = [
   "subject",
@@ -21,11 +25,24 @@ const UPDATE_FIELDS = [
   "contact_email",
   "comments",
   "first_response_at",
+  "first_response_due_at",
   "resolved_at",
   "resolved_by",
+  "sla_due_at",
+  "sla_breached",
+  "closed_at",
+  "stage_history",
   "status",
   "custom_fields",
 ];
+const TIMESTAMP_FIELDS = new Set([
+  "first_response_at",
+  "first_response_due_at",
+  "resolved_at",
+  "sla_due_at",
+  "closed_at",
+]);
+const JSONB_FIELDS = new Set(["comments", "stage_history", "custom_fields"]);
 
 function validatePositiveInteger(value, name) {
   if (!Number.isInteger(value) || value <= 0) {
@@ -56,6 +73,10 @@ function getSearchTerm(q) {
   return value.trim() ? `%${value}%` : "";
 }
 
+function blankTimestamp(value) {
+  return value === "" ? null : value;
+}
+
 export async function findAll({
   page = 1,
   limit = 20,
@@ -67,10 +88,7 @@ export async function findAll({
   workspaceId,
 } = {}) {
   const normalizedPage = validatePositiveInteger(page, "page");
-  const normalizedLimit = Math.min(
-    validatePositiveInteger(limit, "limit"),
-    100,
-  );
+  const normalizedLimit = Math.min(validatePositiveInteger(limit, "limit"), 100);
   const offset = (normalizedPage - 1) * normalizedLimit;
   const searchTerm = getSearchTerm(q);
   const { column, direction } = getSort(sortBy);
@@ -127,9 +145,6 @@ export async function findAll({
 }
 
 export async function findById(id, workspaceId) {
-  // The workspace predicate lives in the WHERE clause, not in a post-filter: a
-  // record belonging to another tenant has to be indistinguishable from one
-  // that does not exist.
   const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
     scoped
@@ -145,8 +160,10 @@ export async function create(data = {}) {
     `INSERT INTO tickets (
        workspace_id, subject, description, stage, priority, source, contact,
        contact_email, comments, first_response_at, resolved_at, resolved_by,
-       status, custom_fields
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       status, custom_fields, first_response_due_at, sla_due_at, sla_breached,
+       closed_at, stage_history
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+               $15, $16, $17, $18, $19)
      RETURNING *`,
     [
       data.workspace_id,
@@ -158,14 +175,16 @@ export async function create(data = {}) {
       data.contact,
       data.contact_email,
       toJsonb(data.comments, []),
-      // The legacy handler seeded these with empty strings, which a
-      // timestamptz column rejects. Normalize them to null so the column
-      // stays genuinely "not yet responded/resolved".
-      data.first_response_at === "" ? null : data.first_response_at,
-      data.resolved_at === "" ? null : data.resolved_at,
+      blankTimestamp(data.first_response_at),
+      blankTimestamp(data.resolved_at),
       data.resolved_by,
       data.status,
       toJsonb(data.custom_fields, {}),
+      blankTimestamp(data.first_response_due_at),
+      blankTimestamp(data.sla_due_at),
+      data.sla_breached === undefined ? false : data.sla_breached,
+      blankTimestamp(data.closed_at),
+      toJsonb(data.stage_history, []),
     ],
   );
   return result.rows[0] || null;
@@ -178,27 +197,19 @@ export async function update(id, data = {}, workspaceId) {
     allowedFields: UPDATE_FIELDS,
     data,
     workspaceId,
-    jsonbFields: ["custom_fields", "comments"],
-    jsonbFallback: {"custom_fields":"{}"},
-    serialize: (field, value) =>
-      (field === "first_response_at" || field === "resolved_at") && value === ""
-        ? null
-        : value,
+    jsonbFields: Array.from(JSONB_FIELDS),
+    jsonbFallback: { custom_fields: "{}", comments: "[]", stage_history: "[]" },
+    serialize: (field, value) => {
+      if (TIMESTAMP_FIELDS.has(field)) return blankTimestamp(value);
+      return value;
+    },
   });
   if (!statement) return null;
 
   const result = await query(statement.sql, statement.values);
   return result.rows[0] || null;
 }
-/**
- * Append a comment, newest first, in a single statement.
- *
- * The legacy handler read the row, unshifted onto the JS array, and wrote the
- * whole thing back. Two concurrent comments would lose one of them, so the
- * concatenation happens server side. The new element goes on the LEFT of `||`
- * because jsonb array concatenation appends on the right, and the legacy
- * ordering is newest-first.
- */
+
 export async function addComment(id, comment, workspaceId) {
   const scoped = workspaceId !== undefined && workspaceId !== null;
   const result = await query(
