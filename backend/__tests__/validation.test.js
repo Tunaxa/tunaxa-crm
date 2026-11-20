@@ -238,19 +238,21 @@ describe("Schema", () => {
       .get("/api/schema/leads")
       .set("Authorization", `Bearer ${token}`);
     const byKey = Object.fromEntries(res.body.fields.map(f => [f.key, f]));
-    expect(byKey.name).toMatchObject({ required: true, type: "text", maxLength: 255 });
-    expect(byKey.email).toMatchObject({ required: false, type: "email", maxLength: 255 });
-    expect(byKey.phone).toMatchObject({ type: "tel", maxLength: 30 });
-    expect(byKey.company).toMatchObject({ required: false, type: "text", maxLength: 255 });
+    expect(byKey.firstName).toMatchObject({ required: false, type: "string" });
+    expect(byKey.lastName).toMatchObject({ required: false, type: "string" });
+    expect(byKey.name).toMatchObject({ required: false, type: "string" });
+    expect(byKey.email).toMatchObject({ required: false, type: "email" });
+    expect(byKey.phone).toMatchObject({ required: false, type: "string" });
+    expect(byKey.companyName).toMatchObject({ required: false, type: "string" });
     expect(byKey.value).toMatchObject({ type: "number" });
   });
 
-  it("GET /api/schema/deals marks the title as a required text field", async () => {
+  it("GET /api/schema/deals marks the title as a required field", async () => {
     const res = await request(app)
       .get("/api/schema/deals")
       .set("Authorization", `Bearer ${token}`);
     const byKey = Object.fromEntries(res.body.fields.map(f => [f.key, f]));
-    expect(byKey.title).toMatchObject({ required: true, type: "text", maxLength: 255 });
+    expect(byKey.title).toMatchObject({ required: true, type: "string" });
   });
 
   it("GET /api/schema/leads includes custom field validation rules", async () => {

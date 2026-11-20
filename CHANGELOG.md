@@ -7,6 +7,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Schema Reflection API (`backend/routes/schema.js`, `backend/services/schema.js`):**
+  - Added tenant-scoped `GET /api/schema/:resource` (auth required) returning per-resource field metadata for `contacts`, `leads`, `companies`, `deals`, `tickets`, `quotes`, `tasks`, and `activities`, including `name`/`key`, `label`, `type`, `required`, `readOnly`, `options`, and mapping metadata so clients can render forms/tables without hardcoded field lists.
+  - Resolved dynamic vocabulary from authoritative sources: ticket stages from `services/ticket-stages.js`, ticket SLA priorities from `services/sla.js`, and deal stages/pipeline options from tenant-scoped pipeline definitions (Postgres/JSON fallback/default).
+  - Scoped reflected custom fields and pipeline definitions by tenant, enforced strict 404 handling for unknown/prototype-key resources, excluded field-permission-masked fields from reflected metadata, and kept `schema.customFields` compatibility for existing web consumers.
+  - Registered schema routes ahead of generic `/:resource` handling, retired the legacy 4-object settings schema handler, and added `GENERIC_ALIASES` (`firstName`/`lastName`) for contacts/leads in legacy shape mapping.
 - **Ticket Kanban Stage Model & SLA Breach Engine (`backend/routes/tickets.js`, `backend/services/ticket-stages.js`, `backend/services/sla.js`, `backend/db/migrations/014_ticket_kanban_sla.sql`):**
   - Implemented a tenant-scoped Kanban stage state machine for tickets (`New`, `In Progress`, `Awaiting Client`, `Resolved`, dynamic `Closed`) with validated/idempotent transitions, stage history, and transition side effects (`firstResponseAt`, `resolvedAt`, `closedAt`).
   - Added a pure SLA engine for priority-tier due-date computation and first-response/resolution breach evaluation, persisted due dates/breach state, and tenant-scoped `GET /api/tickets/sla/summary` plus enriched ticket detail/read-time SLA fields.
