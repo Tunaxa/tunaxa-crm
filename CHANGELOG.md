@@ -7,6 +7,13 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Data-Driven Module Navigation (`backend/routes/modules.js`, `backend/services/navigation.js`):**
+  - Added authenticated `GET /api/modules` returning `{ success: true, modules: [...] }` — the ordered navigation a signed-in user may see, so clients no longer hard-code the sidebar.
+  - Each entry is the canonical shape `{ id, label, path, icon, order, section, minRole }`; the registry covers Core/Workspace (`dashboard` `/`, `contacts` `/contacts`, `leads` `/leads`, `companies` `/companies`, `deals` `/deals`), Analytics (`reports` `/reports`) and Administration/Team (`team` `/team`, `settings` `/settings`, `import_export` `/import`).
+  - The role visibility matrix is data, not branches: `admin` sees everything; `member` sees the operational CRM modules, dashboard, reports and bulk import/export but not team administration or workspace settings; `viewer` is restricted to read-only views (dashboard, contacts, companies, deals, standard reports) and never sees administration or import/export.
+  - The pure `getNavigationForUser(user)` helper fails closed: a missing, unrecognized or non-string role degrades to the viewer set (the safe minimum) instead of widening access. `Owner`/`owner` — admin-equivalents in `middleware/rbac.js` — resolve to `admin` rather than degrading. Results are fresh copies sorted by section then `order`.
+  - The router logs failures internally (`console.error('[modules] query failed:', error)`) and answers `500 { error: 'Internal server error' }` with no stack trace or internal path. Registered ahead of the generic `/api/:resource` router in `server.js` so `/api/modules` is never read as a `modules` collection.
+  - Added `backend/__tests__/modules-navigation.test.js` covering the 401 path, the admin/member/viewer matrices, graceful degradation for unknown/missing roles, the `Owner` alias, the response contract shape/types, deterministic section-then-order sorting, registry immutability and the pure-helper fallbacks.
 - **Streaming Export Engine (P2-BE1-06, `backend/routes/export.js`, `backend/services/exportStream.js`, `backend/__tests__/streaming-export.test.js`):**
   - Added authenticated, tenant-scoped `GET /api/export/:resource` for CSV/JSON downloads with strict resource/format/column validation, sanitized `Content-Disposition` filenames, `X-Content-Type-Options: nosniff`, and rate limiting.
   - Implemented memory-bounded streaming (batched reads, RFC-4180 CSV/streaming JSON serialization, backpressure-aware writes, and client-disconnect abort handling) so large exports do not materialize full result sets in memory.
