@@ -33,7 +33,7 @@ jobs:
       - name: Build & Push Backend
         uses: docker/build-push-action@v6
         with:
-          context: backend
+          context: ./Dockerfile
           push: true
           tags: |
             ghcr.io/tunaxa/tunaxa-crm-backend:beta
