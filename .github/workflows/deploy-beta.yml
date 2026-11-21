@@ -1,0 +1,75 @@
+name: Deploy CRM Beta
+
+on:
+  push:
+    branches:
+      - dev
+
+concurrency:
+  group: crm-beta-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build & Push Beta Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Code (beta)
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR 
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Backend
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: |
+            ghcr.io/tunaxa/tunaxa-crm-backend:beta
+            ghcr.io/tunaxa/tunaxa-crm-backend:beta-${{ github.sha }}
+
+      - name: Build & Push Frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=https://api-beta-crm.tunaxa.com
+          tags: |
+            ghcr.io/tunaxa/tunaxa-crm-frontend:beta
+            ghcr.io/tunaxa/tunaxa-crm-frontend:beta-${{ github.sha }}
+
+  deploy:
+    name: Deploy to VPS
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Remote SSH Deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            set -e
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            cd /opt/tunaxa-crm/beta
+            export BACKEND_IMAGE=ghcr.io/tunaxa/tunaxa-crm-backend:beta-${{ github.sha }}
+            export FRONTEND_IMAGE=ghcr.io/tunaxa/tunaxa-crm-frontend:beta-${{ github.sha }}
+            docker compose pull backend frontend
+            docker compose up -d postgres
+            docker compose run --rm --no-deps backend npm run db:deploy
+            docker compose up -d --no-deps backend frontend
+            docker image prune -f
