@@ -11,44 +11,34 @@ concurrency:
 
 jobs:
   build-and-push:
-    name: Build & Push Beta Images
+    name: Build & Push Beta Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Checkout Code (beta)
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR 
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & Push Backend
+      - name: Build & Push Unified CRM Image
         uses: docker/build-push-action@v6
         with:
-          context: ./Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
           tags: |
-            ghcr.io/tunaxa/tunaxa-crm-backend:beta
-            ghcr.io/tunaxa/tunaxa-crm-backend:beta-${{ github.sha }}
-
-      - name: Build & Push Frontend
-        uses: docker/build-push-action@v6
-        with:
-          context: frontend
-          push: true
-          build-args: |
-            NEXT_PUBLIC_API_URL=https://api-beta-crm.tunaxa.com
-          tags: |
-            ghcr.io/tunaxa/tunaxa-crm-frontend:beta
-            ghcr.io/tunaxa/tunaxa-crm-frontend:beta-${{ github.sha }}
+            ghcr.io/tunaxa/tunaxa-crm:beta
+            ghcr.io/tunaxa/tunaxa-crm:beta-${{ github.sha }}
 
   deploy:
     name: Deploy to VPS
@@ -66,10 +56,9 @@ jobs:
             set -e
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             cd /opt/tunaxa-crm/beta
-            export BACKEND_IMAGE=ghcr.io/tunaxa/tunaxa-crm-backend:beta-${{ github.sha }}
-            export FRONTEND_IMAGE=ghcr.io/tunaxa/tunaxa-crm-frontend:beta-${{ github.sha }}
-            docker compose pull backend frontend
+            export CRM_IMAGE=ghcr.io/tunaxa/tunaxa-crm:beta-${{ github.sha }}
+            docker compose pull crm
             docker compose up -d postgres
-            docker compose run --rm --no-deps backend npm run db:deploy
-            docker compose up -d --no-deps backend frontend
+            docker compose run --rm --no-deps crm node run-migrations.js
+            docker compose up -d --no-deps crm
             docker image prune -f
