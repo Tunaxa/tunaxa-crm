@@ -7,6 +7,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **IMAP Inbound Sync Worker (`backend/services/imapSync.js`, `backend/workers/emailSync.js`, `backend/routes/emailSync.js`):**
+  - Added tenant-scoped IMAP inbound sync with RFC message parsing, workspace deduplication, thread reconstruction (`In-Reply-To`/`References`), contact/lead sender matching, and open-deal association on timeline activities.
+  - Added admin/member management endpoints `POST /api/email-sync/trigger` and `GET /api/email-sync/status` with workspace scoping, rate limiting, strict Zod validation, sanitized errors, and no credential exposure.
+  - Added SSRF host/port guards for IMAP client connections, per-workspace account resolution, per-account sync locking, cursor persistence, and Vitest-safe worker lifecycle.
+  - Added `017_email_message_tracking.sql` for message-id lookup indexes and expanded `backend/__tests__/imap-inbound-sync.test.js` coverage for isolation, SSRF, validation, and RBAC.
 - **Data-Driven Module Navigation (`backend/routes/modules.js`, `backend/services/navigation.js`):**
   - Added authenticated `GET /api/modules` returning `{ success: true, modules: [...] }` — the ordered navigation a signed-in user may see, so clients no longer hard-code the sidebar.
   - Each entry is the canonical shape `{ id, label, path, icon, order, section, minRole }`; the registry covers Core/Workspace (`dashboard` `/`, `contacts` `/contacts`, `leads` `/leads`, `companies` `/companies`, `deals` `/deals`), Analytics (`reports` `/reports`) and Administration/Team (`team` `/team`, `settings` `/settings`, `import_export` `/import`).
