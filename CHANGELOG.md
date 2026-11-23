@@ -7,6 +7,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Public Form Submission Hardening (`backend/routes/forms.js`, `backend/__tests__/form-hardening.test.js`):**
+  - Added rate-limited CORS preflight (`OPTIONS /api/forms/:permalink/submit`, 204) and CORS headers on public submit responses; exact normalized per-form `allowedOrigins`/`settings.allowedOrigins` matching with `Vary: Origin` and 403 for non-matching origins, wildcard `*` only when no allowlist is configured, and no `Access-Control-Allow-Credentials`.
+  - Added honeypot bot mitigation (`_hp`, `_gotcha`, `website`, `honeypot`) before validation/writes with convincing 200 drop and zero DB/store writes/counter increments; empty honeypot keys stripped from clean submissions.
+  - Added strict public-submit payload bounds/prototype-key rejection and sanitized 500 responses while preserving tenant-scoped form lookup/record creation and existing submission behavior.
 - **Atomic Pipeline Batch-Move (`backend/services/dealPipeline.js`, `backend/routes/deals.js`):**
   - Added tenant-scoped `POST /api/deals/batch-move` and `POST /api/deals/batch-stage` for atomic multi-deal stage transitions with `auth`, `requireRole('admin', 'member')`, `checkWriteFieldMask('deals')`, rate limiting, and strict Zod validation (bounded deduplicated deal IDs, unknown/prototype-key rejection).
   - Enforced all-or-nothing execution: Postgres row-locking transaction (`FOR UPDATE`, strict count verification, stage/probability/custom-field updates, stage-change activities, contact lifecycle update on Won, rollback on any failure) and JSON-store prevalidated single `mutateDb` mutation.

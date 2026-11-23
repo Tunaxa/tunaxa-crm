@@ -13,10 +13,6 @@ import { pgToLegacy, legacyToPg } from '../db/legacy-shape.js';
 
 const publicLimiter = createRateLimiter({ windowMs: 60_000, max: 120, prefix: 'forms' });
 
-// Mirrors the workspace_id DEFAULT on the tables (migration 003) and the
-// `req.user.workspaceId || 'default'` pattern the other PG routes use. Every
-// write has to set it explicitly: the column is nullable, so an omitted value
-// silently files the row under `default` instead of failing.
 const DEFAULT_WORKSPACE = 'default';
 
 function slugify(name) {
@@ -33,21 +29,128 @@ function filled(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
 
+const HONEYPOT_FIELDS = new Set(['_hp', '_gotcha', 'website', 'honeypot']);
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Accept, X-Requested-With',
+  'Access-Control-Max-Age': '86400',
+};
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function hasForbiddenKeys(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (hasForbiddenKeys(item)) return true;
+    }
+    return false;
+  }
+  for (const key of Object.keys(value)) {
+    if (FORBIDDEN_KEYS.has(key)) return true;
+    if (hasForbiddenKeys(value[key])) return true;
+  }
+  return false;
+}
+
+function applyCorsHeaders(res, origin) {
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', CORS_HEADERS['Access-Control-Allow-Methods']);
+  res.setHeader('Access-Control-Allow-Headers', CORS_HEADERS['Access-Control-Allow-Headers']);
+  res.setHeader('Access-Control-Max-Age', CORS_HEADERS['Access-Control-Max-Age']);
+}
+
+function normalizeOrigin(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+function resolveAllowedOrigins(form) {
+  const candidates = Array.isArray(form?.allowedOrigins)
+    ? form.allowedOrigins
+    : Array.isArray(form?.settings?.allowedOrigins)
+      ? form.settings.allowedOrigins
+      : null;
+  if (!candidates || candidates.length === 0) return null;
+  const origins = [];
+  for (const entry of candidates) {
+    const normalized = normalizeOrigin(entry);
+    if (normalized && !origins.includes(normalized)) origins.push(normalized);
+  }
+  return origins.length ? origins : null;
+}
+
+function resolveCorsOrigin(req, form) {
+  const allowed = resolveAllowedOrigins(form);
+  if (!allowed) return { ok: true, origin: null };
+  const requestOrigin = normalizeOrigin(req.headers.origin);
+  if (!requestOrigin || !allowed.includes(requestOrigin)) {
+    return { ok: false, origin: null };
+  }
+  return { ok: true, origin: requestOrigin };
+}
+
+function detectHoneypot(payload) {
+  for (const key of HONEYPOT_FIELDS) {
+    if (filled(payload[key])) return key;
+  }
+  return null;
+}
+
+function stripHoneypot(payload) {
+  for (const key of HONEYPOT_FIELDS) delete payload[key];
+}
+
+function validateSubmissionPayload(req) {
+  const body = req.body ?? {};
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { error: 'Invalid request' };
+  }
+  if (hasForbiddenKeys(body)) {
+    return { error: 'Invalid request' };
+  }
+  const payloadSource = Object.prototype.hasOwnProperty.call(body, 'payload') ? body.payload : body;
+  if (!payloadSource || typeof payloadSource !== 'object' || Array.isArray(payloadSource)) {
+    return { error: 'Invalid request' };
+  }
+  const keys = Object.keys(payloadSource);
+  if (keys.length > 50) {
+    return { error: 'Invalid request' };
+  }
+  for (const key of keys) {
+    if (typeof key !== 'string' || key.length > 128) {
+      return { error: 'Invalid request' };
+    }
+    const value = payloadSource[key];
+    if (typeof value === 'string') {
+      if (value.length > 10000) return { error: 'Invalid request' };
+    } else if (Array.isArray(value)) {
+      if (value.length > 100) return { error: 'Invalid request' };
+      for (const item of value) {
+        if (typeof item === 'string' && item.length > 10000) {
+          return { error: 'Invalid request' };
+        }
+      }
+    }
+  }
+  return { payload: { ...payloadSource } };
+}
+
 function fieldValue(payload, field) {
   if (payload[field.key] !== undefined) return payload[field.key];
   if (field.name && payload[field.name] !== undefined) return payload[field.name];
   return payload[field.label] ?? '';
 }
 
-// Leads and contacts moved to Postgres in migration 004, so progressive
-// profiling has to read the record from the repository. Reading db.leads here
-// would consult the (now empty) JSON store and treat every visitor as unknown,
-// which would show fields the visitor has already filled in.
-//
-// `workspaceId` is mandatory: the recordId arrives in an anonymous request body,
-// so without the filter a visitor holding a UUID from another workspace would
-// have that lead read (to learn which fields are filled) and then overwritten by
-// submitting the form.
 async function findKnown(recordId, workspaceId) {
   if (!recordId) return null;
   const lead = await repoFor('leads').findById(recordId, workspaceId);
@@ -56,13 +159,6 @@ async function findKnown(recordId, workspaceId) {
   return contact ? pgToLegacy(contact, 'contacts') : null;
 }
 
-// The public render/submit endpoints key off `permalink`, and a disabled form
-// has to be invisible to both, so the enabled check lives in the query.
-//
-// The raw row is returned alongside the legacy view because workspace_id is a
-// `hidden` mapping column: pgToLegacy strips it, but a public submission has no
-// req.user to read the workspace from and must write the lead/contact it creates
-// into the *form's* workspace.
 async function findForm(permalink) {
   const row = await repoFor('forms').findByPermalink(permalink);
   if (!row) return null;
@@ -95,12 +191,6 @@ function flattenForPublic(form) {
   };
 }
 
-// Leads and contacts predate RESOURCE_MAPPINGS, so legacyToPg() takes the
-// generic path for them: it splits `name` into first_name/last_name and leaves
-// every other key as-is. The repositories then insert only their own column
-// list, which means a form field that is not a lead/contact column has to be
-// routed into the custom_fields bag explicitly or it is silently dropped. The
-// JSON handler got this for free by spreading the record.
 const LEAD_COLUMNS = new Set([
   'workspace_id', 'first_name', 'last_name', 'email', 'phone', 'company_name',
   'status', 'source', 'value', 'owner_id', 'custom_fields',
@@ -110,13 +200,6 @@ const CONTACT_COLUMNS = new Set([
   'owner_id', 'custom_fields',
 ]);
 
-// Bucket submitted form values into real columns and the custom_fields bag.
-//
-// `existing` is the matched row's current bag. A partial submission must not
-// wipe fields it never carried: the JSON handler updated with
-// `{ ...record, ...mapped }`, so unrelated custom fields survived. Passing the
-// stored bag back in reproduces that, and real columns still win over the bag
-// because they are written to their own key.
 const IGNORED_KEYS = new Set(['id', 'createdAt', 'updatedAt', 'custom_fields']);
 
 function splitRecordValues(values, resource, existing = null) {
@@ -124,10 +207,6 @@ function splitRecordValues(values, resource, existing = null) {
   const record = {};
   const custom = { ...(existing || {}) };
   for (const [key, value] of Object.entries(values)) {
-    // The database owns the id and both timestamps. genericLegacyToPg drops the
-    // camelCase timestamps but passes `id` through, and either key would end up
-    // in the custom_fields bag here and then be stored as if a visitor had
-    // filled in a form field called "id".
     if (IGNORED_KEYS.has(key)) continue;
     if (key === 'name' || columns.has(key)) {
       record[key] = value;
@@ -140,9 +219,7 @@ function splitRecordValues(values, resource, existing = null) {
 }
 
 export default function registerFormRoutes(app) {
-  // ============ Public endpoints (no auth) ============
 
-  // Render a form for embedding; progressive profiling hides fields the visitor already filled.
   app.get('/api/forms/:permalink', publicLimiter, async (req, res) => {
     try {
       const found = await findForm(String(req.params.permalink || '').toLowerCase());
@@ -169,26 +246,75 @@ export default function registerFormRoutes(app) {
         }));
       res.json({ form: { ...flattenForPublic(form), fields } });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('[forms] Request failed', error?.message || error);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   });
 
-  // Submit a form submission.
+  app.options('/api/forms/:permalink/submit', publicLimiter, async (req, res) => {
+    const permalink = String(req.params.permalink || '').toLowerCase();
+    try {
+      const found = await findForm(permalink);
+      if (!found) {
+        applyCorsHeaders(res, null);
+        return res.status(404).json({ error: 'Form not found' });
+      }
+      const cors = resolveCorsOrigin(req, found.form);
+      if (!cors.ok) {
+        return res.status(403).json({ error: 'Origin not allowed' });
+      }
+      applyCorsHeaders(res, cors.origin);
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error('[forms] Preflight failed', error?.message || error);
+      applyCorsHeaders(res, null);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   app.post('/api/forms/:permalink/submit', publicLimiter, async (req, res) => {
     const permalink = String(req.params.permalink || '').toLowerCase();
     try {
       const found = await findForm(permalink);
-      if (!found) return res.status(404).json({ error: 'Form not found' });
+      if (!found) {
+        applyCorsHeaders(res, null);
+        return res.status(404).json({ error: 'Form not found' });
+      }
       const { form, workspaceId } = found;
+      const cors = resolveCorsOrigin(req, form);
+      if (!cors.ok) {
+        return res.status(403).json({ error: 'Origin not allowed' });
+      }
+      applyCorsHeaders(res, cors.origin);
 
-      const payload = { ...(req.body.payload || req.body || {}) };
+      const rawBody = req.body ?? {};
+      if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody) || hasForbiddenKeys(rawBody)) {
+        return res.status(400).json({ error: 'Invalid request' });
+      }
+      const rawPayload = Object.prototype.hasOwnProperty.call(rawBody, 'payload') ? rawBody.payload : rawBody;
+      if (!rawPayload || typeof rawPayload !== 'object' || Array.isArray(rawPayload) || hasForbiddenKeys(rawPayload)) {
+        return res.status(400).json({ error: 'Invalid request' });
+      }
+
+      const botField = detectHoneypot(rawPayload);
+      if (botField) {
+        console.warn(`[forms] Honeypot submission dropped for form ${permalink}`);
+        return res.status(200).json({ success: true, message: 'Submission received' });
+      }
+      const strippedPayload = { ...rawPayload };
+      stripHoneypot(strippedPayload);
+
+      const validated = validateSubmissionPayload({ body: { payload: strippedPayload } });
+      if (validated.error) {
+        return res.status(400).json({ error: validated.error });
+      }
+      const payload = validated.payload;
+
       const recordId = payload.recordId || '';
       const vid = payload.vid || '';
       delete payload.recordId;
       delete payload.vid;
 
-      // Scoped to the form's workspace: an anonymous caller supplies recordId, so
-      // an unscoped lookup would let one tenant's visitor overwrite another's lead.
       const known = await findKnown(recordId, workspaceId);
       const fields = (form.fields || []).filter(f => {
         if (form.progressive !== false && f.progressive !== false && known && filled(known[f.key])) return false;
@@ -206,9 +332,6 @@ export default function registerFormRoutes(app) {
       for (const f of form.fields || []) {
         const value = fieldValue(payload, f);
         if (f.type === 'MultiSelect') {
-          // Normalize MultiSelect payloads from any transport shape (JSON array,
-          // comma-separated string, single value) into a trimmed string array so
-          // downstream custom-field coercion stays consistent.
           if (Array.isArray(value)) {
             mapped[f.key] = value.map(v => String(v ?? '').trim()).filter(Boolean);
           } else if (filled(value)) {
@@ -224,9 +347,6 @@ export default function registerFormRoutes(app) {
       const target = form.submitTo === 'contact' ? 'contacts' : 'leads';
       const email = String(payload.email || '').toLowerCase();
 
-      // The record and the activity are PG rows, but webVisits, pendingAttribution
-      // and audit are still JSON, so the custom-field definitions those helpers
-      // need come from the JSON store while the record itself is written to PG.
       const db = await readDb();
       const values = coerceCustomFields(db, target, { ...mapped });
       const repo = repoFor(target);
@@ -236,14 +356,6 @@ export default function registerFormRoutes(app) {
       let existing = false;
 
       if (email) {
-        // Cross-collection fallback kept from the JSON handler: a form pointing at
-        // leads still updates the matching contact when no lead matches, and vice
-        // versa. The winning collection is remembered because the update has to
-        // go back to the same table the match came from.
-        //
-        // Both lookups are scoped to the form's workspace. An address is not
-        // unique across tenants, so an unscoped match would let a form in one
-        // workspace overwrite the same-email person in another.
         const other = target === 'leads' ? 'contacts' : 'leads';
         const inTarget = await repo.findByEmail(email, workspaceId);
         if (inTarget) {
@@ -257,8 +369,6 @@ export default function registerFormRoutes(app) {
         }
         if (record) {
           existing = true;
-          // Merge the stored bag so a partial submission keeps the custom fields
-          // it did not carry, the way the JSON `{ ...record, ...mapped }` did.
           record = await repoFor(recordResource).update(
             record.id,
             legacyToPg(
@@ -271,8 +381,6 @@ export default function registerFormRoutes(app) {
 
       if (!record) {
         const createdAt = now();
-        // The submitter is anonymous, so the form's own workspace is the only
-        // tenant the new record can belong to.
         record = await repo.create(legacyToPg(splitRecordValues({
           ...values,
           workspace_id: workspaceId,
@@ -286,9 +394,6 @@ export default function registerFormRoutes(app) {
 
       const legacyRecord = pgToLegacy(record, recordResource);
 
-      // Attribute web visits (pixel) to this record, and stamp the visit count
-      // and first-seen page on the record the same way /api/web/identify does so
-      // attribution survives on the lead itself, not just on the visit rows.
       if (vid) {
         const visits = await mutateDb(store => {
           if (!store.webVisits) store.webVisits = [];
@@ -309,8 +414,6 @@ export default function registerFormRoutes(app) {
         }
       }
 
-      // Log the submission as an activity. Activities are a PG resource, so this
-      // cannot go through mutateDb any more.
       const createdAt = now();
       try {
         await repoFor('activities').create(legacyToPg({
@@ -325,13 +428,9 @@ export default function registerFormRoutes(app) {
           updatedAt: createdAt
         }, 'activities'));
       } catch (error) {
-        // The lead/contact is already committed; losing the timeline entry must
-        // not fail a visitor's submission.
         console.error('[forms] Failed to persist submission activity', error.message);
       }
 
-      // A submission is not an edit of the form definition, so the counter is
-      // bumped without touching updated_at (see migration 008).
       try {
         await repoFor('forms').incrementSubmissions(form.id);
       } catch (error) {
@@ -350,11 +449,13 @@ export default function registerFormRoutes(app) {
 
       res.status(201).json({ ok: true, recordId: legacyRecord.id, existing, form: permalink });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('[forms] Submission failed', error?.message || error);
+      if (!res.headersSent) {
+        applyCorsHeaders(res, null);
+      }
+      return res.status(500).json({ error: 'Internal server error' });
     }
   });
-
-  // ============ Management endpoints (auth) ============
 
   app.get('/api/forms', auth, async (req, res) => {
     const workspaceId = req.user?.workspaceId || req.user?.workspace_id || DEFAULT_WORKSPACE;
@@ -378,7 +479,8 @@ export default function registerFormRoutes(app) {
         limit,
       });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('[forms] Request failed', error?.message || error);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -389,9 +491,6 @@ export default function registerFormRoutes(app) {
     }
     const permalink = String(body.permalink || slugify(body.name)).toLowerCase();
     try {
-      // The unique index on permalink is the real guard; checking first only
-      // turns the common case into a friendlier error than a constraint
-      // violation, and this is not a substitute for the constraint.
       if (await repoFor('forms').findByPermalink(permalink)) {
         return res.status(400).json({ error: 'A form with this permalink already exists' });
       }
@@ -420,13 +519,11 @@ export default function registerFormRoutes(app) {
       broadcast('form.created', { id: form.id });
       res.status(201).json(form);
     } catch (error) {
-      // 23505 is the permalink unique index. Two concurrent creates can both
-      // pass the check above, so the constraint is what actually guarantees
-      // uniqueness and its violation has to be reported as the same 400.
       if (error.code === '23505') {
         return res.status(400).json({ error: 'A form with this permalink already exists' });
       }
-      res.status(500).json({ error: error.message });
+      console.error('[forms] Request failed', error?.message || error);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -437,12 +534,9 @@ export default function registerFormRoutes(app) {
       const patch = { ...body };
       if (Array.isArray(body.fields)) patch.fields = normalizeFields(body.fields);
       if (body.enabled !== undefined) patch.enabled = body.enabled === true || body.enabled === 'true';
-      // Never let a client restamp these; the database owns them.
       delete patch.id;
       delete patch.createdAt;
       delete patch.updatedAt;
-      // The tenant is server-derived too, or a PUT could move a form into
-      // another workspace.
       delete patch.workspace_id;
       delete patch.workspaceId;
       const row = await repoFor('forms').update(req.params.id, legacyToPg(patch, 'forms'), workspaceId);
@@ -454,7 +548,8 @@ export default function registerFormRoutes(app) {
       broadcast('form.updated', { id: form.id });
       res.json(form);
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('[forms] Request failed', error?.message || error);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -472,7 +567,8 @@ export default function registerFormRoutes(app) {
       broadcast('form.deleted', { id: req.params.id });
       res.json({ ok: true });
     } catch (error) {
-      res.status(500).json({ error: error.message });
+      console.error('[forms] Request failed', error?.message || error);
+      return res.status(500).json({ error: 'Internal server error' });
     }
   });
 }
