@@ -13,12 +13,8 @@ const workerId = (process.env.VITEST_POOL_ID || "1").replace(
 );
 const testDbFile = path.join(testDbDir, `test-db-${workerId}.json`);
 
-// null = not probed yet; true/false = cached for the life of this test file.
 let pgReachable = null;
 
-// A bare TCP connect settles in milliseconds. Calling query() directly instead
-// costs the pool's full 5s connectionTimeoutMillis every time the server is
-// down, once per test file.
 function canReachPostgres(timeoutMs = 300) {
   const host = process.env.PGHOST || "127.0.0.1";
   const port = Number(process.env.PGPORT || 5432);
@@ -37,15 +33,9 @@ function canReachPostgres(timeoutMs = 300) {
 
 export async function resetTestDb() {
   await fs.mkdir(testDbDir, { recursive: true });
-  await fs.writeFile(testDbFile, JSON.stringify(EMPTY_DB, null, 2));
+  const seeded = { ...EMPTY_DB, sequenceEnrollments: [] };
+  await fs.writeFile(testDbFile, JSON.stringify(seeded, null, 2));
   setDbPath(testDbFile);
-  // Resources served from Postgres (see migrations/004_contacts_leads.sql,
-  // 005_core_entities.sql, 006_revenue_tables.sql and
-  // 007_marketing_service_tables.sql) instead of test-db.json need their own
-  // reset.
-  // Best-effort on purpose: the JSON-backed resources must keep working when no
-  // database is running, and a missing table is just as expected as a missing
-  // server.
   if (pgReachable === false) return;
   if (pgReachable === null) {
     pgReachable = await canReachPostgres();
@@ -56,9 +46,6 @@ export async function resetTestDb() {
       "TRUNCATE TABLE activities, tasks, deals, companies, leads, contacts, products, quotes, contracts, orders, invoices, expenses, campaigns, email_lists, forms, tickets, surveys, survey_responses, workflow_runs, goals CASCADE;",
     );
     pgReachable = true;
-    // Migration 011 may not have been applied yet, and a 42P01 here must not
-    // be read as "Postgres is down" - that would silently disable the
-    // Postgres-backed assertions for the rest of the run.
     try {
       await query("TRUNCATE TABLE saved_reports CASCADE;");
     } catch (error) {
@@ -70,7 +57,6 @@ export async function resetTestDb() {
       if (error.code !== "42P01") throw error;
     }
   } catch (error) {
-    // ECONNREFUSED when no server is listening, 42P01 before 004/005 are applied.
     if (error.code === "ECONNREFUSED" || error.code === "42P01") {
       pgReachable = false;
     }

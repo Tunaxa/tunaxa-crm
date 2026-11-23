@@ -3,23 +3,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-// TEST_DB_PATH lets test harnesses (and CI) redirect the JSON store to a
-// worker-specific file; the test setup (backend/__tests__/setup.js) also calls
-// setDbPath() with a VITEST_POOL_ID-based path so parallel workers never share
-// a file handle (Windows EPERM/file-lock protection).
 let dbFile = process.env.TEST_DB_PATH || path.join(root, 'data', 'db.json');
 let queue = Promise.resolve();
 let ensurePromise = null;
 
-/**
- * Canonical shape of an empty store.
- *
- * Used to bootstrap a brand-new db.json (a clean checkout, CI, or a fresh
- * install) so that import-time bootstrap code in server.js can read and mutate
- * the file before any seed or test fixture has run. Keep this in sync with the
- * resources the app reads; a missing array here surfaces as a TypeError during
- * server import (e.g. session cleanup reading db.sessions).
- */
 export const EMPTY_DB = {
   users: [],
   sessions: [],
@@ -34,6 +21,7 @@ export const EMPTY_DB = {
   recordings: [],
   messages: [],
   sequences: [],
+  sequenceEnrollments: [],
   team: [],
   invitations: [],
   emailOutbox: [],
@@ -73,11 +61,6 @@ export const EMPTY_DB = {
   meta: { seedVersion: 0 },
 };
 
-/**
- * Guarantees the parent directory and db.json exist, initialising the file with
- * an empty store on first use. Idempotent: the result is cached until the path
- * changes or a failure allows a later retry.
- */
 function ensureDbFile() {
   if (!ensurePromise) {
     const target = dbFile;
@@ -92,12 +75,10 @@ function ensureDbFile() {
             flag: 'wx',
           });
         } catch (writeError) {
-          // A concurrent caller created the file first; that is fine.
           if (writeError.code !== 'EEXIST') throw writeError;
         }
       }
     })().catch((error) => {
-      // Do not cache failures, so the next call can retry.
       ensurePromise = null;
       throw error;
     });
@@ -109,8 +90,6 @@ export function setDbPath(newPath) {
   dbFile = newPath;
   queue = Promise.resolve();
   ensurePromise = null;
-  // Eagerly materialise the directory and file. Any error is surfaced by the
-  // next read/write rather than as an unhandled rejection here.
   ensureDbFile().catch(() => {});
 }
 
@@ -125,10 +104,6 @@ export async function readDb() {
   return JSON.parse(raw);
 }
 
-// Windows can reject rename() onto a destination that another handle still has
-// open (EPERM/EACCES/EBUSY). Fire-and-forget workflow reads overlap the next
-// write, so treat those as transient: retry briefly, then fall back to an
-// in-place write so a legitimate mutation is never dropped.
 const REPLACE_RETRY_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
 
 async function persist(contents) {
