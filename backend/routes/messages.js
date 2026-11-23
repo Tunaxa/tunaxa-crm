@@ -9,15 +9,36 @@ import { sendSms } from '../services/twilio.js';
 import { triggerWorkflows } from '../services/workflows.js';
 import { validate, MessageSchema } from '../services/validate.js';
 import { createRateLimiter } from '../services/rateLimit.js';
+import { repoFor } from '../db/repositories/index.js';
+import {
+  generateOpenToken,
+  generateClickToken,
+  injectTrackingPixel,
+  wrapTrackingLinks,
+} from '../services/tracking.js';
 
 const providerLimiter = createRateLimiter({ windowMs: 60_000, max: 30, prefix: 'provider' });
 
-function injectTracking(body, messageId, publicBaseUrl) {
-  const baseUrl = publicBaseUrl || getApiBaseUrl();
-  const pixel = `<img src="${baseUrl}/api/tracking/open/${messageId}" width="1" height="1" style="display:none" alt="" />`;
-  let html = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#33475b">${body.replace(/\n/g, '<br>')}</div>${pixel}`;
-  html = html.replace(/(https?:\/\/[^\s<]+)/g, url => `<a href="${baseUrl}/api/tracking/click/${messageId}?url=${encodeURIComponent(url)}">${url}</a>`);
-  return html;
+function autoLink(text) {
+  return String(text).replace(/(https?:\/\/[^\s<]+)/g, (url) => `<a href="${url}">${url}</a>`);
+}
+
+export async function buildTrackedHtml(body, message, workspaceId, publicBaseUrl) {
+  let contact = null;
+  try {
+    contact = await repoFor('contacts').findByEmail(message.to, workspaceId);
+  } catch {
+    contact = null;
+  }
+  const identity = {
+    contactId: contact?.id || null,
+    workspaceId: String(workspaceId || 'default'),
+    messageId: message.id,
+  };
+  const base = String(publicBaseUrl || getApiBaseUrl()).replace(/\/+$/, '');
+  const inner = `<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#33475b">${autoLink(String(body).replace(/\n/g, '<br>'))}</div>`;
+  const withPixel = injectTrackingPixel(inner, generateOpenToken(identity), base);
+  return wrapTrackingLinks(withPixel, (url) => generateClickToken({ ...identity, targetUrl: url }), base);
 }
 
 export default function registerMessageRoutes(app) {
@@ -27,16 +48,14 @@ export default function registerMessageRoutes(app) {
     const createdAt = now();
     let message = null;
     let replay = false;
-    await mutateDb(db => {
+    await mutateDb((db) => {
       if (idempotencyKey) {
-        const found = db.messages.find(x => x.idempotencyKey === idempotencyKey);
+        const found = db.messages.find((x) => x.idempotencyKey === idempotencyKey);
         if (found && found.status === 'Sent') {
           message = { ...found };
           replay = true;
           return;
         }
-        // An in-flight (Queued) attempt with the same key is treated as already
-        // accepted so a retry doesn't double-send.
         if (found && found.status === 'Queued') {
           message = { ...found };
           replay = true;
@@ -45,14 +64,14 @@ export default function registerMessageRoutes(app) {
         if (found) message = found;
       }
       if (!message && existingId) {
-        const index = db.messages.findIndex(x => x.id === existingId);
+        const index = db.messages.findIndex((x) => x.id === existingId);
         if (index >= 0) message = db.messages[index];
       }
       if (!message) {
         message = { id: id('message'), channel, to: String(to).trim(), subject: subject || '', body: String(body), contact: contact || '', direction: 'Outbound', status: 'Queued', read: true, idempotencyKey: idempotencyKey || '', createdAt, updatedAt: createdAt };
         db.messages.unshift(message);
       } else {
-        const index = db.messages.findIndex(x => x.id === message.id);
+        const index = db.messages.findIndex((x) => x.id === message.id);
         if (index >= 0) {
           db.messages[index] = { ...db.messages[index], channel, to, subject, body, contact, status: 'Queued', error: '', read: true, updatedAt: createdAt };
           message = { ...db.messages[index] };
@@ -69,14 +88,17 @@ export default function registerMessageRoutes(app) {
         ? await sendSms(settings, { to: message.to, body: message.body })
         : { delivered: false, status: 'Saved', error: 'Twilio is not configured in Settings' };
     } else {
-      const track = settings.emailTracking !== false && settings.publicBaseUrl;
+      const track = settings.emailTracking !== false;
+      const html = track
+        ? await buildTrackedHtml(message.body, message, req.user?.workspaceId || 'default', settings.publicBaseUrl)
+        : undefined;
       result = isEmailConfigured(settings)
-        ? await sendEmail(settings, { to: message.to, subject: message.subject, text: message.body, html: track ? injectTracking(message.body, message.id, settings.publicBaseUrl) : undefined })
+        ? await sendEmail(settings, { to: message.to, subject: message.subject, text: message.body, html })
         : { delivered: false, status: 'Saved', error: 'SMTP is not configured in Settings' };
     }
 
-    const saved = await mutateDb(db => {
-      const index = db.messages.findIndex(x => x.id === message.id);
+    const saved = await mutateDb((db) => {
+      const index = db.messages.findIndex((x) => x.id === message.id);
       if (index < 0) return null;
       db.messages[index].status = result.status || 'Failed';
       if (result.providerId) db.messages[index].providerId = result.providerId;
