@@ -7,6 +7,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Atomic Pipeline Batch-Move (`backend/services/dealPipeline.js`, `backend/routes/deals.js`):**
+  - Added tenant-scoped `POST /api/deals/batch-move` and `POST /api/deals/batch-stage` for atomic multi-deal stage transitions with `auth`, `requireRole('admin', 'member')`, `checkWriteFieldMask('deals')`, rate limiting, and strict Zod validation (bounded deduplicated deal IDs, unknown/prototype-key rejection).
+  - Enforced all-or-nothing execution: Postgres row-locking transaction (`FOR UPDATE`, strict count verification, stage/probability/custom-field updates, stage-change activities, contact lifecycle update on Won, rollback on any failure) and JSON-store prevalidated single `mutateDb` mutation.
+  - Validated target pipeline/stage against tenant-scoped pipeline definitions (#461), rejected cross-tenant/missing pipelines with 404 and invalid stages with 400, and returned sanitized 500 responses on unexpected failures.
 - **IMAP Inbound Sync Worker (`backend/services/imapSync.js`, `backend/workers/emailSync.js`, `backend/routes/emailSync.js`):**
   - Added tenant-scoped IMAP inbound sync with RFC message parsing, workspace deduplication, thread reconstruction (`In-Reply-To`/`References`), contact/lead sender matching, and open-deal association on timeline activities.
   - Added admin/member management endpoints `POST /api/email-sync/trigger` and `GET /api/email-sync/status` with workspace scoping, rate limiting, strict Zod validation, sanitized errors, and no credential exposure.
