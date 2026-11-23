@@ -61,6 +61,7 @@ import registerContactRoutes from "./routes/contacts.js";
 import registerGoalRoutes from "./routes/goals.js";
 import registerUserPreferencesRoutes from "./routes/userPreferences.js";
 import registerExportRoutes from "./routes/export.js";
+import registerEmailSyncRoutes from "./routes/emailSync.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { originGuard } from "./middleware/csrf.js";
 import {
@@ -69,6 +70,10 @@ import {
 } from "./workers/reportScheduler.js";
 import { processExecutionQueue } from "./services/queue.js";
 import { startEmailSync, stopEmailSync } from "./services/emailSync.js";
+import {
+  startEmailSyncWorker,
+  stopEmailSyncWorker,
+} from "./workers/emailSync.js";
 import {
   startTranscriptionWorker,
   stopTranscriptionWorker,
@@ -307,6 +312,7 @@ registerSchemaRoutes(app);
 registerUserPreferencesRoutes(app);
 registerExportRoutes(app);
 registerInvitationRoutes(app);
+registerEmailSyncRoutes(app);
 registerResourceRoutes(app);
 
 // ============================================
@@ -378,6 +384,7 @@ if (process.env.VITEST !== "true") {
     console.log(`Tunaxa API running on http://${host}:${port}`);
     startWebhookWorker();
     startEmailSync();
+    startEmailSyncWorker();
     startTranscriptionWorker();
     initReportSchedulerWorker().catch((error) =>
       console.error("[report-scheduler] worker init failed:", error.message),
@@ -393,6 +400,7 @@ if (process.env.VITEST !== "true") {
 
   const shutdown = () => {
     stopEmailSync();
+    void stopEmailSyncWorker();
     stopTranscriptionWorker().catch(() => {});
     closeReportSchedulerQueue().catch(() => {});
     process.exit(0);
