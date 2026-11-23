@@ -62,6 +62,7 @@ import registerGoalRoutes from "./routes/goals.js";
 import registerUserPreferencesRoutes from "./routes/userPreferences.js";
 import registerExportRoutes from "./routes/export.js";
 import registerEmailSyncRoutes from "./routes/emailSync.js";
+import registerDealRoutes from "./routes/deals.js";
 import { startWebhookWorker } from "./workers/webhookWorker.js";
 import { originGuard } from "./middleware/csrf.js";
 import {
@@ -313,6 +314,7 @@ registerUserPreferencesRoutes(app);
 registerExportRoutes(app);
 registerInvitationRoutes(app);
 registerEmailSyncRoutes(app);
+registerDealRoutes(app);
 registerResourceRoutes(app);
 
 // ============================================
