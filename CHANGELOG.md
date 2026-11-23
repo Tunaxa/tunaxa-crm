@@ -7,6 +7,11 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Sequence Cadence Enrollment & Reply Auto-Pause (`backend/services/sequences.js`, `backend/routes/sequences.js`, `backend/services/imapSync.js`, `backend/__tests__/sequence-enrollment.test.js`):**
+  - Added tenant-scoped first-class sequence enrollments with strict workspace ownership checks for sequences and contacts across Postgres and the JSON store, cross-tenant enrollments rejected with 404, and active/paused duplicate suppression.
+  - Added cadence state machine (`active`, `paused`, `replied`, `stopped`, `completed`), due-step scheduling/execution, manual pause/resume/stop with terminal-state guards, and non-blocking IMAP reply auto-pause that clears `nextRunAt` and records reply message IDs.
+  - Added rate-limited enrollment endpoints guarded by `auth`, `requireRole`, field-mask checks and strict Zod schemas with bounded deduplicated IDs, capped pagination, status enum, unknown-key/prototype-key rejection, and sanitized 500 responses.
+  - Initialized `sequenceEnrollments` in the canonical empty store and test reset, and added unit/integration coverage for tenant isolation, RBAC, validation, lifecycle transitions, and inbound reply behavior.
 - **Public Form Submission Hardening (`backend/routes/forms.js`, `backend/__tests__/form-hardening.test.js`):**
   - Added rate-limited CORS preflight (`OPTIONS /api/forms/:permalink/submit`, 204) and CORS headers on public submit responses; exact normalized per-form `allowedOrigins`/`settings.allowedOrigins` matching with `Vary: Origin` and 403 for non-matching origins, wildcard `*` only when no allowlist is configured, and no `Access-Control-Allow-Credentials`.
   - Added honeypot bot mitigation (`_hp`, `_gotcha`, `website`, `honeypot`) before validation/writes with convincing 200 drop and zero DB/store writes/counter increments; empty honeypot keys stripped from clean submissions.

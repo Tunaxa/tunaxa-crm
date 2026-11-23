@@ -6,6 +6,7 @@ import { repoFor } from '../db/repositories/index.js';
 import * as contactsRepo from '../db/repositories/contacts.js';
 import * as leadsRepo from '../db/repositories/leads.js';
 import { normalizeEmail } from '../helpers.js';
+import { pauseEnrollmentsOnReply } from './sequences.js';
 
 const UNSEEN_CRITERION = { seen: false };
 const MAX_REPORTED_ERRORS = 10;
@@ -290,6 +291,18 @@ export async function processInboundEmail(parsedEmail, workspaceId, options = {}
     metadata: buildMetadata(parsedEmail, { threadId, messageId, options }),
     created_at: sentAt.toISOString(),
   });
+
+  if (contact) {
+    try {
+      await pauseEnrollmentsOnReply({
+        contactId: contact.id,
+        workspaceId: workspace,
+        messageId,
+      });
+    } catch (error) {
+      console.error(`[sequence] pause-on-reply failed for ${contact.id}:`, error?.message || error);
+    }
+  }
 
   return {
     status: 'created',
