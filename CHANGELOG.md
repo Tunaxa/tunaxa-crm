@@ -7,6 +7,10 @@ and this project adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
+- **Signed Email Open & Click Tracking (`backend/services/tracking.js`, `backend/routes/tracking.js`, `backend/routes/messages.js`, `backend/__tests__/email-tracking.test.js`):**
+  - Added HMAC-SHA256-signed, self-expiring tracking tokens binding `workspaceId`, `contactId`, `dealId`, `messageId`, `targetUrl`, and `exp`; dedicated domain-separated key derivation from `TRACKING_SECRET`/`JWT_SECRET` with production fail-closed behavior and constant-time verification.
+  - Added `GET /api/tracking/open/:token` (1x1 GIF with no-store and nosniff headers, workspace-scoped `email_open` activity, bounded 5-second dedupe) and `GET /api/tracking/click/:token` (revalidated signed destination, workspace-scoped `email_click` activity, 302 redirect), both behind a dedicated rate limiter.
+  - Replaced the legacy unsigned `:messageId?url=` builder: outbound HTML now injects signed open pixels and wraps only validated absolute `http(s)` links, skipping mailto/tel/sms/in-page/unsubscribe destinations and using `settings.publicBaseUrl || getApiBaseUrl()`.
 - **Sequence Cadence Enrollment & Reply Auto-Pause (`backend/services/sequences.js`, `backend/routes/sequences.js`, `backend/services/imapSync.js`, `backend/__tests__/sequence-enrollment.test.js`):**
   - Added tenant-scoped first-class sequence enrollments with strict workspace ownership checks for sequences and contacts across Postgres and the JSON store, cross-tenant enrollments rejected with 404, and active/paused duplicate suppression.
   - Added cadence state machine (`active`, `paused`, `replied`, `stopped`, `completed`), due-step scheduling/execution, manual pause/resume/stop with terminal-state guards, and non-blocking IMAP reply auto-pause that clears `nextRunAt` and records reply message IDs.
@@ -59,6 +63,7 @@ and this project adheres to Semantic Versioning.
   - Hardened ticket endpoints with strict request validation (rejecting prototype-pollution keys, invalid transitions, and out-of-range SLA hours), RBAC/write-field masking on mutations, and workspace-scoped repository operations returning 404 for cross-tenant IDs.
 
 ### Security
+- Email tracking hardening: removed the arbitrary open redirect by pinning destinations inside signed tokens, rejecting credentials-in-URL and non-`http(s)` schemes, enforcing workspace-scoped activity writes with contact/workspace consistency checks, and covering tampering, expiry, cross-tenant isolation, and bounded throttling in tests.
 - Authentication security: implemented SHA-256 hashed refresh tokens, single-use rotation, reuse detection with automatic session invalidation, and global logout-all.
 - Security hardening: tightened Helmet CSP headers with `script-src-attr` restrictions and an explicit image allow-list, and enhanced the Origin/Referer CSRF guard with null-origin and `Sec-Fetch-Site: cross-site` protections.
 - File upload security: dependency-free magic-bytes signature verification rejecting executables and spoofed MIME types.
