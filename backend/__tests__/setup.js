@@ -64,6 +64,11 @@ export async function resetTestDb() {
     } catch (error) {
       if (error.code !== "42P01") throw error;
     }
+    try {
+      await query("TRUNCATE TABLE pipeline_definitions CASCADE;");
+    } catch (error) {
+      if (error.code !== "42P01") throw error;
+    }
   } catch (error) {
     // ECONNREFUSED when no server is listening, 42P01 before 004/005 are applied.
     if (error.code === "ECONNREFUSED" || error.code === "42P01") {
