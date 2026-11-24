@@ -4,6 +4,7 @@ import { useResource } from "../../lib/useResource";
 import { useApp } from "../../context/AppContext";
 import { PageHeader, money, Badge, Empty } from "../../components/ui";
 import { Icon } from "../../components/Icon";
+import { CsvImportButton } from "../../components/imports/CsvImportWizard";
 import { RecordForm } from "../../components/records/RecordForm";
 import { useSchema } from "../../components/records/useSchema";
 import { canManageRecords } from "../../components/records/rbac";
@@ -62,6 +63,7 @@ export function PipelinePage() {
         title="Pipeline"
         description="Drag deals between stages and keep your pipeline moving."
       >
+        <CsvImportButton resource="deals" label="Deals" fields={fields} onComplete={load} />
         {canEdit ? (
           <button className="btn primary" onClick={() => setEdit(null)}>
             <Icon name="plus" /> Add deal

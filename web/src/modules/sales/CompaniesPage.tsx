@@ -12,6 +12,7 @@ import {
 } from "../../components/columnPreferences";
 import { Badge, Empty, PageHeader } from "../../components/ui";
 import { Icon } from "../../components/Icon";
+import { CsvImportButton } from "../../components/imports/CsvImportWizard";
 import { downloadResourceCsv } from "../../components/records/downloadResourceCsv";
 import { getPageSize, savePageSize } from "../../components/records/preferences";
 import { canManageRecords } from "../../components/records/rbac";
@@ -126,6 +127,12 @@ export function CompaniesPage() {
         title="Companies"
         description="Accounts, organizations and relationship ownership."
       >
+        <CsvImportButton
+          resource="companies"
+          label="Companies"
+          fields={columnFields}
+          onComplete={load}
+        />
         <button className="btn secondary" disabled={!items.length} onClick={exportCsv}>
           <Icon name="download" /> Export
         </button>
