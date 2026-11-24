@@ -1,0 +1,14 @@
+.column-picker { position: relative; }
+.column-picker-panel { position: fixed; z-index: 1000; box-sizing: border-box; overflow-y: auto; max-width: calc(100vw - 16px); padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); }
+.column-picker-options { display: grid; gap: 10px; max-height: 300px; overflow-y: auto; margin: 14px 0; }
+.column-picker-options label { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.column-picker-options input { width: 16px; height: 16px; margin: 0; accent-color: var(--primary); }
+.column-picker-options small { display: block; color: var(--muted); font-size: 11px; }
+.column-picker-actions { display: flex; justify-content: space-between; gap: 8px; }
+.column-picker-panel p { margin: 0 0 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.column-picker :focus-visible, .column-picker-panel :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+@media (max-width: 768px) {
+  .column-picker-panel { max-width: calc(100vw - 16px); padding: 12px; }
+  .column-picker-options { max-height: min(300px, 45vh); }
+  .column-picker-actions { flex-wrap: wrap; }
+}

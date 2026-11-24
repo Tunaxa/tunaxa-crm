@@ -4,6 +4,13 @@ import { Shell } from "./shell/Shell";
 import { WorkflowPicker } from "./pages/workflows/WorkflowPicker";
 import { WorkflowDetailPage } from "./pages/workflows/WorkflowDetailPage";
 import { DuplicateResolution } from "./components/DuplicateResolution";
+import { ColumnPicker } from "./components/ColumnPicker";
+import {
+  filterRestrictedColumns,
+  useColumnPreferences,
+  useColumnSchema,
+  workspaceIdOf,
+} from "./components/columnPreferences";
 import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 import { useForm } from "react-hook-form";
 import {
@@ -1749,7 +1756,7 @@ function CrudTablePage({
     onSave: (data: Record<string, any>) => Promise<void>;
   }) => ReactNode;
 }) {
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [pageSize, setPageSize] = useState(getPageSize());
@@ -1773,6 +1780,25 @@ function CrudTablePage({
   });
   const inputRef = useRef<HTMLInputElement>(null);
   const cols = columns || fields;
+  const columnSchema = useColumnSchema(resource);
+  const pickerColumns = filterRestrictedColumns(
+    cols.map((column, index) => ({
+      key: column.key,
+      label: column.label,
+      required: index === 0,
+    })),
+    columnSchema,
+  );
+  const tableColumns = filterRestrictedColumns(cols, columnSchema);
+  const columnPreferences = useColumnPreferences(
+    resource,
+    pickerColumns,
+    user?.id || "anonymous",
+    workspaceIdOf(user),
+  );
+  const visibleCols = tableColumns.filter((column) =>
+    columnPreferences.visibleKeys.includes(column.key),
+  );
   const mCols = new Set(moneyColumn || cols.map((c) => c.key));
   const singular = title.slice(0, -1).toLowerCase();
   const nameOf = (row: Row) =>
@@ -1910,6 +1936,13 @@ function changePageSize(value: number) {
             />
           </div>
 
+          <ColumnPicker
+            columns={pickerColumns}
+            visibleKeys={columnPreferences.visibleKeys}
+            onChange={columnPreferences.change}
+            saveError={columnPreferences.saveError}
+          />
+
           <span className="table-count">
             {total} total
           </span>
@@ -1936,9 +1969,9 @@ function changePageSize(value: number) {
             <table>
               <thead>
                 <tr>
-                  <th>{cols[0]?.label || "Name"}</th>
+                  <th>{visibleCols[0]?.label || "Name"}</th>
 
-                  {cols.slice(1).map((c) => (
+                  {visibleCols.slice(1).map((c) => (
                     <th key={c.key}>{c.label}</th>
                   ))}
 
@@ -1953,7 +1986,7 @@ function changePageSize(value: number) {
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.id}>
-                    {cols.map((c, i) =>
+                    {visibleCols.map((c, i) =>
                       i === 0 ? (
                         <td key={c.key}>
                           <button
@@ -2199,6 +2232,25 @@ function PeoplePage({
   ];
 
   const cols = allFields;
+  const columnSchema = useColumnSchema(resource);
+  const pickerColumns = filterRestrictedColumns(
+    cols.map((column, index) => ({
+      key: column.key,
+      label: column.label,
+      required: index === 0,
+    })),
+    columnSchema,
+  );
+  const tableColumns = filterRestrictedColumns(cols, columnSchema);
+  const columnPreferences = useColumnPreferences(
+    resource,
+    pickerColumns,
+    user?.id || "anonymous",
+    workspaceIdOf(user),
+  );
+  const visibleCols = tableColumns.filter((column) =>
+    columnPreferences.visibleKeys.includes(column.key),
+  );
   const mCols = new Set(cols.map((field) => field.key));
   const singular = title.slice(0, -1).toLowerCase();
   const nameOf = (row: Row) => String(row.name || row.title || "Untitled");
@@ -2304,6 +2356,12 @@ function changePageSize(value: number) {
               placeholder={`Search ${title.toLowerCase()}`}
             />
           </div>
+<ColumnPicker
+  columns={pickerColumns}
+  visibleKeys={columnPreferences.visibleKeys}
+  onChange={columnPreferences.change}
+  saveError={columnPreferences.saveError}
+/>
 <span className="table-count">
   {total} total
 </span>
@@ -2326,8 +2384,8 @@ function changePageSize(value: number) {
             <thead>
               <tr>
                 {canBulk && <th><SelectPage ids={rows.map((row) => row.id)} selected={bulk.selected} onChange={bulk.setSelected} disabled={bulk.busy} /></th>}
-                <th>{cols[0]?.label || "Name"}</th>
-                {cols.slice(1).map((c) => (
+                <th>{visibleCols[0]?.label || "Name"}</th>
+                {visibleCols.slice(1).map((c) => (
                   <th key={c.key}>{c.label}</th>
                 ))}
                 <th />
@@ -2337,7 +2395,7 @@ function changePageSize(value: number) {
               {rows.map((row) => (
                 <tr key={row.id}>
                   {canBulk && <td><input className="bulk-select" type="checkbox" aria-label={`Select ${row.name || row.title || row.id}`} checked={bulk.selected.includes(row.id)} disabled={bulk.busy || (!bulk.selected.includes(row.id) && bulk.selected.length >= 100)} onChange={() => bulk.toggle(row.id)} /></td>}
-                  {cols.map((c, i) =>
+                  {visibleCols.map((c, i) =>
                     i === 0 ? (
                       <td key={c.key}>
                         <button
