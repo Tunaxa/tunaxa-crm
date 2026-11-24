@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, NavLink } from "react-router-dom";
 import { Icon } from "../components/Icon";
 import { AxacrmLogo } from "../components/common/AxacrmLogo";
+import { useModuleVisibility } from "../modules/moduleVisibility";
 import { navGroups } from "./navGroups";
 
 export function Sidebar({
@@ -15,6 +16,13 @@ export function Sidebar({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { canView } = useModuleVisibility();
+  const visibleGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => canView(item.path)),
+    }))
+    .filter((group) => group.items.length > 0);
   return (
     <aside className={`sidebar ${mobile ? "mobile-open" : ""}`}>
       <div className="sidebar-logo">
@@ -30,7 +38,7 @@ export function Sidebar({
         </button>
       </div>
       <nav className="nav-scroll">
-        {navGroups.map((group) => (
+        {visibleGroups.map((group) => (
           <section className="nav-group" key={group.label}>
             <div className="nav-label">{t(group.label)}</div>
             {group.items.map((item) => (

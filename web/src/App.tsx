@@ -105,19 +105,34 @@ import { EmailComposerDrawer } from "./components/communications/EmailComposerDr
 import { canSendEmail, mailbox } from "./components/communications/inboxModel";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
+import { ModuleGate } from "./modules/moduleVisibility";
 import i18n from "./i18n";
 
-// const LeadsPage = lazy(() =>
-//   import("./pages/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
-// );
-// const ContactsPage = lazy(() =>
-//   import("./pages/sales/ContactsPage").then((module) => ({ default: module.ContactsPage })),
-// );
-const CompaniesPage = lazy(() =>
-  import("./pages/sales/CompaniesPage").then((module) => ({ default: module.CompaniesPage })),
+const ModuleLeadsPage = lazy(() =>
+  import("./modules/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
 );
-const PipelinePage = lazy(() =>
-  import("./pages/sales/PipelinePage").then((module) => ({ default: module.PipelinePage })),
+const ModuleContactsPage = lazy(() =>
+  import("./modules/sales/ContactsPage").then((module) => ({ default: module.ContactsPage })),
+);
+const ModuleCompaniesPage = lazy(() =>
+  import("./modules/sales/CompaniesPage").then((module) => ({ default: module.CompaniesPage })),
+);
+const ModulePipelinePage = lazy(() =>
+  import("./modules/sales/PipelinePage").then((module) => ({ default: module.PipelinePage })),
+);
+const ModuleCampaignsPage = lazy(() =>
+  import("./modules/marketing/CampaignsPage").then((module) => ({ default: module.CampaignsPage })),
+);
+const ModuleEmailListsPage = lazy(() =>
+  import("./modules/marketing/EmailListsPage").then((module) => ({ default: module.EmailListsPage })),
+);
+const ModuleMarketingEmailsPage = lazy(() =>
+  import("./modules/marketing/MarketingEmailsPage").then((module) => ({
+    default: module.MarketingEmailsPage,
+  })),
+);
+const ModuleFormsPage = lazy(() =>
+  import("./modules/marketing/FormsPage").then((module) => ({ default: module.FormsPage })),
 );
 
 const logo = "/assets/tunaxa-logo.png";
@@ -475,7 +490,8 @@ return (
   >
       <OfflineBanner />
       <ErrorBoundary>
-            <Routes>
+        <ModuleGate>
+          <Routes>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route
                 path="/dashboard"
@@ -650,13 +666,12 @@ return (
               <Route
                 path="/leads"
                 element={
-                  <PeoplePage
-                    resource="leads"
-                    title={t("nav.leads")}
-                    description="Capture and qualify new opportunities."
-                    icon="lead"
-                    fields={leadFields}
-                  />
+                  <ErrorBoundary
+                    key={location.pathname}
+                    fallbackMessage="Leads failed to load."
+                  >
+                    <ModuleLeadsPage />
+                  </ErrorBoundary>
                 }
               />
               <Route
@@ -666,17 +681,11 @@ return (
                     key={location.pathname}
                     fallbackMessage="Contacts failed to load."
                   >
-                    <PeoplePage
-                      resource="contacts"
-                      title={t("nav.contacts")}
-                      description="Customer and prospect contact records."
-                      icon="contacts"
-                      fields={contactFields}
-                    />
+                    <ModuleContactsPage />
                   </ErrorBoundary>
                 }
               />
-              <Route path="/companies" element={<CompaniesPage />} />
+              <Route path="/companies" element={<ModuleCompaniesPage />} />
               <Route
                 path="/pipeline"
                 element={
@@ -684,7 +693,7 @@ return (
                     key={location.pathname}
                     fallbackMessage="Pipeline failed to load."
                   >
-                    <PipelinePage />
+                    <ModulePipelinePage />
                   </ErrorBoundary>
                 }
               />
@@ -711,10 +720,10 @@ return (
                 path="/webhooks"
                 element={<WebhooksPage SimpleCards={SimpleCards} />}
               />
-              <Route path="/campaigns" element={<CampaignsPage />} />
-              <Route path="/email-lists" element={<EmailListsPage />} />
+              <Route path="/campaigns" element={<ModuleCampaignsPage />} />
+              <Route path="/email-lists" element={<ModuleEmailListsPage />} />
               <Route path="/landing-pages" element={<LandingPagesPage />} />
-              <Route path="/forms" element={<FormsPage />} />
+              <Route path="/forms" element={<ModuleFormsPage />} />
               <Route
                 path="/products"
                 element={
@@ -741,7 +750,7 @@ return (
               <Route path="/attendance" element={<AttendancePage />} />
               <Route
                 path="/marketing-emails"
-                element={<MarketingEmailsPage />}
+                element={<ModuleMarketingEmailsPage />}
               />
               <Route
                 path="/marketing-emails/:id"
@@ -842,7 +851,8 @@ return (
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/design-system" element={<DesignSystemPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                        </Routes>
+          </Routes>
+        </ModuleGate>
           </ErrorBoundary>
         </Shell>
       );
