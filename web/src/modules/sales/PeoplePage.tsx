@@ -1,9 +1,8 @@
-import { useRef, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FilterBuilder, type FilterGroup } from "../../components/FilterBuilder";
 import { useResource } from "../../lib/useResource";
 import { useApp } from "../../context/AppContext";
-import { api, json } from "../../lib/api";
 import { BulkActions, SelectPage, useBulkSelection } from "../../components/BulkActions";
 import { ColumnPicker } from "../../components/ColumnPicker";
 import {
@@ -13,6 +12,7 @@ import {
 } from "../../components/columnPreferences";
 import { Avatar, Badge, Empty, PageHeader, money } from "../../components/ui";
 import { Icon } from "../../components/Icon";
+import { CsvImportButton } from "../../components/imports/CsvImportWizard";
 import { downloadResourceCsv } from "../../components/records/downloadResourceCsv";
 import { getPageSize, savePageSize } from "../../components/records/preferences";
 import { canManageRecords } from "../../components/records/rbac";
@@ -20,7 +20,7 @@ import { showMoney } from "../../components/records/formatters";
 import { RecordForm } from "../../components/records/RecordForm";
 import { useDebouncedValue } from "../../components/records/useDebouncedValue";
 import { useSchema } from "../../components/records/useSchema";
-import { safeMediaSrc, sanitizeCsvRecords } from "../../components/records/urlSecurity";
+import { safeMediaSrc } from "../../components/records/urlSecurity";
 import type { BadgeTone, FieldSpec, Row } from "../../components/records/types";
 
 export function PeoplePage({
@@ -30,7 +30,7 @@ export function PeoplePage({
   icon,
   fields,
 }: {
-  resource: string;
+  resource: "leads" | "contacts";
   title: string;
   description: string;
   icon: string;
@@ -42,7 +42,6 @@ export function PeoplePage({
   const [pageSize, setPageSize] = useState(getPageSize);
   const [page, setPage] = useState(1);
   const [edit, setEdit] = useState<Row | null | undefined>(undefined);
-  const inputRef = useRef<HTMLInputElement>(null);
   const { toast, user } = useApp();
   const navigate = useNavigate();
   const schema = useSchema(resource);
@@ -121,26 +120,6 @@ export function PeoplePage({
     savePageSize(value);
   }
 
-  async function importCsv(file: File) {
-    try {
-      const text = await file.text();
-      const { records, rejectedHeaders } = sanitizeCsvRecords(
-        text,
-        allFields.map((field) => field.key),
-      );
-      if (!records.length) return toast("CSV has no importable rows", "error");
-      await api(`/${resource}/batch`, json("POST", records));
-      await load();
-      toast(
-        `${records.length} rows imported${rejectedHeaders.length ? ` (${rejectedHeaders.length} headers ignored)` : ""}`,
-      );
-    } catch (cause) {
-      toast((cause as Error).message, "error");
-    } finally {
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  }
-
   async function exportCsv() {
     try {
       await downloadResourceCsv(resource);
@@ -161,23 +140,12 @@ export function PeoplePage({
   return (
     <div className="page">
       <PageHeader title={title} description={description}>
-        {canBulk ? (
-          <input
-            ref={inputRef}
-            hidden
-            type="file"
-            accept=".csv,text/csv"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void importCsv(file);
-            }}
-          />
-        ) : null}
-        {canBulk ? (
-          <button className="btn secondary" onClick={() => inputRef.current?.click()}>
-            <Icon name="upload" /> Import
-          </button>
-        ) : null}
+        <CsvImportButton
+          resource={resource}
+          label={title}
+          fields={allFields}
+          onComplete={load}
+        />
         <button className="btn secondary" onClick={exportCsv}>
           <Icon name="download" /> Export CSV
         </button>
