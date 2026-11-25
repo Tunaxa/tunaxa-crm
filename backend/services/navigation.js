@@ -64,6 +64,15 @@ export const MODULES = Object.freeze([
     minRole: 'viewer',
   }),
   Object.freeze({
+    id: 'sequences',
+    label: 'Sequences',
+    path: '/sequences',
+    icon: 'Workflow',
+    order: 57,
+    section: 'workspace',
+    minRole: 'viewer',
+  }),
+  Object.freeze({
     id: 'reports',
     label: 'Reports',
     path: '/reports',

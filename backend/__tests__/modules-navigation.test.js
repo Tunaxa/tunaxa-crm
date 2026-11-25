@@ -17,6 +17,7 @@ const ALL_IDS = [
   'deals',
   'leads',
   'tickets',
+  'sequences',
   'reports',
   'import_export',
   'team',
@@ -29,10 +30,11 @@ const MEMBER_IDS = [
   'deals',
   'leads',
   'tickets',
+  'sequences',
   'reports',
   'import_export',
 ];
-const VIEWER_IDS = ['dashboard', 'contacts', 'companies', 'deals', 'tickets', 'reports'];
+const VIEWER_IDS = ['dashboard', 'contacts', 'companies', 'deals', 'tickets', 'sequences', 'reports'];
 const CONTRACT_KEYS = [
   'icon',
   'id',
@@ -131,6 +133,15 @@ describe('GET /api/modules — role visibility matrix', () => {
     for (const excluded of ['leads', 'import_export', 'team', 'settings']) {
       expect(ids(res.body)).not.toContain(excluded);
     }
+  });
+
+  it('exposes /sequences as a read-only module for every authenticated role', async () => {
+    const res = await getModules(tokenFor('usr_nav_viewer'));
+    expect(res.body.modules.find((module) => module.id === 'sequences')).toMatchObject({
+      id: 'sequences',
+      path: '/sequences',
+      minRole: 'viewer',
+    });
   });
 });
 
