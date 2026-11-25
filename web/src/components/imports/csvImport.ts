@@ -275,8 +275,17 @@ function convert(value: string, field: FieldSpec): unknown {
     }
   }
   if (field.type === "select" && field.options?.length) {
-    const option = field.options.find((item) => item.toLowerCase() === value.toLowerCase());
-    if (!option) throw new Error(`must be one of: ${field.options.join(", ")}`);
+    const labels = field.optionLabels || {};
+    const option = field.options.find(
+      (item) =>
+        item.toLowerCase() === value.toLowerCase() ||
+        (hasOwn(labels, item) ? String(labels[item]).toLowerCase() : "") === value.toLowerCase(),
+    );
+    if (option === undefined) {
+      throw new Error(
+        `must be one of: ${field.options.map((item) => (hasOwn(labels, item) ? labels[item] : item)).join(", ")}`,
+      );
+    }
     return option;
   }
   return value;
