@@ -105,6 +105,7 @@ export function SlackSetup({
       subtitle="Save an incoming webhook for your workspace’s deal-won updates."
       labelId={labelId}
       busy={busy}
+      className="slack-drawer"
       onClose={close}
       width={620}
       footer={

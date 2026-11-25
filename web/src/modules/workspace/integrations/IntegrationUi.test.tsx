@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -29,6 +30,8 @@ vi.mock("../../../context/AppContext", () => ({
 const slack = { configured: true, webhookUrlMasked: "https://hooks.slack.com/••••••123456" };
 const empty = { configured: false, webhookUrlMasked: "" };
 const page = () => renderToStaticMarkup(<IntegrationsPage />);
+const integrationsCss = readFileSync(new URL("./integrations.css", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const mobileCss = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}/.exec(integrationsCss)?.[1] ?? "";
 
 describe("integration page states", () => {
   beforeEach(() => {
@@ -139,5 +142,23 @@ describe("Slack setup", () => {
     expect(html).toContain("Only workspace administrators");
     expect(html).toContain("Refresh integration configuration before saving");
     expect(html).toMatch(/disabled="">Save Slack configuration/);
+  });
+
+  it("keeps all four configured actions inside a wrapping mobile footer", () => {
+    const html = setup();
+    expect(html).toMatch(/<aside[^>]*class="side-drawer slack-drawer"/);
+
+    const footer = /<footer class="side-drawer-footer">([\s\S]*?)<\/footer>/.exec(html)?.[1] ?? "";
+    expect(footer).toContain("Cancel");
+    expect(footer).toContain("Test Connection");
+    expect(footer).toContain("Disconnect");
+    expect(footer).toContain("Save Slack configuration");
+    expect(footer.match(/<button\b/g) ?? []).toHaveLength(4);
+
+    expect(integrationsCss).toMatch(/\.side-drawer\.slack-drawer \.side-drawer-footer\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(integrationsCss).toMatch(/html\.dark \.side-drawer\.slack-drawer \.side-drawer-footer\s*\{[^}]*background:\s*var\(--surface\)/);
+    expect(mobileCss).toMatch(/\.side-drawer\.slack-drawer\s*\{[^}]*width:\s*100%\s*!important[^}]*max-width:\s*100vw[^}]*box-sizing:\s*border-box/);
+    expect(mobileCss).toMatch(/\.side-drawer\.slack-drawer \.side-drawer-footer\s*\{[^}]*flex-direction:\s*column[^}]*align-items:\s*stretch/);
+    expect(mobileCss).toMatch(/\.side-drawer\.slack-drawer \.side-drawer-footer \.btn\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*min-height:\s*44px/);
   });
 });
