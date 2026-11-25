@@ -105,6 +105,7 @@ import { canSendEmail, mailbox } from "./components/communications/inboxModel";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import { ModuleGate } from "./modules/moduleVisibility";
+import { ContactSequenceEnrollment } from "./modules/marketing/sequences/ContactSequenceEnrollment";
 import i18n from "./i18n";
 
 const ModuleLeadsPage = lazy(() =>
@@ -2560,7 +2561,7 @@ const activityFilterTypes: Partial<Record<ActivityFilter, string>> = {
   System: "System",
 };
 
-function RecordDetailPage({
+export function RecordDetailPage({
   resource,
   fields,
   title,
@@ -2874,6 +2875,9 @@ function RecordDetailPage({
   </p>
 </div>
           <div className="detail-actions">
+            {resource === "contacts" ? (
+              <ContactSequenceEnrollment key={record.id} contact={record} />
+            ) : null}
             {resource === "quotes" ? (
               <GenerateInvoiceButton key={record.id} quote={record} />
             ) : null}

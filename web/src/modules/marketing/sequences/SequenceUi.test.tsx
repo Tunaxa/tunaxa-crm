@@ -5,6 +5,8 @@ import { SequencesPage } from "./SequencesPage";
 import { SequenceEditor } from "./SequenceEditor";
 import { ContactSequenceEnrollment, EnrollmentPicker } from "./ContactSequenceEnrollment";
 import { isModuleVisible, MODULE_CATALOG } from "../../moduleVisibility";
+import { contactFields } from "../../sales/fields";
+import { RecordDetailPage } from "../../../App";
 
 const mocks = vi.hoisted(() => ({
   resource: vi.fn(),
@@ -12,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   json: vi.fn((method: string, body?: unknown) => ({ method, body })),
   toast: vi.fn(),
   role: "member",
+  params: vi.fn(),
+  navigate: vi.fn(),
 }));
 vi.mock("../../../lib/useResource", () => ({ useResource: mocks.resource }));
 vi.mock("../../../lib/api", () => ({ api: mocks.api, json: mocks.json }));
@@ -30,6 +34,10 @@ vi.mock("../../../components/ui", async (importOriginal) => {
       ),
   };
 });
+vi.mock("react-router-dom", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-router-dom")>();
+  return { ...actual, useNavigate: () => mocks.navigate, useParams: () => mocks.params() };
+});
 
 const sequence = { id: "seq_a", name: "Three-step outreach", enabled: true, steps: [0, 2, 5].map((delayDays, index) => ({ id: `step_${index}`, subject: `Subject ${index + 1}`, body: `Message ${index + 1}`, delayDays, action: "sendEmail" })) };
 const contact = { id: "contact_a", name: "Ada", email: "ada@example.com" };
@@ -44,6 +52,8 @@ beforeEach(() => {
   mocks.api.mockReset();
   mocks.json.mockClear();
   mocks.toast.mockReset();
+  mocks.params.mockReset().mockReturnValue({ id: contact.id });
+  mocks.navigate.mockReset();
   vi.stubGlobal("window", { addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn() });
   vi.stubGlobal("CustomEvent", class {
     type: string;
@@ -211,6 +221,79 @@ describe("Sequence UI", () => {
     });
     expect(text(renderer, "alert")).toContain("not available on this server yet");
     expect(button(renderer, "Enroll contact").props.disabled).toBe(true);
+    act(() => renderer.unmount());
+  });
+});
+
+describe("Contact detail enrollment trigger", () => {
+  function mockDetailApi(resource: string) {
+    mocks.api.mockImplementation(async (path: string) => {
+      const request = String(path);
+      if (request === `/${resource}/${contact.id}`) return contact;
+      if (request.includes("/enrollments")) return { data: [], total: 0 };
+      if (request.endsWith(`/sequences/${sequence.id}`)) return sequence;
+      if (request.endsWith("/enroll")) return { enrolled: 1, skipped: 0, enrollments: [enrollment] };
+      return [];
+    });
+  }
+
+  async function mountDetail(resource: string) {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<RecordDetailPage resource={resource} fields={contactFields} title={resource === "contacts" ? "Contacts" : resource} />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    return renderer;
+  }
+
+  it.each(["owner", "Owner", "admin", "member"])("renders the trigger for %s on contact detail", async (role) => {
+    mocks.role = role;
+    mockDetailApi("contacts");
+    const renderer = await mountDetail("contacts");
+    expect(button(renderer, "Enroll in sequence")).toBeTruthy();
+    act(() => renderer.unmount());
+  });
+
+  it("opens the enrollment drawer with the contact identity and posts the contact id", async () => {
+    mocks.role = "member";
+    mockDetailApi("contacts");
+    const renderer = await mountDetail("contacts");
+    await act(async () => { button(renderer, "Enroll in sequence").props.onClick(); });
+    expect(renderer.root.findByType("h2").props.children).toBe("Enroll contact in sequence");
+    expect(renderer.root.findAll(node => typeof node.type === "string" && node.props.children === `${contact.name} · ${contact.email}`)).toHaveLength(1);
+    await act(async () => {
+      renderer.root.findByType("select").props.onChange({ target: { value: sequence.id } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(button(renderer, "Enroll contact").props.disabled).toBe(false);
+    await act(async () => {
+      button(renderer, "Enroll contact").props.onClick();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const call = mocks.api.mock.calls.find(entry => String(entry[0]).endsWith("/enroll"));
+    expect(call?.[1]).toEqual({ method: "POST", body: { contactIds: [contact.id] } });
+    act(() => renderer.unmount());
+  });
+
+  it.each(["leads", "companies"])("does not render the trigger on %s detail", async (resource) => {
+    mocks.role = "member";
+    mockDetailApi(resource);
+    const renderer = await mountDetail(resource);
+    expect(renderer.root.findAllByType("button").some(node => node.props.children === "Enroll in sequence")).toBe(false);
+    act(() => renderer.unmount());
+  });
+
+  it("does not render the trigger for viewers", async () => {
+    mocks.role = "viewer";
+    mockDetailApi("contacts");
+    const renderer = await mountDetail("contacts");
+    expect(renderer.root.findAllByType("button").some(node => node.props.children === "Enroll in sequence")).toBe(false);
     act(() => renderer.unmount());
   });
 });
