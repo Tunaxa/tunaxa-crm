@@ -51,6 +51,15 @@ describe("module visibility and deep links", () => {
     expect(allowedByRole("/tickets", "viewer")).toBe(true);
   });
 
+  it("gates /integrations to admin and Owner roles", () => {
+    expect(allowedByRole("/integrations", "viewer")).toBe(false);
+    expect(allowedByRole("/integrations", "member")).toBe(false);
+    expect(allowedByRole("/integrations", "admin")).toBe(true);
+    expect(allowedByRole("/integrations", "Owner")).toBe(true);
+    expect(isModuleVisible("/integrations", new Set(["/", "/integrations"]), "member")).toBe(false);
+    expect(isModuleVisible("/integrations", new Set(["/", "/integrations"]), "Owner")).toBe(true);
+  });
+
   it("allows unlisted legacy marketing paths and falls back to role rank", () => {
     expect(isModuleVisible("/campaigns", new Set(), "viewer")).toBe(true);
     expect(isModuleVisible("/forms", new Set(), "viewer")).toBe(true);
