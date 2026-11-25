@@ -28,6 +28,10 @@ export interface SSEEventMap {
   "webhook.received": { endpointId: string; deliveryId: string };
   "ticket.opened": unknown;
   "ticket.updated": unknown;
+  "pipeline.definition_created": unknown;
+  "pipeline.definition_updated": unknown;
+  "pipeline.definition_deleted": unknown;
+  "pipeline.deal_moved": unknown;
   "execution.processed": unknown;
 }
 

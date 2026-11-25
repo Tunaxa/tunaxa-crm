@@ -34,6 +34,13 @@ const statusLabels: Record<ImportResult["status"], string> = {
 };
 const PREVIEW_SIZE = 10;
 
+type ImportContext = {
+  disabled?: boolean;
+  unavailable?: boolean;
+  contextLabel?: string;
+  preparePayload?: (payload: Record<string, unknown>) => Record<string, unknown>;
+};
+
 function downloadCsv(filename: string, content: string) {
   if (typeof URL.createObjectURL !== "function") return;
   const url = URL.createObjectURL(new Blob([content], { type: "text/csv;charset=utf-8" }));
@@ -51,12 +58,18 @@ export function CsvImportButton({
   label,
   fields,
   onComplete,
+  onOpenChange,
+  disabled,
+  unavailable,
+  contextLabel,
+  preparePayload,
 }: {
   resource: CsvResource;
   label: string;
   fields: FieldSpec[];
   onComplete: () => void | Promise<unknown>;
-}) {
+  onOpenChange?: (open: boolean) => void;
+} & ImportContext) {
   const { user } = useApp();
   const [open, setOpen] = useState(false);
   const allowed = canManageRecords(user?.role);
@@ -65,9 +78,12 @@ export function CsvImportButton({
       <button
         type="button"
         className="btn secondary"
-        disabled={!allowed}
+        disabled={!allowed || Boolean(disabled)}
         title={allowed ? undefined : "Import requires member, admin or owner access"}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setOpen(true);
+          onOpenChange?.(true);
+        }}
       >
         <Icon name="upload" /> Import CSV
       </button>
@@ -77,7 +93,13 @@ export function CsvImportButton({
           label={label}
           fields={fields}
           onComplete={onComplete}
-          onClose={() => setOpen(false)}
+          onClose={() => {
+            setOpen(false);
+            onOpenChange?.(false);
+          }}
+          unavailable={unavailable}
+          contextLabel={contextLabel}
+          preparePayload={preparePayload}
         />
       ) : null}
     </>
@@ -90,13 +112,16 @@ export function CsvImportWizard({
   fields,
   onComplete,
   onClose,
+  unavailable,
+  contextLabel,
+  preparePayload,
 }: {
   resource: CsvResource;
   label: string;
   fields: FieldSpec[];
   onComplete: () => void | Promise<unknown>;
   onClose: () => void;
-}) {
+} & ImportContext) {
   const { user, toast } = useApp();
   const schema = useSchema(resource);
   const [step, setStep] = useState(0);
@@ -115,7 +140,9 @@ export function CsvImportWizard({
   const stopRequested = useRef(false);
   const mounted = useRef(true);
   const fileVersion = useRef(0);
-  const allowed = canManageRecords(user?.role);
+  const allowed = !unavailable && canManageRecords(user?.role);
+  const payloadTransform = useRef(preparePayload);
+  payloadTransform.current = preparePayload;
   const access = useRef(allowed);
   access.current = allowed;
 
@@ -201,7 +228,14 @@ export function CsvImportWizard({
     try {
       const final = await runCsvImport(
         prepared,
-        (payload) => api(`/${resource}`, json("POST", payload)),
+        (payload) =>
+          api(
+            `/${resource}`,
+            json(
+              "POST",
+              payloadTransform.current ? payloadTransform.current(payload) : payload,
+            ),
+          ),
         (next) => {
           if (mounted.current) setResults(next);
         },
@@ -416,7 +450,14 @@ export function CsvImportWizard({
           tabIndex={-1}
           ref={stepRef}
         >
-          {!allowed ? <p role="alert">Import requires member, admin or owner access.</p> : null}
+          {contextLabel ? <p>Import destination: <strong>{contextLabel}</strong></p> : null}
+          {!allowed ? (
+            <p role="alert">
+              {unavailable
+                ? "This import destination is unavailable. Close the wizard and refresh the list."
+                : "Import requires member, admin or owner access."}
+            </p>
+          ) : null}
           {schema.error ? <p className="csv-import-error" role="alert">{schema.error}</p> : null}
           {error ? <p className="csv-import-error" role="alert">{error}</p> : null}
           {step === 0 ? (

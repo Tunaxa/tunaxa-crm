@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { useApp } from "../../context/AppContext";
 import { Drawer, PhotoField } from "../ui";
-import { safeMediaSrc, sanitizeFieldKey, sanitizeFormValues } from "./urlSecurity";
+import { hasOwn, safeMediaSrc, sanitizeFieldKey, sanitizeFormValues } from "./urlSecurity";
 import type { FieldSpec, Row } from "./types";
 
 export function RecordForm({
@@ -120,7 +120,9 @@ export function RecordForm({
                 >
                   {(field.options ?? []).map((option) => (
                     <option key={option} value={option}>
-                      {option}
+                      {field.optionLabels && hasOwn(field.optionLabels, option)
+                        ? field.optionLabels[option]
+                        : option}
                     </option>
                   ))}
                 </select>
