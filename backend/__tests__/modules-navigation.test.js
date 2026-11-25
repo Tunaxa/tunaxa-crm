@@ -21,6 +21,7 @@ const ALL_IDS = [
   'reports',
   'import_export',
   'team',
+  'integrations',
   'settings',
 ];
 const MEMBER_IDS = [
@@ -112,6 +113,7 @@ describe('GET /api/modules — role visibility matrix', () => {
     expect(res.body.success).toBe(true);
     expect(ids(res.body)).toEqual(ALL_IDS);
     expect(ids(res.body)).toContain('team');
+    expect(ids(res.body)).toContain('integrations');
     expect(ids(res.body)).toContain('settings');
     expect(ids(res.body)).toContain('import_export');
   });
@@ -122,6 +124,7 @@ describe('GET /api/modules — role visibility matrix', () => {
     expect(res.body.success).toBe(true);
     expect(ids(res.body)).toEqual(MEMBER_IDS);
     expect(ids(res.body)).not.toContain('team');
+    expect(ids(res.body)).not.toContain('integrations');
     expect(ids(res.body)).not.toContain('settings');
     expect(ids(res.body)).toContain('import_export');
   });
@@ -130,7 +133,7 @@ describe('GET /api/modules — role visibility matrix', () => {
     const res = await getModules(tokenFor('usr_nav_viewer'));
     expect(res.status).toBe(200);
     expect(ids(res.body)).toEqual(VIEWER_IDS);
-    for (const excluded of ['leads', 'import_export', 'team', 'settings']) {
+    for (const excluded of ['leads', 'import_export', 'team', 'integrations', 'settings']) {
       expect(ids(res.body)).not.toContain(excluded);
     }
   });
@@ -210,6 +213,18 @@ describe('navigation service (pure)', () => {
     for (const module of MODULES) expect(Object.isFrozen(module)).toBe(true);
     const registryIds = MODULES.map((m) => m.id);
     expect(new Set(registryIds).size).toBe(registryIds.length);
+  });
+
+  it('gates /integrations to administrators in the backend registry', () => {
+    expect(MODULES.find((module) => module.id === 'integrations')).toMatchObject({
+      id: 'integrations',
+      path: '/integrations',
+      minRole: 'admin',
+      section: 'administration',
+    });
+    expect(getNavigationForUser({ role: 'member' }).some((module) => module.id === 'integrations')).toBe(false);
+    expect(getNavigationForUser({ role: 'viewer' }).some((module) => module.id === 'integrations')).toBe(false);
+    expect(getNavigationForUser({ role: 'Owner' }).some((module) => module.id === 'integrations')).toBe(true);
   });
 
   it('normalizes aliases and rejects junk to the viewer fallback', () => {

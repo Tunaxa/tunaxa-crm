@@ -1,0 +1,169 @@
+.integration-tabs {
+  display: flex;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+
+.integration-tabs button {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 12px 4px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.integration-tabs button.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.integration-tabs button:focus-visible,
+.integration-card button:focus-visible,
+.integration-notice button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.integration-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 20px;
+}
+
+.integration-card {
+  padding: 24px;
+  min-width: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+.integration-card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.integration-card-heading h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.integration-icon {
+  display: inline-flex;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.integration-card p {
+  margin: 18px 0;
+}
+
+.integration-card footer {
+  margin-top: 18px;
+}
+
+.integration-card small {
+  display: block;
+  color: var(--muted);
+}
+
+.integration-masked-url {
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  color: var(--muted);
+}
+
+.integration-notice {
+  padding: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  margin-bottom: 24px;
+}
+
+.integration-status {
+  color: var(--text);
+}
+
+.slack-setup {
+  display: grid;
+  gap: 18px;
+  color: var(--text);
+}
+
+.slack-setup p,
+.slack-setup ol {
+  margin: 0;
+}
+
+.slack-setup li {
+  margin-bottom: 10px;
+}
+
+.slack-setup [role="alert"] {
+  color: var(--text);
+  border-left: 3px solid var(--primary);
+  padding-left: 12px;
+}
+
+.slack-setup [role="status"] {
+  color: var(--muted);
+}
+
+.integrations-page [role="tabpanel"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 5px;
+}
+
+html.dark .integration-card,
+html.dark .integration-notice {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+html.dark .integration-tabs button.active,
+html.dark .integration-icon {
+  border-color: var(--primary);
+}
+
+@media (max-width: 768px) {
+  .integration-tabs {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .integration-tabs button {
+    flex: 1 1 0;
+    padding: 10px 2px;
+  }
+
+  .integration-cards {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .integration-card {
+    padding: 16px;
+  }
+
+  .integration-card-heading {
+    gap: 8px;
+  }
+
+  .integration-icon {
+    padding: 8px;
+  }
+
+  .slack-setup {
+    gap: 12px;
+  }
+}

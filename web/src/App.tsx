@@ -140,6 +140,11 @@ const ModuleTicketsPage = lazy(() =>
 const ModuleSequencesPage = lazy(() =>
   import("./modules/marketing/sequences/SequencesPage").then((module) => ({ default: module.SequencesPage })),
 );
+const IntegrationsPage = lazy(() =>
+  import("./modules/workspace/integrations/IntegrationsPage").then((module) => ({
+    default: module.IntegrationsPage,
+  })),
+);
 
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
@@ -470,6 +475,12 @@ function AppRoutes() {
     "sequence.enrolled": refreshAll,
     "sequence.enrollment": refreshAll,
     "sequence.ran": refreshAll,
+    "integration.updated": () =>
+      window.dispatchEvent(
+        new CustomEvent("tunaxa:resource-changed", {
+          detail: { resource: "integrations" },
+        }),
+      ),
     "form.submitted": refreshAll,
     "form.created": refreshAll,
     "form.updated": refreshAll,
@@ -872,6 +883,19 @@ return (
               <Route path="/audit" element={<AuditPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
+              <Route
+                path="/integrations"
+                element={
+                  <ModuleGate path="/integrations">
+                    <ErrorBoundary
+                      key={location.pathname}
+                      fallbackMessage="Integrations failed to load."
+                    >
+                      <IntegrationsPage />
+                    </ErrorBoundary>
+                  </ModuleGate>
+                }
+              />
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/design-system" element={<DesignSystemPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

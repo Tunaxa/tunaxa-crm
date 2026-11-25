@@ -108,9 +108,10 @@ export function Modal({ title, children, onClose, footer }: { title: string; chi
   </div>;
 }
 
-export function Drawer({ title, subtitle, children, onClose, footer, width = 520 }: { title: string; subtitle?: string; children: ReactNode; onClose: () => void; footer?: ReactNode; width?: number }) {
+export function Drawer({ title, subtitle, children, onClose, footer, width = 520, labelId, busy = false }: { title: string; subtitle?: string; children: ReactNode; onClose: () => void; footer?: ReactNode; width?: number; labelId?: string; busy?: boolean }) {
   const drawerRef = useFocusTrap();
-  const titleId = useId();
+  const generatedTitleId = useId();
+  const titleId = labelId || generatedTitleId;
   const subtitleId = useId();
 
   useEffect(() => {
@@ -124,7 +125,7 @@ export function Drawer({ title, subtitle, children, onClose, footer, width = 520
   }, [onClose]);
 
   return <div className="drawer-backdrop" onMouseDown={onClose}>
-    <aside ref={drawerRef} className="side-drawer" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={subtitle ? subtitleId : undefined} tabIndex={-1} style={{ width }} onMouseDown={event => event.stopPropagation()}>
+    <aside ref={drawerRef} className="side-drawer" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={busy} aria-describedby={subtitle ? subtitleId : undefined} tabIndex={-1} style={{ width }} onMouseDown={event => event.stopPropagation()}>
       <header className="side-drawer-head">
         <div><h2 id={titleId}>{title}</h2>{subtitle ? <p id={subtitleId}>{subtitle}</p> : null}</div>
         <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>

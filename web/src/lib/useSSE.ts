@@ -13,6 +13,7 @@ export interface SSEEventMap {
   "sequence.enrolled": { sequenceId: string; count?: number; enrolled?: number; skipped?: number };
   "sequence.enrollment": { enrollmentId: string; status: string };
   "sequence.ran": { sequenceId: string } & Record<string, unknown>;
+  "integration.updated": { channel?: string; configured?: boolean };
   "form.submitted": { formId: string; permalink: string; recordId: string };
   "form.created": { id: string };
   "form.updated": { id: string };

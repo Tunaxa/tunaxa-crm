@@ -91,6 +91,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { path: "/team", label: "nav.team", icon: "team" },
       { path: "/fields", label: "nav.fields", icon: "fields" },
+      { path: "/integrations", label: "nav.integrations", icon: "webhook" },
       { path: "/settings", label: "nav.settings", icon: "settings" },
     ],
   },

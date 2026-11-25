@@ -100,6 +100,15 @@ export const MODULES = Object.freeze([
     minRole: 'admin',
   }),
   Object.freeze({
+    id: 'integrations',
+    label: 'Integrations',
+    path: '/integrations',
+    icon: 'Webhook',
+    order: 85,
+    section: 'administration',
+    minRole: 'admin',
+  }),
+  Object.freeze({
     id: 'settings',
     label: 'Settings',
     path: '/settings',

@@ -20,6 +20,7 @@ export const MODULE_CATALOG: Readonly<Record<string, string>> = Object.freeze({
   "/tickets": "viewer",
   "/sequences": "viewer",
   "/import": "member",
+  "/integrations": "admin",
   "/team": "admin",
   "/settings": "admin",
 });
@@ -103,7 +104,8 @@ export function isModuleVisible(
   const path = moduleBasePath(pathname);
   const minRole = MODULE_CATALOG[path];
   if (!minRole) return true;
-  if (!modulePaths) return allowedByRole(path, role);
+  if (!allowedByRole(path, role)) return false;
+  if (!modulePaths) return true;
   const aliases = PATH_ALIASES[path] ?? [path];
   return aliases.some((candidate) => modulePaths.has(candidate));
 }

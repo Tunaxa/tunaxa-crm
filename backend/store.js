@@ -57,6 +57,7 @@ export const EMPTY_DB = {
   surveyResponses: [],
   webhookEndpoints: [],
   webhookDeliveries: [],
+  integrations: {},
   settings: {},
   meta: { seedVersion: 0 },
 };
