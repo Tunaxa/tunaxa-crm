@@ -134,6 +134,9 @@ const ModuleMarketingEmailsPage = lazy(() =>
 const ModuleFormsPage = lazy(() =>
   import("./modules/marketing/FormsPage").then((module) => ({ default: module.FormsPage })),
 );
+const ModuleTicketsPage = lazy(() =>
+  import("./modules/service/TicketsPage").then((module) => ({ default: module.TicketsPage })),
+);
 
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
@@ -694,6 +697,17 @@ return (
                     fallbackMessage="Pipeline failed to load."
                   >
                     <ModulePipelinePage />
+                  </ErrorBoundary>
+                }
+              />
+              <Route
+                path="/tickets"
+                element={
+                  <ErrorBoundary
+                    key={location.pathname}
+                    fallbackMessage="Tickets failed to load."
+                  >
+                    <ModuleTicketsPage />
                   </ErrorBoundary>
                 }
               />

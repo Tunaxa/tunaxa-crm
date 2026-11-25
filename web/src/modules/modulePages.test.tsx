@@ -43,6 +43,14 @@ describe("module visibility and deep links", () => {
     expect(isModuleVisible("/contacts", visible, "viewer")).toBe(true);
   });
 
+  it("gates /tickets through the API module catalog and role fallback", () => {
+    expect(isModuleVisible("/tickets", new Set(["/", "/tickets"]), "viewer")).toBe(true);
+    expect(isModuleVisible("/tickets", new Set(["/", "/contacts"]), "admin")).toBe(false);
+    expect(isModuleVisible("/tickets/42", new Set(["/", "/tickets"]), "viewer")).toBe(true);
+    expect(isModuleVisible("/tickets", null, "viewer")).toBe(true);
+    expect(allowedByRole("/tickets", "viewer")).toBe(true);
+  });
+
   it("allows unlisted legacy marketing paths and falls back to role rank", () => {
     expect(isModuleVisible("/campaigns", new Set(), "viewer")).toBe(true);
     expect(isModuleVisible("/forms", new Set(), "viewer")).toBe(true);

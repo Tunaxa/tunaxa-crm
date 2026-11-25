@@ -16,6 +16,7 @@ const ALL_IDS = [
   'companies',
   'deals',
   'leads',
+  'tickets',
   'reports',
   'import_export',
   'team',
@@ -27,10 +28,11 @@ const MEMBER_IDS = [
   'companies',
   'deals',
   'leads',
+  'tickets',
   'reports',
   'import_export',
 ];
-const VIEWER_IDS = ['dashboard', 'contacts', 'companies', 'deals', 'reports'];
+const VIEWER_IDS = ['dashboard', 'contacts', 'companies', 'deals', 'tickets', 'reports'];
 const CONTRACT_KEYS = [
   'icon',
   'id',
