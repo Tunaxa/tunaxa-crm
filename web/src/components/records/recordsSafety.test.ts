@@ -109,9 +109,11 @@ describe("accessibility and permissions", () => {
     expect(isActivationKey("Escape")).toBe(false);
   });
 
-  it("grants record mutations only to member and admin roles", () => {
+  it("grants record mutations only to member, admin and owner roles", () => {
     expect(canManageRecords("viewer")).toBe(false);
     expect(canManageRecords("member")).toBe(true);
+    expect(canManageRecords("admin")).toBe(true);
+    expect(canManageRecords("owner")).toBe(true);
     expect(canManageRecords("Owner")).toBe(true);
     expect(canManageRecords(undefined)).toBe(false);
   });

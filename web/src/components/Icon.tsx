@@ -161,6 +161,18 @@ const paths: Record<string, ReactNode> = {
       <path d="M12 7v5l4 2" />
     </>
   ),
+  refresh: (
+    <>
+      <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+      <path d="M20 4v7h-7" />
+    </>
+  ),
+  ticket: (
+    <>
+      <path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-3a2 2 0 0 0 0-4z" />
+      <path d="M12 6v12" strokeDasharray="2 3" />
+    </>
+  ),
   money: (
     <>
       <circle cx="12" cy="12" r="9" />
