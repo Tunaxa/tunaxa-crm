@@ -127,6 +127,15 @@ export default function registerSequenceRoutes(app) {
     res.json(paginateAndSort(sequences, req.query));
   });
 
+  app.get('/api/sequences/:id', auth, async (req, res) => {
+    const params = parseOrReject(idParamSchema, req.params, res);
+    if (!params) return;
+    const db = await readDb();
+    const sequence = findOwnedSequence(db, params.id, tenantOf(req));
+    if (!sequence) return res.status(404).json({ error: 'Sequence not found' });
+    res.json(sequence);
+  });
+
   app.post('/api/sequences', auth, requireRole('admin', 'member'), checkWriteFieldMask('sequence'), async (req, res) => {
     const { name, steps = [], exitRules = [], enabled = true } = req.body || {};
     if (!name) return res.status(400).json({ error: 'Sequence name is required' });

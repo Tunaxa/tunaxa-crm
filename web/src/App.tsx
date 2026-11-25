@@ -75,7 +75,6 @@ import { ActivitiesPage } from "./pages/activities/ActivitiesPage";
 import { CallsPage } from "./pages/communication/CallsPage";
 import { InboxPage } from "./pages/communication/InboxPage";
 import { RecordingsPage } from "./pages/communication/RecordingsPage";
-import { SequencesPage } from "./pages/communication/SequencesPage";
 import { WebhooksPage } from "./pages/communication/WebhooksPage";
 import { ContractsPage } from "./pages/revenue/ContractsPage";
 import { InvoicesPage } from "./pages/revenue/InvoicesPage";
@@ -106,6 +105,7 @@ import { canSendEmail, mailbox } from "./components/communications/inboxModel";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import { ModuleGate } from "./modules/moduleVisibility";
+import { ContactSequenceEnrollment } from "./modules/marketing/sequences/ContactSequenceEnrollment";
 import i18n from "./i18n";
 
 const ModuleLeadsPage = lazy(() =>
@@ -136,6 +136,9 @@ const ModuleFormsPage = lazy(() =>
 );
 const ModuleTicketsPage = lazy(() =>
   import("./modules/service/TicketsPage").then((module) => ({ default: module.TicketsPage })),
+);
+const ModuleSequencesPage = lazy(() =>
+  import("./modules/marketing/sequences/SequencesPage").then((module) => ({ default: module.SequencesPage })),
 );
 
 const logo = "/assets/tunaxa-logo.png";
@@ -465,6 +468,7 @@ function AppRoutes() {
     "workflow.deleted": refreshAll,
     "workflow.graph_saved": refreshAll,
     "sequence.enrolled": refreshAll,
+    "sequence.enrollment": refreshAll,
     "sequence.ran": refreshAll,
     "form.submitted": refreshAll,
     "form.created": refreshAll,
@@ -731,7 +735,9 @@ return (
               <Route
                 path="/sequences"
                 element={
-                  <SequencesPage SimpleCards={SimpleCards} RecordForm={RecordForm} />
+                  <ModuleGate path="/sequences">
+                    <ModuleSequencesPage />
+                  </ModuleGate>
                 }
               />
               <Route
@@ -2555,7 +2561,7 @@ const activityFilterTypes: Partial<Record<ActivityFilter, string>> = {
   System: "System",
 };
 
-function RecordDetailPage({
+export function RecordDetailPage({
   resource,
   fields,
   title,
@@ -2869,6 +2875,9 @@ function RecordDetailPage({
   </p>
 </div>
           <div className="detail-actions">
+            {resource === "contacts" ? (
+              <ContactSequenceEnrollment key={record.id} contact={record} />
+            ) : null}
             {resource === "quotes" ? (
               <GenerateInvoiceButton key={record.id} quote={record} />
             ) : null}
