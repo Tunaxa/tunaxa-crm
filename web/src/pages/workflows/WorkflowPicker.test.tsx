@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { WorkflowPicker, workflowLastRun, workflowEnabled, workflowName } from "./WorkflowPicker";
+import { AppProvider } from "../../context/AppContext";
 import WorkflowCanvas from "./WorkflowCanvas";
 
 const handlers = { onClose: () => {}, onSelect: () => {}, onRetry: () => {} };
@@ -41,13 +42,13 @@ describe("workflow picker", () => {
 
 describe("workflow canvas foundation", () => {
   it("renders a blank workflow with controls and a minimap", () => {
-    const html = renderToStaticMarkup(<WorkflowCanvas workflow={{}} />);
+    const html = renderToStaticMarkup(<AppProvider><WorkflowCanvas workflow={{}} /></AppProvider>);
     expect(html).toContain("react-flow__minimap");
     expect(html).toContain("react-flow__controls");
     expect(html).not.toContain('data-id="trigger"');
   });
   it("disables palette actions and dragging for read-only users", () => {
-    const html = renderToStaticMarkup(<WorkflowCanvas readOnly workflow={{}} />);
+    const html = renderToStaticMarkup(<AppProvider><WorkflowCanvas readOnly workflow={{}} /></AppProvider>);
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*class="workflow-palette-item/);
     expect(html).not.toContain('draggable="true"');
     expect(html).not.toContain("react-flow__controls-interactive");

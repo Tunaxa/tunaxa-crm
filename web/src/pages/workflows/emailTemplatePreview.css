@@ -1,0 +1,82 @@
+.workflow-builder .workflow-canvas {
+  min-width: 0;
+}
+
+.side-drawer .workflow-action-config {
+  display: grid;
+  gap: 12px;
+  box-shadow: var(--shadow-lg);
+}
+
+.workflow-action-config .field select {
+  width: 100%;
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.workflow-action-config button,
+.workflow-action-config select {
+  min-height: 32px;
+}
+
+.workflow-template-preview {
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.workflow-template-preview h4 {
+  margin: 0 0 8px;
+  color: var(--text);
+}
+
+.workflow-template-preview small {
+  color: var(--muted);
+}
+
+.workflow-template-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.email-merge-tag {
+  background: var(--primary);
+  color: var(--surface);
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+
+.workflow-palette-item:focus-visible,
+.workflow-action-config button:focus-visible,
+.workflow-action-config select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .side-drawer {
+    max-width: 100vw;
+  }
+
+  .workflow-builder .workflow-canvas {
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .workflow-action-config {
+    padding: 12px;
+  }
+
+  .workflow-template-preview,
+  .workflow-template-body {
+    max-width: 100%;
+    word-break: break-word;
+  }
+}
