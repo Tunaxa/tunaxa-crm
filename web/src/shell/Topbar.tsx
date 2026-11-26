@@ -12,6 +12,9 @@ export function Topbar({
   onOpenSearch,
   onOpenQuickCreate,
   onOpenEcosystem,
+  onOpenNotifications,
+  notificationOpen,
+  unreadCount,
   profile,
   onToggleProfile,
   theme,
@@ -23,13 +26,16 @@ export function Topbar({
   onOpenSearch: () => void;
   onOpenQuickCreate: () => void;
   onOpenEcosystem: () => void;
+  onOpenNotifications: () => void;
+  notificationOpen: boolean;
+  unreadCount: number;
   profile: boolean;
   onToggleProfile: () => void;
   theme: boolean;
   onToggleTheme: () => void;
   onToggleLanguage: () => void;
 }) {
-  const { user, logout, toast } = useApp();
+  const { user, logout } = useApp();
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,7 +54,25 @@ export function Topbar({
         <CutButton variant="primary" size="sm" onClick={onOpenQuickCreate}><div className="flex items-center gap-1.5 font-mono text-xs"><Icon name="plus" /><span>NEW</span></div></CutButton>
         <button className="icon-btn" onClick={onOpenEcosystem} title="Tunaxa Ecosystem Apps" aria-label="Tunaxa Ecosystem Apps"><LayoutGrid className="w-4 h-4 text-[#3b82f6]" /></button>
         <button className="icon-btn" onClick={onToggleTheme} title={theme ? "Light Blueprint" : "Dark Cyber"}>{theme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}</button>
-        <button className="icon-btn notification-btn" onClick={() => toast("No new notifications")} title="Notifications"><Icon name="bell" /></button>
+        <button
+          className="icon-btn notification-btn notification-trigger"
+          onClick={onOpenNotifications}
+          aria-label={
+            unreadCount > 0
+              ? `Notifications, ${unreadCount} unread`
+              : "Notifications"
+          }
+          aria-haspopup="dialog"
+          aria-expanded={notificationOpen}
+          title="Notifications"
+        >
+          <Icon name="bell" />
+          {unreadCount > 0 ? (
+            <span className="notification-count" aria-hidden="true">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          ) : null}
+        </button>
         <div className="profile-wrap">
           <button className="profile-trigger" onClick={onToggleProfile}><Avatar name={user?.name || "TX"} /><div><b>{user?.name}</b><small>{user?.role}</small></div><Icon name="chevronDown" /></button>
           {profile ? <div className="profile-menu">

@@ -20,6 +20,7 @@ export const EMPTY_DB = {
   calls: [],
   recordings: [],
   messages: [],
+  userNotifications: [],
   sequences: [],
   sequenceEnrollments: [],
   team: [],

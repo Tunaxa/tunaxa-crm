@@ -6,6 +6,8 @@ import { parseSchemaResponse } from "./useSchema";
 import {
   isSafeMediaUrl,
   isSafeRedirectUrl,
+  notificationTarget,
+  safeFields,
   safeMediaSrc,
   sanitizeCsvRecords,
   sanitizeFieldKey,
@@ -66,6 +68,34 @@ describe("safe URL and key handling", () => {
       expect(sanitizeFormFieldKey(key)).toBeNull();
     }
     expect(sanitizeFieldKey("custom_field-1")).toBe("custom_field-1");
+  });
+
+  it("keeps notification navigation on an internal record allowlist", () => {
+    expect(notificationTarget("/contacts/c_1")).toBe("/contacts/c_1");
+    for (const value of [
+      "//evil.example",
+      "javascript:alert(1)",
+      "data:text/html;base64,PHNjcmlwdD4=",
+      "/contacts/%2fother",
+      "/contacts/a?redirect=x",
+      "/contacts/../settings",
+      "/ticket/t_1",
+    ]) {
+      expect(notificationTarget(value)).toBeNull();
+    }
+  });
+
+  it("builds null-prototype field maps without dangerous keys", () => {
+    const payload = JSON.parse(
+      '{"title":"Safe","__proto__":{"polluted":true},"constructor":"bad","prototype":"bad"}',
+    );
+    const fields = safeFields(payload);
+    expect(Object.getPrototypeOf(fields)).toBeNull();
+    expect(Object.prototype.hasOwnProperty.call(fields, "__proto__")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(fields, "constructor")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(fields, "prototype")).toBe(false);
+    expect(fields.title).toBe("Safe");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 
   it("sanitizes CSV headers and values without creating prototype keys", () => {

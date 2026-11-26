@@ -9,10 +9,16 @@ export function Shell({
   children,
   renderQuickCreate,
   renderGlobalSearch,
+  onOpenNotifications,
+  notificationOpen,
+  unreadCount,
 }: {
   children: ReactNode;
   renderQuickCreate: (onClose: () => void) => ReactNode;
   renderGlobalSearch: (onClose: () => void) => ReactNode;
+  onOpenNotifications: () => void;
+  notificationOpen: boolean;
+  unreadCount: number;
 }) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(localStorage.getItem("tunaxa.sidebar") === "1");
@@ -81,6 +87,9 @@ export function Shell({
           onOpenSearch={() => setSearchOpen(true)}
           onOpenQuickCreate={() => setQuickOpen(true)}
           onOpenEcosystem={() => setIsEcosystemOpen(true)}
+          onOpenNotifications={onOpenNotifications}
+          notificationOpen={notificationOpen}
+          unreadCount={unreadCount}
           profile={profile}
           onToggleProfile={() => setProfile((value) => !value)}
           theme={theme}
