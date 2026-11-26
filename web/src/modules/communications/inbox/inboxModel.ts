@@ -61,6 +61,7 @@ export const deliveryStatuses: readonly DeliveryStatus[] = [
   "Queued",
   "Failed",
 ];
+const sentStatuses = new Set<string>(["Sent", "Saved", "Queued"]);
 
 const PAGE_LIMIT = 50;
 const MAX_PAGES = 500;
@@ -327,7 +328,13 @@ export function filterThreads(
   const search = query.trim().toLowerCase();
   return threads.filter((thread) => {
     if (filter === "Unread" && !thread.unread) return false;
-    if (filter === "Sent" && !thread.messages.some((row) => row.status === "Sent")) {
+    if (
+      filter === "Sent" &&
+      !thread.messages.some(
+        (row) =>
+          isOutbound(row) && sentStatuses.has(normalizeDeliveryStatus(row.status)),
+      )
+    ) {
       return false;
     }
     if (

@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Conversation, InboxPage, ThreadList } from "./InboxPage";
 import { MailEditor } from "./MailEditor";
-import { buildThreads, parseMessage, type Message } from "./inboxModel";
+import {
+  buildThreads,
+  filterThreads,
+  parseMessage,
+  type Message,
+} from "./inboxModel";
 
 const mocks = vi.hoisted(() => ({
   role: "Owner",
@@ -37,6 +42,15 @@ const message = parseMessage({
   read: false,
   status: "Received",
 });
+
+const sentThreadList = (rows: Message[]) =>
+  renderToStaticMarkup(
+    <ThreadList
+      threads={filterThreads(buildThreads(rows), "Sent", "")}
+      selectedKey={null}
+      onSelect={vi.fn()}
+    />,
+  );
 
 describe("inbox presentation", () => {
   beforeEach(() => {
@@ -154,5 +168,63 @@ describe("inbox presentation", () => {
     expect(html).toContain("Send reply");
     expect(html).toContain("textarea");
     expect(html).not.toContain('type="email"');
+  });
+
+  it("shows outbound Saved and Queued conversations under the Sent filter", () => {
+    const html = sentThreadList([
+      parseMessage({
+        id: "saved",
+        channel: "Email",
+        direction: "Outbound",
+        to: "customer@example.com",
+        subject: "Saved update",
+        body: "Email provider not configured; this email was saved.",
+        status: "Saved",
+        createdAt: "2026-10-10T10:00:00Z",
+      }),
+      parseMessage({
+        id: "queued",
+        channel: "Email",
+        direction: "Outbound",
+        to: "customer@example.com",
+        subject: "Queued update",
+        body: "Delivery pending.",
+        status: "Queued",
+        createdAt: "2026-10-10T11:00:00Z",
+      }),
+    ]);
+    expect(html).toContain("Saved update");
+    expect(html).toContain("Queued update");
+    expect(html).toContain(">Saved<");
+    expect(html).toContain(">Queued<");
+  });
+
+  it("hides inbound-only and Failed conversations from the Sent filter", () => {
+    const html = sentThreadList([
+      parseMessage({
+        id: "inbound",
+        channel: "Email",
+        direction: "Inbound",
+        from: "customer@example.com",
+        to: "me@example.com",
+        subject: "Inbound only",
+        body: "Please reply",
+        status: "Received",
+        createdAt: "2026-10-10T09:00:00Z",
+      }),
+      parseMessage({
+        id: "failed",
+        channel: "Email",
+        direction: "Outbound",
+        to: "customer@example.com",
+        subject: "Failed only",
+        body: "Not delivered",
+        status: "Failed",
+        createdAt: "2026-10-10T09:30:00Z",
+      }),
+    ]);
+    expect(html).not.toContain("Inbound only");
+    expect(html).not.toContain("Failed only");
+    expect(html).not.toContain(">Failed<");
   });
 });

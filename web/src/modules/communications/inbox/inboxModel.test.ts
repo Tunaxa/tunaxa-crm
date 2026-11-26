@@ -248,6 +248,52 @@ describe("conversation grouping and templates", () => {
   });
 });
 
+describe("Sent inbox filter", () => {
+  it("includes outbound Saved and Queued conversations", () => {
+    const threads = buildThreads([
+      message({ id: "saved", subject: "Saved", status: "Saved" }),
+      message({ id: "queued", subject: "Queued", status: "Queued" }),
+      message({ id: "sent", subject: "Sent", status: "Sent" }),
+    ]);
+    const filtered = filterThreads(threads, "Sent", "");
+    expect(filtered).toHaveLength(3);
+    expect(filtered.map((thread) => thread.key).sort()).toEqual(
+      threads.map((thread) => thread.key).sort(),
+    );
+  });
+
+  it("includes a thread with an outbound Saved reply alongside inbound mail", () => {
+    const threads = buildThreads([
+      message({
+        id: "inbound",
+        subject: "Proposal",
+        direction: "Inbound",
+        from: "customer@example.com",
+        to: "me@example.com",
+        status: "Received",
+      }),
+      message({ id: "saved", subject: "RE: Proposal", status: "Saved" }),
+    ]);
+    expect(threads).toHaveLength(1);
+    expect(filterThreads(threads, "Sent", "")).toEqual(threads);
+  });
+
+  it("excludes inbound-only and Failed-only conversations", () => {
+    const threads = buildThreads([
+      message({
+        id: "inbound",
+        subject: "Inbound",
+        direction: "Inbound",
+        from: "customer@example.com",
+        to: "me@example.com",
+        status: "Received",
+      }),
+      message({ id: "failed", subject: "Failed", status: "Failed" }),
+    ]);
+    expect(filterThreads(threads, "Sent", "")).toEqual([]);
+  });
+});
+
 describe("send acknowledgements and access", () => {
   const payload = buildEmailPayload(
     "customer@example.com",
