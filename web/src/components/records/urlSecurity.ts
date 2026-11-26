@@ -25,6 +25,34 @@ export function sanitizeFieldKey(
 
 export const sanitizeFormFieldKey = sanitizeFieldKey;
 
+const NOTIFICATION_ROUTE_PATTERN =
+  /^\/(?:contacts|leads|companies|deals|invoices|quotes|contracts)\/[A-Za-z0-9_-]+$/u;
+
+export function containsDangerousKey(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.keys(value as Record<string, unknown>).some((key) =>
+    DANGEROUS_KEYS.has(key.trim()),
+  );
+}
+
+export function safeFields(value: unknown): Record<string, unknown> {
+  const result = Object.create(null) as Record<string, unknown>;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return result;
+  const source = value as Record<string, unknown>;
+  for (const key of Object.keys(source)) {
+    const safe = sanitizeFieldKey(key);
+    if (!safe || !hasOwn(source, key)) continue;
+    result[safe] = source[key];
+  }
+  return result;
+}
+
+export function notificationTarget(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  if (/[\\\s%?#]/u.test(value) || value.startsWith("//")) return null;
+  return NOTIFICATION_ROUTE_PATTERN.test(value) ? value : null;
+}
+
 function parseUrl(value: string, base: string): URL | null {
   if (CONTROL_CHARS.test(value)) return null;
   try {

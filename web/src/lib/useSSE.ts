@@ -37,6 +37,12 @@ export interface SSEEventMap {
   "pipeline.definition_deleted": unknown;
   "pipeline.deal_moved": unknown;
   "execution.processed": unknown;
+  "notification.created": { id: string; unreadCount: number };
+  "notification.updated": {
+    id?: string;
+    updated?: number;
+    unreadCount: number;
+  };
 }
 
 export type SSEHandlers = {

@@ -105,6 +105,9 @@ import { canSendEmail, mailbox } from "./components/communications/inboxModel";
 import { useResource } from "./lib/useResource";
 import { useSSE, type SSEHandlers } from "./lib/useSSE";
 import { ModuleGate } from "./modules/moduleVisibility";
+import { NotificationDrawer } from "./modules/notifications/NotificationCenter";
+import { useNotifications } from "./modules/notifications/useNotifications";
+import { canManageRecords } from "./components/records/rbac";
 import { ContactSequenceEnrollment } from "./modules/marketing/sequences/ContactSequenceEnrollment";
 import i18n from "./i18n";
 
@@ -454,13 +457,26 @@ function AuthScreen({
 }
 
 function AppRoutes() {
-  const { user, toast, logout } = useApp();
+  const { user } = useApp();
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const location = useLocation();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [notificationOffset, setNotificationOffset] = useState(0);
+  const notifications = useNotifications(
+    unreadOnly,
+    notificationOffset,
+    Boolean(user),
+  );
 
   const refreshAll = () =>
     window.dispatchEvent(new CustomEvent("tunaxa:resource-changed"));
+  const refreshNotifications = () =>
+    window.dispatchEvent(
+      new CustomEvent("tunaxa:resource-changed", {
+        detail: { resource: "notifications" },
+      }),
+    );
   const sseHandlers: SSEHandlers = {
     "record.created": (data) =>
       window.dispatchEvent(
@@ -514,13 +530,19 @@ function AppRoutes() {
     "pipeline.definition_deleted": refreshAll,
     "pipeline.deal_moved": refreshAll,
     "execution.processed": refreshAll,
+    "notification.created": refreshNotifications,
+    "notification.updated": refreshNotifications,
   };
   useSSE(sseHandlers);
 
 return (
+  <>
   <Shell
     renderQuickCreate={(onClose) => <QuickCreate onClose={onClose} />}
     renderGlobalSearch={(onClose) => <GlobalSearch onClose={onClose} />}
+    onOpenNotifications={() => setNotificationsOpen(true)}
+    notificationOpen={notificationsOpen}
+    unreadCount={notifications.page?.unreadCount ?? 0}
   >
       <OfflineBanner />
       <ErrorBoundary>
@@ -922,7 +944,22 @@ return (
         </ModuleGate>
           </ErrorBoundary>
         </Shell>
-      );
+      {notificationsOpen ? (
+        <NotificationDrawer
+          state={notifications}
+          unreadOnly={unreadOnly}
+          onUnreadOnlyChange={(value) => {
+            setUnreadOnly(value);
+            setNotificationOffset(0);
+          }}
+          offset={notificationOffset}
+          onOffsetChange={setNotificationOffset}
+          onClose={() => setNotificationsOpen(false)}
+          canManage={canManageRecords(user?.role)}
+        />
+      ) : null}
+  </>
+  );
 }
 function QuickCreate({ onClose }: { onClose: () => void }) {
   const { toast } = useApp();
