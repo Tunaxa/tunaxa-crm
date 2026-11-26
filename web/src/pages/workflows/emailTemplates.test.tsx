@@ -630,14 +630,25 @@ describe("canvas compatibility and responsive styles", () => {
     expect(html).toContain("Add Send Email");
   });
 
+  it("imports the React Flow base stylesheet", () => {
+    const source = readFileSync(
+      new URL("./WorkflowCanvas.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(source).toContain('@xyflow/react/dist/style.css');
+  });
+
   it("uses canonical tokens and a 768px breakpoint with no hardcoded hex", () => {
     const css = readFileSync(
       new URL("./emailTemplatePreview.css", import.meta.url),
       "utf8",
     );
     expect(css).toContain("@media (max-width: 768px)");
-    expect(css).toContain("height: 480px");
+    expect(css).toContain("grid-template-columns: 220px minmax(0, 1fr)");
+    expect(css).toContain("grid-template-columns: 1fr");
+    expect(css).toContain("height: 520px");
     expect(css).toContain("min-height: 460px");
+    expect(css).not.toContain("height: 480px");
     expect(css).not.toContain(":has(");
     expect(css).not.toContain("900px");
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/iu);
