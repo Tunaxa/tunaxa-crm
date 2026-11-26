@@ -52,9 +52,31 @@ describe("hardened lazy loading wiring", () => {
       '"notification.updated"',
       '"pipeline.definition_created"',
       '"execution.processed"',
+      "OutgoingWebhooksPage",
+      "InboundWebhooksPage",
+      'path="/webhooks"',
     ]) {
       expect(appSource).toContain(marker);
     }
+  });
+
+  it("uses canonical webhook theme tokens and mobile breakpoints", () => {
+    const webhookCss = read("../pages/webhooks/webhooks.css");
+    for (const token of [
+      "surface",
+      "border",
+      "text",
+      "muted",
+      "primary",
+      "red",
+      "focus-ring",
+      "shadow-lg",
+    ]) {
+      expect(webhookCss).toContain(`var(--${token})`);
+    }
+    expect(webhookCss).toContain("@media (max-width: 768px)");
+    expect(webhookCss).toContain("@media (max-width: 375px)");
+    expect(webhookCss).not.toContain("max-width: 600px");
   });
 
   it("uses canonical tokens and adds no unnecessary comments", () => {

@@ -1,0 +1,116 @@
+.webhook-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 24px 0;
+}
+
+.webhook-endpoints {
+  display: grid;
+  gap: 16px;
+}
+
+.webhook-endpoint-card {
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.webhook-endpoint-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.webhook-endpoint-heading h2 {
+  font-size: 16px;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.webhook-endpoint-card h3 {
+  font-size: 14px;
+  margin-top: 16px;
+  color: var(--muted);
+}
+
+.webhook-endpoint-card ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--text);
+}
+
+.webhook-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.webhook-tabs .btn.primary {
+  background: var(--primary);
+}
+
+.webhook-error {
+  color: var(--red);
+}
+
+.webhook-tabs :focus-visible,
+.webhook-endpoint-card :focus-visible,
+.webhook-actions :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+html.dark .webhook-endpoint-card {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+@media (max-width: 768px) {
+  .webhook-tabs {
+    margin: 16px 12px 0;
+  }
+
+  .webhook-endpoint-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .webhook-endpoints {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .webhook-endpoint-card {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 375px) {
+  .webhook-tabs {
+    margin-inline: 8px;
+  }
+
+  .webhook-endpoint-card {
+    padding: 12px;
+  }
+
+  .webhook-endpoint-heading,
+  .webhook-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .webhook-endpoint-heading h2,
+  .webhook-endpoint-card ul {
+    max-width: 100%;
+  }
+}

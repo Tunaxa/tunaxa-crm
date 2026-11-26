@@ -2,7 +2,13 @@ import { query, transaction } from "./pg.js";
 import crypto from "node:crypto";
 
 let _dispatchWebhook = null;
-async function dispatch(eventType, objectType, objectId, changed = {}) {
+async function dispatch(
+  eventType,
+  objectType,
+  objectId,
+  changed = {},
+  workspaceId = "default",
+) {
   if (!_dispatchWebhook) {
     try {
       const m = await import("../routes/webhooks.js");
@@ -11,7 +17,7 @@ async function dispatch(eventType, objectType, objectId, changed = {}) {
       _dispatchWebhook = () => {};
     }
   }
-  _dispatchWebhook(eventType, objectType, objectId, changed);
+  _dispatchWebhook(eventType, objectType, objectId, changed, workspaceId);
 }
 
 // ============================================
@@ -34,7 +40,7 @@ export async function createObject(
     [id, objectType, JSON.stringify(properties), workspaceId],
   );
   const obj = result.rows[0];
-  dispatch(`${objectType}.created`, objectType, obj.id, properties);
+  dispatch(`${objectType}.created`, objectType, obj.id, properties, workspaceId);
   return obj;
 }
 
@@ -58,13 +64,20 @@ export async function updateObject(id, properties) {
     `UPDATE crm_objects
      SET properties = properties || $2::jsonb
      WHERE id = $1
-     RETURNING id, object_type, properties, created_at, updated_at`,
+     RETURNING id, object_type, properties, created_at, updated_at, workspace_id`,
     [id, JSON.stringify(properties)],
   );
-  const obj = result.rows[0];
-  if (obj)
-    dispatch(`${obj.object_type}.updated`, obj.object_type, obj.id, properties);
-  return obj || null;
+  const row = result.rows[0];
+  if (!row) return null;
+  const { workspace_id, ...obj } = row;
+  dispatch(
+    `${obj.object_type}.updated`,
+    obj.object_type,
+    obj.id,
+    properties,
+    workspace_id || "default",
+  );
+  return obj;
 }
 
 /**
@@ -72,12 +85,20 @@ export async function updateObject(id, properties) {
  */
 export async function deleteObject(id) {
   const result = await query(
-    `DELETE FROM crm_objects WHERE id = $1 RETURNING id, object_type`,
+    `DELETE FROM crm_objects WHERE id = $1 RETURNING id, object_type, workspace_id`,
     [id],
   );
   const row = result.rows[0];
-  if (row) dispatch(`${row.object_type}.deleted`, row.object_type, row.id);
-  return row || null;
+  if (!row) return null;
+  const { workspace_id, ...resultRow } = row;
+  dispatch(
+    `${resultRow.object_type}.deleted`,
+    resultRow.object_type,
+    resultRow.id,
+    {},
+    workspace_id || "default",
+  );
+  return resultRow;
 }
 
 /**
