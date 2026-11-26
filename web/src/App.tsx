@@ -1,8 +1,6 @@
 import { OfflineBanner } from "./components/OfflineBanner";
-import { DesignSystemPage } from "./pages/DesignSystemPage";
 import { Shell } from "./shell/Shell";
 import { WorkflowPicker } from "./pages/workflows/WorkflowPicker";
-import { WorkflowDetailPage } from "./pages/workflows/WorkflowDetailPage";
 import { DuplicateResolution } from "./components/DuplicateResolution";
 import { ColumnPicker } from "./components/ColumnPicker";
 import {
@@ -14,20 +12,7 @@ import {
 import { BulkActions, SelectPage, useBulkSelection } from "./components/BulkActions";
 import { useForm } from "react-hook-form";
 import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
   Fragment,
-  lazy,
-  Suspense,
   useEffect,
   useId,
   useMemo,
@@ -69,8 +54,6 @@ import {
   RevenueFlowCanvas,
 } from "./components/ui";
 import { AxacrmLogo } from "./components/common/AxacrmLogo";
-import { HomePage } from "./pages/HomePage";
-import { PricingPage } from "./pages/PricingPage";
 import { ActivitiesPage } from "./pages/activities/ActivitiesPage";
 import { CallsPage } from "./pages/communication/CallsPage";
 import { InboxPage } from "./modules/communications/inbox/InboxPage";
@@ -83,8 +66,11 @@ import { ProductsPage } from "./pages/revenue/ProductsPage";
 import { QuotesPage } from "./pages/revenue/QuotesPage";
 import { AppProvider, useApp } from "./context/AppContext";
 import { api, getToken, json, setToken } from "./lib/api";
-import { ErrorBoundary } from "./components/ErrorBoundary";
-import { CustomReportBuilder } from "./components/reports/CustomReportBuilder";
+import {
+  RouteBoundary,
+  RouteErrorBoundary,
+  lazyRoute,
+} from "./lib/lazyRoute";
 import {
   invitationIsExpired,
   normalizeInvitations,
@@ -98,7 +84,6 @@ import {
   type GoalMilestone,
 } from "./components/goals/GoalProgress";
 import { QuoteForm } from "./components/quotes/QuoteForm";
-import { GenerateInvoiceButton } from "./components/quotes/GenerateInvoiceButton";
 import { ContractDetails, contractSummaryValue } from "./components/contracts/ContractDetails";
 import { EmailComposerDrawer } from "./components/communications/EmailComposerDrawer";
 import { canSendEmail, mailbox } from "./components/communications/inboxModel";
@@ -111,43 +96,96 @@ import { canManageRecords } from "./components/records/rbac";
 import { ContactSequenceEnrollment } from "./modules/marketing/sequences/ContactSequenceEnrollment";
 import i18n from "./i18n";
 
-const ModuleLeadsPage = lazy(() =>
-  import("./modules/sales/LeadsPage").then((module) => ({ default: module.LeadsPage })),
+const ModuleLeadsPage = lazyRoute(() => import("./modules/sales/LeadsPage"), "LeadsPage");
+const ModuleContactsPage = lazyRoute(
+  () => import("./modules/sales/ContactsPage"),
+  "ContactsPage",
 );
-const ModuleContactsPage = lazy(() =>
-  import("./modules/sales/ContactsPage").then((module) => ({ default: module.ContactsPage })),
+const ModuleCompaniesPage = lazyRoute(
+  () => import("./modules/sales/CompaniesPage"),
+  "CompaniesPage",
 );
-const ModuleCompaniesPage = lazy(() =>
-  import("./modules/sales/CompaniesPage").then((module) => ({ default: module.CompaniesPage })),
+const ModulePipelinePage = lazyRoute(
+  () => import("./modules/sales/PipelinePage"),
+  "PipelinePage",
 );
-const ModulePipelinePage = lazy(() =>
-  import("./modules/sales/PipelinePage").then((module) => ({ default: module.PipelinePage })),
+const ModuleCampaignsPage = lazyRoute(
+  () => import("./modules/marketing/CampaignsPage"),
+  "CampaignsPage",
 );
-const ModuleCampaignsPage = lazy(() =>
-  import("./modules/marketing/CampaignsPage").then((module) => ({ default: module.CampaignsPage })),
+const ModuleEmailListsPage = lazyRoute(
+  () => import("./modules/marketing/EmailListsPage"),
+  "EmailListsPage",
 );
-const ModuleEmailListsPage = lazy(() =>
-  import("./modules/marketing/EmailListsPage").then((module) => ({ default: module.EmailListsPage })),
+const ModuleMarketingEmailsPage = lazyRoute(
+  () => import("./modules/marketing/MarketingEmailsPage"),
+  "MarketingEmailsPage",
 );
-const ModuleMarketingEmailsPage = lazy(() =>
-  import("./modules/marketing/MarketingEmailsPage").then((module) => ({
-    default: module.MarketingEmailsPage,
-  })),
+const ModuleFormsPage = lazyRoute(() => import("./modules/marketing/FormsPage"), "FormsPage");
+const ModuleTicketsPage = lazyRoute(
+  () => import("./modules/service/TicketsPage"),
+  "TicketsPage",
 );
-const ModuleFormsPage = lazy(() =>
-  import("./modules/marketing/FormsPage").then((module) => ({ default: module.FormsPage })),
+const ModuleSequencesPage = lazyRoute(
+  () => import("./modules/marketing/sequences/SequencesPage"),
+  "SequencesPage",
 );
-const ModuleTicketsPage = lazy(() =>
-  import("./modules/service/TicketsPage").then((module) => ({ default: module.TicketsPage })),
+const IntegrationsPage = lazyRoute(
+  () => import("./modules/workspace/integrations/IntegrationsPage"),
+  "IntegrationsPage",
 );
-const ModuleSequencesPage = lazy(() =>
-  import("./modules/marketing/sequences/SequencesPage").then((module) => ({ default: module.SequencesPage })),
+const DashboardPage = lazyRoute(
+  () => import("./pages/dashboard/DashboardPage"),
+  "DashboardPage",
 );
-const IntegrationsPage = lazy(() =>
-  import("./modules/workspace/integrations/IntegrationsPage").then((module) => ({
-    default: module.IntegrationsPage,
-  })),
+const RevenueForecastChart = lazyRoute(
+  () => import("./components/reports/RevenueForecastChart"),
+  "RevenueForecastChart",
 );
+const DesignSystemPage = lazyRoute(
+  () => import("./pages/DesignSystemPage"),
+  "DesignSystemPage",
+);
+const WorkflowDetailPage = lazyRoute(
+  () => import("./pages/workflows/WorkflowDetailPage"),
+  "WorkflowDetailPage",
+);
+const CustomReportBuilder = lazyRoute(
+  () => import("./components/reports/CustomReportBuilder"),
+  "CustomReportBuilder",
+);
+const GenerateInvoiceButton = lazyRoute(
+  () => import("./components/quotes/GenerateInvoiceButton"),
+  "GenerateInvoiceButton",
+);
+const HomePage = lazyRoute(() => import("./pages/HomePage"), "HomePage");
+const PricingPage = lazyRoute(() => import("./pages/PricingPage"), "PricingPage");
+
+const lazyRoutes = [
+  ModuleLeadsPage,
+  ModuleContactsPage,
+  ModuleCompaniesPage,
+  ModulePipelinePage,
+  ModuleCampaignsPage,
+  ModuleEmailListsPage,
+  ModuleMarketingEmailsPage,
+  ModuleFormsPage,
+  ModuleTicketsPage,
+  ModuleSequencesPage,
+  IntegrationsPage,
+  DashboardPage,
+  RevenueForecastChart,
+  DesignSystemPage,
+  WorkflowDetailPage,
+  CustomReportBuilder,
+  GenerateInvoiceButton,
+  HomePage,
+  PricingPage,
+];
+
+function retryLazyRoutes() {
+  lazyRoutes.forEach((route) => route.retry());
+}
 
 const logo = "/assets/tunaxa-logo.png";
 type Row = { id: string; [key: string]: any };
@@ -545,19 +583,20 @@ return (
     unreadCount={notifications.page?.unreadCount ?? 0}
   >
       <OfflineBanner />
-      <ErrorBoundary>
+      <RouteErrorBoundary onRetry={retryLazyRoutes}>
         <ModuleGate>
           <Routes>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route
                 path="/dashboard"
                 element={
-                  <ErrorBoundary
+                  <RouteErrorBoundary
                     key={location.pathname}
+                    onRetry={retryLazyRoutes}
                     fallbackMessage="Dashboard failed to load."
                   >
                     <DashboardPage />
-                  </ErrorBoundary>
+                  </RouteErrorBoundary>
                 }
               />
               <Route
@@ -722,46 +761,50 @@ return (
               <Route
                 path="/leads"
                 element={
-                  <ErrorBoundary
+                  <RouteErrorBoundary
                     key={location.pathname}
+                    onRetry={retryLazyRoutes}
                     fallbackMessage="Leads failed to load."
                   >
                     <ModuleLeadsPage />
-                  </ErrorBoundary>
+                  </RouteErrorBoundary>
                 }
               />
               <Route
                 path="/contacts"
                 element={
-                  <ErrorBoundary
+                  <RouteErrorBoundary
                     key={location.pathname}
+                    onRetry={retryLazyRoutes}
                     fallbackMessage="Contacts failed to load."
                   >
                     <ModuleContactsPage />
-                  </ErrorBoundary>
+                  </RouteErrorBoundary>
                 }
               />
               <Route path="/companies" element={<ModuleCompaniesPage />} />
               <Route
                 path="/pipeline"
                 element={
-                  <ErrorBoundary
+                  <RouteErrorBoundary
                     key={location.pathname}
+                    onRetry={retryLazyRoutes}
                     fallbackMessage="Pipeline failed to load."
                   >
                     <ModulePipelinePage />
-                  </ErrorBoundary>
+                  </RouteErrorBoundary>
                 }
               />
               <Route
                 path="/tickets"
                 element={
-                  <ErrorBoundary
+                  <RouteErrorBoundary
                     key={location.pathname}
+                    onRetry={retryLazyRoutes}
                     fallbackMessage="Tickets failed to load."
                   >
                     <ModuleTicketsPage />
-                  </ErrorBoundary>
+                  </RouteErrorBoundary>
                 }
               />
               <Route
@@ -773,7 +816,14 @@ return (
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/workflows" element={<WorkflowsPage />} />
-              <Route path="/workflows/:id" element={<WorkflowDetailPage key={location.pathname} />} />
+              <Route
+                path="/workflows/:id"
+                element={
+                  <RouteBoundary onRetry={retryLazyRoutes} label="Loading workflow…">
+                    <WorkflowDetailPage key={location.pathname} />
+                  </RouteBoundary>
+                }
+              />
               <Route path="/calls" element={<CallsPage />} />
               <Route path="/recordings" element={<RecordingsPage />} />
               <Route
@@ -820,7 +870,14 @@ return (
                 }
               />
               <Route path="/expenses" element={<ExpensesPage />} />
-              <Route path="/forecast" element={<ForecastPage />} />
+              <Route
+                path="/forecast"
+                element={
+                  <RouteBoundary onRetry={retryLazyRoutes} label="Loading forecast…">
+                    <ForecastPage />
+                  </RouteBoundary>
+                }
+              />
               <Route path="/employees" element={<EmployeesPage />} />
               <Route path="/leave" element={<LeavePage />} />
               <Route path="/attendance" element={<AttendancePage />} />
@@ -920,7 +977,14 @@ return (
               />
               <Route path="/duplicates" element={<DuplicatesPage />} />
               <Route path="/portal" element={<PortalPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
+              <Route
+                path="/reports"
+                element={
+                  <RouteBoundary onRetry={retryLazyRoutes} label="Loading reports…">
+                    <ReportsPage />
+                  </RouteBoundary>
+                }
+              />
               <Route path="/audit" element={<AuditPage />} />
               <Route path="/team" element={<TeamPage />} />
               <Route path="/fields" element={<FieldsPage />} />
@@ -928,21 +992,29 @@ return (
                 path="/integrations"
                 element={
                   <ModuleGate path="/integrations">
-                    <ErrorBoundary
+                    <RouteErrorBoundary
                       key={location.pathname}
+                      onRetry={retryLazyRoutes}
                       fallbackMessage="Integrations failed to load."
                     >
                       <IntegrationsPage />
-                    </ErrorBoundary>
+                    </RouteErrorBoundary>
                   </ModuleGate>
                 }
               />
               <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/design-system" element={<DesignSystemPage />} />
+              <Route
+                path="/design-system"
+                element={
+                  <RouteBoundary onRetry={retryLazyRoutes} label="Loading design system…">
+                    <DesignSystemPage />
+                  </RouteBoundary>
+                }
+              />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </ModuleGate>
-          </ErrorBoundary>
+          </RouteErrorBoundary>
         </Shell>
       {notificationsOpen ? (
         <NotificationDrawer
@@ -1356,146 +1428,6 @@ export function GlobalSearch({ onClose }: { onClose: () => void }) {
             />
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function DashboardPage() {
-  const navigate = useNavigate();
-  const [stats, setStats] = useState<any>(null);
-  useEffect(() => {
-    const load = () => api("/dashboard").then(setStats);
-    load();
-    window.addEventListener("tunaxa:resource-changed", load);
-    return () => window.removeEventListener("tunaxa:resource-changed", load);
-  }, []);
-  const cards = [
-    [
-      "Pipeline value",
-      money(stats?.pipeline || 0),
-      "Open deal value",
-      "money",
-      "blue",
-    ],
-    ["Won revenue", money(stats?.won || 0), "Closed won", "trend", "green"],
-    [
-      "Qualified leads",
-      String(stats?.qualified || 0),
-      "Ready for pipeline",
-      "lead",
-      "purple",
-    ],
-    [
-      "Connected calls",
-      String(stats?.connected || 0),
-      "Logged conversations",
-      "phone",
-      "amber",
-    ],
-  ];
-  const recent = stats?.recent || [];
-
-  return (
-    <div className="page">
-      <PageHeader
-        title="Dashboard"
-        description="A live view of your sales workspace."
-      >
-        <button className="btn primary" onClick={() => navigate("/pipeline")}>
-          <Icon name="pipeline" /> Open pipeline
-        </button>
-      </PageHeader>
-      <div className="stats-grid">
-        {cards.map((card) => (
-          <div className="stat-card hover-crm-card relative" key={card[0]}>
-            <CornerBrackets stroke="#3b82f6" size="sm" />
-            <div className={`stat-icon tone-${card[4]}`}>
-              <Icon name={card[3]} />
-            </div>
-            <div>
-              <small>{card[0]}</small>
-              <strong>{card[1]}</strong>
-              <span>{card[2]}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="dashboard-grid">
-        <section className="surface revenue-card">
-          <div className="section-head">
-            <div>
-              <h2>Workspace totals</h2>
-              <p>Everything saved in your Tunaxa workspace</p>
-            </div>
-            <button
-              className="btn secondary compact"
-              onClick={() => navigate("/reports")}
-            >
-              View reports
-            </button>
-          </div>
-          <div className="record-count-grid">
-            {[
-              ["Leads", stats?.leads, "lead", "/leads"],
-              ["Contacts", stats?.contacts, "contacts", "/contacts"],
-              ["Companies", stats?.companies, "companies", "/companies"],
-              ["Deals", stats?.deals, "pipeline", "/pipeline"],
-              ["Tasks", stats?.tasks, "tasks", "/tasks"],
-            ].map(([label, count, icon, path]) => (
-              <button
-                key={String(label)}
-                className="record-count"
-                onClick={() => navigate(String(path))}
-              >
-                <Icon name={String(icon)} />
-                <b>{count || 0}</b>
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-        <section className="surface activities-widget">
-          <div className="section-head">
-            <div>
-              <h2>Recent activity</h2>
-              <p>Latest work across the CRM</p>
-            </div>
-          </div>
-          {recent.length ? (
-            <div className="recent-list">
-              {recent.slice(0, 6).map((item: Row) => (
-                <button
-                  key={`${item.kind}-${item.id}`}
-                  onClick={() => navigate(item.route)}
-                >
-                  <span className="recent-icon">
-                    <Icon name={item.icon} />
-                  </span>
-                  <div>
-                    <b>{item.title}</b>
-                    <small>{item.meta}</small>
-                  </div>
-                  <time>{new Date(item.createdAt).toLocaleString()}</time>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <Empty
-              icon="activity"
-              title="No activity yet"
-              text="Your latest calls, tasks and activities will appear here automatically."
-              action={
-                <button
-                  className="btn primary compact"
-                  onClick={() => navigate("/leads")}
-                >
-                  Add a lead
-                </button>
-              }
-            />
-          )}
-        </section>
       </div>
     </div>
   );
@@ -5249,60 +5181,7 @@ function ForecastPage() {
         </div>
 
         {chartData.length > 0 ? (
-          <div style={{ width: "100%", height: 420 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={chartData}
-                margin={{
-                  top: 20,
-                  right: 20,
-                  left: 10,
-                  bottom: 10,
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-
-                <XAxis dataKey="label" />
-
-                <YAxis tickFormatter={(value) => money(value)} />
-
-                <Tooltip
-                  formatter={(value: any, name: any, item: any) => {
-                    if (name === "pipeline") {
-                      return [
-                        money(Number(value)),
-                        `Weighted pipeline (${Number(item?.payload?.probability || 0).toFixed(0)}%)`,
-                      ];
-                    }
-
-                    return [
-                      money(Number(value)),
-                      name === "historical" ? "Historical won revenue" : name,
-                    ];
-                  }}
-                />
-
-                <Legend />
-
-                <Bar
-                  dataKey="pipeline"
-                  name="Pipeline forecast"
-                  fill="#8b5cf6"
-                  fillOpacity={0.65}
-                  radius={[4, 4, 0, 0]}
-                />
-
-                <Line
-                  type="monotone"
-                  dataKey="historical"
-                  name="Historical won revenue"
-                  stroke="#10b981"
-                  strokeWidth={3}
-                  dot={{ r: 4 }}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
+          <RevenueForecastChart chartData={chartData} money={money} />
         ) : (
           <Empty
             icon="trend"
@@ -6981,20 +6860,22 @@ function AppInner() {
   if (user)
     return (
       <OnboardingGate userId={user.id}>
-        <Suspense fallback={<div className="table-loading">Loading…</div>}>
+        <RouteBoundary onRetry={retryLazyRoutes}>
           <AppRoutes />
-        </Suspense>
+        </RouteBoundary>
       </OnboardingGate>
     );
 
   if (unauthView === "pricing") {
     return (
-      <PricingPage
-        onNavigateToHome={navigateToHome}
-        onNavigateToLogin={navigateToLogin}
-        onNavigateToDemo={navigateToDemo}
-        onNavigateToSetup={navigateToLogin}
-      />
+      <RouteBoundary onRetry={retryLazyRoutes} label="Loading pricing…">
+        <PricingPage
+          onNavigateToHome={navigateToHome}
+          onNavigateToLogin={navigateToLogin}
+          onNavigateToDemo={navigateToDemo}
+          onNavigateToSetup={navigateToLogin}
+        />
+      </RouteBoundary>
     );
   }
 
@@ -7009,12 +6890,14 @@ function AppInner() {
   }
 
   return (
-    <HomePage
-      onNavigateToLogin={navigateToLogin}
-      onNavigateToPricing={navigateToPricing}
-      onNavigateToDemo={navigateToDemo}
-      onNavigateToSetup={navigateToLogin}
-    />
+    <RouteBoundary onRetry={retryLazyRoutes} label="Loading home…">
+      <HomePage
+        onNavigateToLogin={navigateToLogin}
+        onNavigateToPricing={navigateToPricing}
+        onNavigateToDemo={navigateToDemo}
+        onNavigateToSetup={navigateToLogin}
+      />
+    </RouteBoundary>
   );
 }
 
