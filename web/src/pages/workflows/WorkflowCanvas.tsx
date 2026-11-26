@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState, type DragEvent } from "react";
 import type { WorkflowGraph } from "./workflowGraph";
+import { useApp } from "../../context/AppContext";
+import { canManageRecords } from "../../components/records/rbac";
+import { ActionConfigPanel } from "./ActionConfigPanel";
+import { templateConfiguration, type EmailTemplate } from "./emailTemplates";
 import {
   Background,
   Controls,
@@ -14,6 +18,7 @@ import {
 } from "@xyflow/react";
 
 import "@xyflow/react/dist/style.css";
+import "./emailTemplatePreview.css";
 
 import TriggerNode from "./nodes/TriggerNode";
 import ConditionNode from "./nodes/ConditionNode";
@@ -55,7 +60,19 @@ const paletteItems = [
     label: "Action",
     section: "Actions",
   },
+  {
+    type: "emailAction",
+    label: "Add Send Email",
+    section: "Actions",
+  },
 ];
+
+export function canConfigureTemplates(
+  role: unknown,
+  readOnly: boolean,
+): boolean {
+  return !readOnly && canManageRecords(role);
+}
 
 export default function WorkflowCanvas({
   workflow,
@@ -63,6 +80,9 @@ export default function WorkflowCanvas({
   initialGraph,
   onGraphChange,
 }: WorkflowCanvasProps) {
+  const { user } = useApp();
+  const canConfigure = canConfigureTemplates(user?.role, readOnly);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reactFlowInstance, setReactFlowInstance] =
     useState<ReactFlowInstance | null>(null);
 
@@ -156,7 +176,7 @@ export default function WorkflowCanvas({
     event: DragEvent<HTMLElement>,
     nodeType: string,
   ) => {
-    if (readOnly) return;
+    if (!canConfigure) return;
     event.dataTransfer.setData(
       "application/reactflow",
       nodeType,
@@ -177,7 +197,7 @@ export default function WorkflowCanvas({
     (event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
 
-      if (!reactFlowInstance || readOnly) {
+      if (!reactFlowInstance || !canConfigure) {
         return;
       }
 
@@ -185,7 +205,7 @@ export default function WorkflowCanvas({
         "application/reactflow",
       );
 
-      if (!["trigger", "condition", "action"].includes(type)) {
+      if (!["trigger", "condition", "action", "emailAction"].includes(type)) {
         return;
       }
 
@@ -208,6 +228,11 @@ export default function WorkflowCanvas({
           field: "field",
           value: "value",
         };
+      } else if (type === "emailAction") {
+        data = {
+          type: "send_email",
+          configuration: {},
+        };
       } else {
         data = {
           type: "Action",
@@ -217,7 +242,7 @@ export default function WorkflowCanvas({
 
       const newNode: Node = {
         id,
-        type,
+        type: type === "emailAction" ? "action" : type,
         position,
         data,
       };
@@ -227,18 +252,40 @@ export default function WorkflowCanvas({
         newNode,
       ]);
     },
-    [reactFlowInstance, readOnly],
+    [reactFlowInstance, canConfigure],
   );
 
   function addPaletteNode(type: string) {
-    if (readOnly) return;
+    if (!canConfigure) return;
+    const emailAction = type === "emailAction";
     const data = type === "trigger" ? { event: "" }
       : type === "condition" ? { field: "", value: "" }
+      : emailAction ? { type: "send_email", configuration: {} }
       : { type: "Action", configuration: {} };
     setNodes((current) => [...current, {
-      id: `${type}-${crypto.randomUUID()}`, type,
+      id: `${emailAction ? "action" : type}-${crypto.randomUUID()}`,
+      type: emailAction ? "action" : type,
       position: { x: 80 + (current.length % 3) * 260, y: 80 + Math.floor(current.length / 3) * 160 }, data,
     }]);
+  }
+
+  const selected = nodes.find((node) => node.id === selectedId);
+  const selectedConfiguration =
+    selected && selected.data.configuration && typeof selected.data.configuration === "object" && !Array.isArray(selected.data.configuration)
+      ? (selected.data.configuration as Record<string, unknown>)
+      : {};
+
+  function applyTemplate(template: EmailTemplate | null) {
+    if (!canConfigure || !selectedId) return;
+    setNodes((current) => current.map((node) => node.id === selectedId
+      ? {
+          ...node,
+          data: {
+            ...node.data,
+            configuration: templateConfiguration(selectedConfiguration, template),
+          },
+        }
+      : node));
   }
 
   return (
@@ -256,10 +303,10 @@ export default function WorkflowCanvas({
               (item) => item.section === "Triggers",
             )
             .map((item) => (
-              <button type="button" disabled={readOnly} onClick={() => addPaletteNode(item.type)}
+              <button type="button" disabled={!canConfigure} onClick={() => addPaletteNode(item.type)}
                 key={item.type}
                 className="workflow-palette-item trigger-palette-item"
-                draggable={!readOnly}
+                draggable={canConfigure}
                 onDragStart={(event) =>
                   onDragStart(event, item.type)
                 }
@@ -277,10 +324,10 @@ export default function WorkflowCanvas({
               (item) => item.section === "Conditions",
             )
             .map((item) => (
-              <button type="button" disabled={readOnly} onClick={() => addPaletteNode(item.type)}
+              <button type="button" disabled={!canConfigure} onClick={() => addPaletteNode(item.type)}
                 key={item.type}
                 className="workflow-palette-item condition-palette-item"
-                draggable={!readOnly}
+                draggable={canConfigure}
                 onDragStart={(event) =>
                   onDragStart(event, item.type)
                 }
@@ -298,10 +345,10 @@ export default function WorkflowCanvas({
               (item) => item.section === "Actions",
             )
             .map((item) => (
-              <button type="button" disabled={readOnly} onClick={() => addPaletteNode(item.type)}
+              <button type="button" disabled={!canConfigure} onClick={() => addPaletteNode(item.type)}
                 key={item.type}
                 className="workflow-palette-item action-palette-item"
-                draggable={!readOnly}
+                draggable={canConfigure}
                 onDragStart={(event) =>
                   onDragStart(event, item.type)
                 }
@@ -324,6 +371,10 @@ export default function WorkflowCanvas({
           onNodesChange={readOnly ? undefined : (changes) => setNodes((current) => applyNodeChanges(changes, current))}
           onEdgesChange={readOnly ? undefined : (changes) => setEdges((current) => applyEdgeChanges(changes, current))}
           onConnect={readOnly ? undefined : (connection) => setEdges((current) => addEdge(connection, current))}
+          onNodeClick={(_, node) => {
+            if (canConfigure && node.type === "action") setSelectedId(node.id);
+          }}
+          onPaneClick={() => setSelectedId(null)}
           nodesDraggable={!readOnly}
           nodesConnectable={!readOnly}
           deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
@@ -335,6 +386,16 @@ export default function WorkflowCanvas({
           <MiniMap pannable zoomable style={{ background: "var(--surface)" }} nodeColor="var(--muted)" />
         </ReactFlow>
       </div>
+
+      {selected && selected.type === "action" && canConfigure && (
+        <ActionConfigPanel
+          actionType={String(selected.data.type || "Action")}
+          templateId={typeof selectedConfiguration.templateId === "string" ? selectedConfiguration.templateId : ""}
+          onSelect={applyTemplate}
+          onClose={() => setSelectedId(null)}
+          readOnly={!canConfigure}
+        />
+      )}
     </div>
   );
 }
