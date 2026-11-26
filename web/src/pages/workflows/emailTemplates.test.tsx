@@ -15,6 +15,7 @@ import {
   EmailTemplateSelector,
 } from "./EmailTemplateSelector";
 import WorkflowCanvas, { canConfigureTemplates } from "./WorkflowCanvas";
+import { WorkflowDetailPage } from "./WorkflowDetailPage";
 import {
   isSendEmail,
   parseEmailTemplates,
@@ -29,6 +30,7 @@ const state = vi.hoisted(() => ({
   api: vi.fn(),
   onClose: vi.fn(),
   onSelect: vi.fn(),
+  role: undefined as string | undefined,
 }));
 
 vi.mock("../../lib/api", () => ({
@@ -40,6 +42,86 @@ vi.mock("../../lib/api", () => ({
   getToken: () => "",
   setToken: () => {},
   registerLogoutHandler: () => () => {},
+}));
+
+vi.mock("@xyflow/react", () => ({
+  Background: () => <div className="react-flow__background" />,
+  Controls: () => <div className="react-flow__controls" />,
+  MiniMap: () => <div className="react-flow__minimap" />,
+  ReactFlow: ({
+    children,
+    nodes,
+    onNodeClick,
+    onPaneClick,
+  }: {
+    children: React.ReactNode;
+    nodes: unknown[];
+    onNodeClick?: (event: unknown, node: unknown) => void;
+    onPaneClick?: () => void;
+  }) => (
+    <div className="react-flow">
+      {nodes.map((node, index) => (
+        <button
+          type="button"
+          key={index}
+          className="workflow-node"
+          onClick={(event) => onNodeClick?.(event, node)}
+        />
+      ))}
+      <button
+        type="button"
+        className="react-flow__pane"
+        onClick={onPaneClick}
+      />
+      {children}
+    </div>
+  ),
+  addEdge: (connection: unknown, edges: unknown[]) => [...edges, connection],
+  applyNodeChanges: (_changes: unknown[], nodes: unknown[]) => nodes,
+  applyEdgeChanges: (_changes: unknown[], edges: unknown[]) => edges,
+}));
+
+vi.mock("../../context/AppContext", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../context/AppContext")>();
+  return {
+    ...actual,
+    useApp: () => ({
+      user: state.role
+        ? {
+            id: "usr_1",
+            name: "Test User",
+            email: "test@example.com",
+            role: state.role,
+          }
+        : null,
+      setUser: () => {},
+      toast: () => {},
+      logout: async () => {},
+    }),
+  };
+});
+
+vi.mock("react-router-dom", () => ({
+  Link: ({
+    children,
+    to,
+    className,
+  }: {
+    children: React.ReactNode;
+    to: string;
+    className?: string;
+  }) => (
+    <a href={to} className={className}>
+      {children}
+    </a>
+  ),
+  useParams: () => ({ id: "w1" }),
+  useNavigate: () => () => {},
+  useLocation: () => ({
+    pathname: "/workflows/w1",
+    search: "",
+    hash: "#/workflows/w1",
+  }),
 }));
 
 const template = {
@@ -103,6 +185,17 @@ function installDom() {
       },
       removeEventListener: (type: string, handler: KeyHandler) => {
         if (type === "keydown") windowHandlers.delete(handler);
+      },
+      confirm: () => true,
+      clearTimeout: () => {},
+      setTimeout: () => 0,
+      location: {
+        href: "http://localhost/#/workflows/w1",
+        hash: "#/workflows/w1",
+      },
+      history: {
+        state: null,
+        replaceState: () => {},
       },
     },
     configurable: true,
@@ -169,8 +262,43 @@ function textOf(node: ReactTestInstance): string {
     .join("");
 }
 
+async function flush() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+function findButton(renderer: ReactTestRenderer, label: string) {
+  return renderer.root
+    .findAllByType("button")
+    .find((button) => textOf(button).includes(label));
+}
+
+async function mountDetailPage() {
+  state.api.mockImplementation(async (path: string) => {
+    if (path === "/workflowbuilder/w1") {
+      return {
+        id: "w1",
+        name: "Test workflow",
+        enabled: true,
+        nodes: [],
+        edges: [],
+      };
+    }
+    if (path === "/templates?limit=100") {
+      return { data: [template], total: 1, page: 1, limit: 100 };
+    }
+    throw new Error(`Unexpected API path: ${path}`);
+  });
+  const renderer = await mount(<WorkflowDetailPage />);
+  await flush();
+  return renderer;
+}
+
 beforeEach(() => {
   installDom();
+  state.role = undefined;
   state.api.mockResolvedValue({
     data: [template],
     total: 1,
@@ -433,6 +561,62 @@ describe("selector states", () => {
   });
 });
 
+describe("workflow detail permissions", () => {
+  it("lets an Owner edit the canvas and open the email template drawer", async () => {
+    state.role = "Owner";
+    const renderer = await mountDetailPage();
+    const markup = JSON.stringify(renderer.toJSON());
+    expect(markup).not.toContain("Read-only canvas.");
+    expect(markup).toContain(
+      "Save your canvas changes before leaving this workflow.",
+    );
+
+    const add = findButton(renderer, "Add Send Email");
+    expect(add).toBeDefined();
+    expect(add?.props.disabled).toBeFalsy();
+
+    await act(async () => {
+      add?.props.onClick();
+      await Promise.resolve();
+    });
+
+    const flow = renderer.root.findAll(
+      (node) => typeof node.props.onNodeClick === "function",
+    )[0];
+    expect(flow).toBeDefined();
+    const emailNode = flow.props.nodes.find(
+      (node: { data?: Record<string, unknown> }) =>
+        node.data?.type === "send_email",
+    );
+    expect(emailNode).toBeDefined();
+
+    await act(async () => {
+      flow.props.onNodeClick({}, emailNode);
+      await Promise.resolve();
+    });
+
+    const dialog = renderer.root.findAll(
+      (node) => node.props.role === "dialog",
+    )[0];
+    expect(dialog).toBeDefined();
+    const dialogMarkup = textOf(dialog);
+    expect(dialogMarkup).toContain("Action configuration");
+    expect(dialogMarkup).toContain("Email template");
+  });
+
+  it("keeps viewers on the read-only canvas", async () => {
+    state.role = "viewer";
+    const renderer = await mountDetailPage();
+    const markup = JSON.stringify(renderer.toJSON());
+    expect(markup).toContain("Read-only canvas.");
+    expect(markup).not.toContain(
+      "Save your canvas changes before leaving this workflow.",
+    );
+    expect(findButton(renderer, "Save")).toBeUndefined();
+    expect(findButton(renderer, "Add Send Email")?.props.disabled).toBe(true);
+  });
+});
+
 describe("canvas compatibility and responsive styles", () => {
   it("preserves the dev canvas foundation and adds the email action", () => {
     const html = renderToStaticMarkup(
@@ -452,6 +636,8 @@ describe("canvas compatibility and responsive styles", () => {
       "utf8",
     );
     expect(css).toContain("@media (max-width: 768px)");
+    expect(css).toContain("height: 480px");
+    expect(css).toContain("min-height: 460px");
     expect(css).not.toContain(":has(");
     expect(css).not.toContain("900px");
     expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/iu);

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { api, json } from "../../lib/api";
 import { Badge, Empty, PageHeader } from "../../components/ui";
+import { canManageRecords } from "../../components/records/rbac";
 import { useApp } from "../../context/AppContext";
 import WorkflowCanvas from "./WorkflowCanvas";
 import { workflowEnabled, workflowName } from "./WorkflowPicker";
@@ -22,7 +23,7 @@ export function WorkflowDetailPage() {
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
   const [tab, setTab] = useState<"Canvas" | "History">("Canvas");
-  const canEdit = user?.role === "admin" || user?.role === "member";
+  const canEdit = canManageRecords(user?.role);
   const [initialGraph, setInitialGraph] = useState<WorkflowGraph | null>(null);
   const [graph, setGraph] = useState<WorkflowGraph | null>(null);
   const [saved, setSaved] = useState("");
@@ -69,7 +70,6 @@ export function WorkflowDetailPage() {
         event.stopPropagation();
       }
     };
-    // HashRouter navigation can come from sidebar links or the browser Back button.
     const hash = window.location.hash;
     const historyState = window.history.state;
     const hashChange = () => {
@@ -135,7 +135,7 @@ export function WorkflowDetailPage() {
           <section hidden={tab !== "Canvas"} aria-label="Workflow canvas">
             <p className="workflow-local-notice">{canEdit ? "Save your canvas changes before leaving this workflow." : "Read-only canvas."}</p>
             <WorkflowCanvas key={workflow.id} initialGraph={initialGraph || undefined} onGraphChange={updateGraph}
-              readOnly={!canEdit || saving} workflow={{
+              readOnly={!canManageRecords(user?.role) || saving} workflow={{
               event: typeof workflow.event === "string" ? workflow.event : "",
               filter: workflow.filter && typeof workflow.filter === "object" ? {
                 field: typeof workflow.filter.field === "string" ? workflow.filter.field : "",
