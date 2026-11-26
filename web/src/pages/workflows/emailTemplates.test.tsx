@@ -645,7 +645,7 @@ describe("canvas compatibility and responsive styles", () => {
     );
     expect(css).toContain("@media (max-width: 768px)");
     expect(css).toContain("grid-template-columns: 220px minmax(0, 1fr)");
-    expect(css).toContain("grid-template-columns: 1fr");
+    expect(css).not.toContain("grid-template-columns: 1fr");
     expect(css).toContain("height: 520px");
     expect(css).toContain("min-height: 460px");
     expect(css).not.toContain("height: 480px");
@@ -663,5 +663,49 @@ describe("canvas compatibility and responsive styles", () => {
     ]) {
       expect(css).toContain(token);
     }
+  });
+
+  it("stacks the palette above the canvas without overlap at 768px", () => {
+    const css = readFileSync(
+      new URL("./emailTemplatePreview.css", import.meta.url),
+      "utf8",
+    );
+    const breakpoint = css.indexOf("@media (max-width: 768px)");
+    expect(breakpoint).toBeGreaterThanOrEqual(0);
+    const mobile = css.slice(breakpoint);
+
+    const declarations = (selector: string) => {
+      const start = mobile.indexOf(`${selector} {`);
+      if (start === -1) return "";
+      const open = mobile.indexOf("{", start);
+      const close = mobile.indexOf("}", open);
+      return mobile.slice(open + 1, close);
+    };
+
+    const builder = declarations(".workflow-builder");
+    expect(builder).toContain("display: flex");
+    expect(builder).toContain("flex-direction: column");
+    expect(builder).toContain("gap: 14px");
+    expect(builder).toContain("height: auto");
+    expect(builder).toContain("min-height: 0");
+
+    const palette = declarations(".workflow-palette");
+    expect(palette).toContain("width: 100%");
+    expect(palette).toContain("height: auto");
+    expect(palette).toContain("max-height: none");
+    expect(palette).toContain("overflow: visible");
+    expect(palette).toContain("position: relative");
+
+    const canvas = declarations(".workflow-builder .workflow-canvas");
+    expect(canvas).toContain("width: 100%");
+    expect(canvas).toContain("height: 420px");
+    expect(canvas).toContain("min-height: 380px");
+    expect(canvas).toContain("position: relative");
+
+    const minimap = declarations(".workflow-canvas .react-flow__minimap");
+    expect(minimap).toContain("width: 112px");
+    expect(minimap).toContain("height: 78px");
+
+    expect(mobile).not.toContain("grid-template-columns");
   });
 });
