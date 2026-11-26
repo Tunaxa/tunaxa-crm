@@ -6,6 +6,7 @@ import { parseSchemaResponse } from "./useSchema";
 import {
   isSafeMediaUrl,
   isSafeRedirectUrl,
+  isSafeWebhookUrl,
   notificationTarget,
   safeFields,
   safeMediaSrc,
@@ -60,6 +61,25 @@ describe("safe URL and key handling", () => {
     expect(isSafeMediaUrl("data:image/png;base64,iVBORw==")).toBe(true);
     expect(isSafeMediaUrl("javascript:alert(1)")).toBe(false);
     expect(safeMediaSrc("java\nscript:alert(1)")).toBe("");
+  });
+
+  it("rejects unsafe webhook destinations on the client", () => {
+    expect(isSafeWebhookUrl("https://receiver.example/events")).toBe(true);
+    expect(isSafeWebhookUrl("http://receiver.example/events")).toBe(true);
+    for (const value of [
+      "javascript:alert(1)",
+      "file:///tmp/x",
+      "https://user:password@example.com",
+      "http://127.0.0.1",
+      "http://localhost",
+      "http://10.0.0.1",
+      "http://169.254.169.254",
+      "http://[::1]",
+      "https://service.local",
+      "https://evil.example\u0000",
+    ]) {
+      expect(isSafeWebhookUrl(value)).toBe(false);
+    }
   });
 
   it("rejects prototype-polluting field keys", () => {

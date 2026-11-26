@@ -58,7 +58,7 @@ import { ActivitiesPage } from "./pages/activities/ActivitiesPage";
 import { CallsPage } from "./pages/communication/CallsPage";
 import { InboxPage } from "./modules/communications/inbox/InboxPage";
 import { RecordingsPage } from "./pages/communication/RecordingsPage";
-import { WebhooksPage } from "./pages/communication/WebhooksPage";
+import { WebhooksPage as InboundWebhooksPage } from "./pages/communication/WebhooksPage";
 import { ContractsPage } from "./pages/revenue/ContractsPage";
 import { InvoicesPage } from "./pages/revenue/InvoicesPage";
 import { OrdersPage } from "./pages/revenue/OrdersPage";
@@ -160,6 +160,10 @@ const GenerateInvoiceButton = lazyRoute(
 );
 const HomePage = lazyRoute(() => import("./pages/HomePage"), "HomePage");
 const PricingPage = lazyRoute(() => import("./pages/PricingPage"), "PricingPage");
+const OutgoingWebhooksPage = lazyRoute(
+  () => import("./pages/webhooks/WebhooksPage"),
+  "WebhooksPage",
+);
 
 const lazyRoutes = [
   ModuleLeadsPage,
@@ -181,6 +185,7 @@ const lazyRoutes = [
   GenerateInvoiceButton,
   HomePage,
   PricingPage,
+  OutgoingWebhooksPage,
 ];
 
 function retryLazyRoutes() {
@@ -844,7 +849,16 @@ return (
               />
               <Route
                 path="/webhooks"
-                element={<WebhooksPage SimpleCards={SimpleCards} />}
+                element={
+                  <RouteBoundary
+                    onRetry={retryLazyRoutes}
+                    label="Loading webhooks…"
+                  >
+                    <OutgoingWebhooksPage
+                      inbound={<InboundWebhooksPage SimpleCards={SimpleCards} />}
+                    />
+                  </RouteBoundary>
+                }
               />
               <Route path="/campaigns" element={<ModuleCampaignsPage />} />
               <Route path="/email-lists" element={<ModuleEmailListsPage />} />

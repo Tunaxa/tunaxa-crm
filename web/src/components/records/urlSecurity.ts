@@ -108,6 +108,81 @@ export function safeRedirectUrl(value: unknown): string {
   return typeof value === "string" && isSafeRedirectUrl(value) ? value.trim() : "";
 }
 
+const WEBHOOK_BLOCKED_HOSTNAMES = new Set([
+  "localhost",
+  "metadata",
+  "metadata.google.internal",
+  "instance-data",
+]);
+
+function isBlockedIpv4Literal(value: string): boolean {
+  if (!/^(?:\d{1,3}\.){3}\d{1,3}$/u.test(value)) return false;
+  const parts = value.split(".").map(Number);
+  if (parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return true;
+  }
+  const [first, second] = parts;
+  if (first === 0 || first === 10 || first === 127) return true;
+  if (first === 169 && second === 254) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  if (first === 192 && second === 168) return true;
+  if (first >= 224) return true;
+  return false;
+}
+
+function isBlockedIpv6Literal(value: string): boolean {
+  const clean = value.toLowerCase().replace(/^\[|\]$/gu, "").split("%")[0];
+  if (!clean.includes(":")) return false;
+  if (clean === "::" || clean === "::1") return true;
+  const mapped = clean.match(/^::ffff:((?:\d{1,3}\.){3}\d{1,3})$/u);
+  if (mapped) return isBlockedIpv4Literal(mapped[1]);
+  const first = Number.parseInt(clean.split(":")[0] || "0", 16);
+  if (!Number.isFinite(first)) return true;
+  if ((first & 0xfe00) === 0xfc00) return true;
+  if ((first & 0xffc0) === 0xfe80) return true;
+  if ((first & 0xff00) === 0xff00) return true;
+  return false;
+}
+
+export function isSafeWebhookUrl(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (
+    !trimmed ||
+    trimmed.length > 2048 ||
+    CONTROL_CHARS.test(trimmed) ||
+    /\s/u.test(trimmed)
+  ) {
+    return false;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return false;
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+  if (url.username || url.password) return false;
+
+  const host = url.hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/gu, "")
+    .replace(/\.$/u, "");
+  if (!host) return false;
+  if (WEBHOOK_BLOCKED_HOSTNAMES.has(host)) return false;
+  if (
+    host.endsWith(".localhost") ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal")
+  ) {
+    return false;
+  }
+  if (isBlockedIpv4Literal(host) || isBlockedIpv6Literal(host)) return false;
+  return true;
+}
+
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
