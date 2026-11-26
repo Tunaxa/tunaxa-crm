@@ -383,7 +383,7 @@ export default function WorkflowCanvas({
         >
           <Background />
           <Controls showInteractive={!readOnly} />
-          <MiniMap pannable zoomable style={{ background: "var(--surface)" }} nodeColor="var(--muted)" />
+          <MiniMap className="workflow-minimap" pannable zoomable style={{ background: "var(--surface)" }} nodeColor="var(--muted)" />
         </ReactFlow>
       </div>
 
