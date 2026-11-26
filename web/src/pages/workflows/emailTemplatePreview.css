@@ -190,52 +190,62 @@
     max-width: 100vw;
   }
 
-  .workflow-builder {
+  .workflow-detail .workflow-builder.workflow-builder {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
     height: auto;
     min-height: 0;
+    max-height: none;
     padding: 12px;
     overflow: visible;
   }
 
-  .workflow-palette {
-    position: relative;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 8px;
+  .workflow-detail .workflow-builder > .workflow-palette.workflow-palette {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     width: 100%;
     height: auto;
+    min-height: 0;
     max-height: none;
     overflow: visible;
+    position: relative;
+    z-index: 1;
   }
 
-  .workflow-palette-title {
+  .workflow-detail .workflow-palette-title {
     width: 100%;
   }
 
-  .workflow-palette-section {
-    flex: 1 1 140px;
+  .workflow-detail .workflow-palette-section {
+    flex: 0 0 auto;
     margin: 0;
   }
 
-  .workflow-palette-item {
+  .workflow-detail .workflow-palette-item {
     min-height: 30px;
     padding: 6px 8px;
     font-size: 12px;
   }
 
-  .workflow-builder .workflow-canvas {
-    position: relative;
+  .workflow-detail .workflow-builder > .workflow-canvas.workflow-canvas {
     width: 100%;
-    height: 420px;
-    min-height: 380px;
+    height: 380px;
+    min-height: 340px;
+    margin-top: 0;
+    position: relative;
+    z-index: 0;
   }
 
-  .workflow-canvas .react-flow__minimap {
-    width: 112px;
-    height: 78px;
+  .workflow-detail .workflow-builder .workflow-canvas .react-flow__minimap.workflow-minimap {
+    width: 104px;
+    height: 72px;
+  }
+
+  .workflow-detail .workflow-builder .workflow-canvas .workflow-minimap .react-flow__minimap-svg {
+    width: 104px;
+    height: 72px;
   }
 
   .workflow-action-config {

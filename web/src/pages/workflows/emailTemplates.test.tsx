@@ -682,30 +682,117 @@ describe("canvas compatibility and responsive styles", () => {
       return mobile.slice(open + 1, close);
     };
 
-    const builder = declarations(".workflow-builder");
+    const builder = declarations(
+      ".workflow-detail .workflow-builder.workflow-builder",
+    );
     expect(builder).toContain("display: flex");
     expect(builder).toContain("flex-direction: column");
-    expect(builder).toContain("gap: 14px");
+    expect(builder).toContain("gap: 16px");
     expect(builder).toContain("height: auto");
     expect(builder).toContain("min-height: 0");
+    expect(builder).toContain("max-height: none");
+    expect(builder).toContain("overflow: visible");
 
-    const palette = declarations(".workflow-palette");
+    const palette = declarations(
+      ".workflow-detail .workflow-builder > .workflow-palette.workflow-palette",
+    );
+    expect(palette).toContain("display: flex");
+    expect(palette).toContain("flex-direction: column");
+    expect(palette).toContain("gap: 10px");
     expect(palette).toContain("width: 100%");
     expect(palette).toContain("height: auto");
+    expect(palette).toContain("min-height: 0");
     expect(palette).toContain("max-height: none");
     expect(palette).toContain("overflow: visible");
     expect(palette).toContain("position: relative");
+    expect(palette).toContain("z-index: 1");
 
-    const canvas = declarations(".workflow-builder .workflow-canvas");
+    const canvas = declarations(
+      ".workflow-detail .workflow-builder > .workflow-canvas.workflow-canvas",
+    );
     expect(canvas).toContain("width: 100%");
-    expect(canvas).toContain("height: 420px");
-    expect(canvas).toContain("min-height: 380px");
+    expect(canvas).toContain("height: 380px");
+    expect(canvas).toContain("min-height: 340px");
+    expect(canvas).toContain("margin-top: 0");
     expect(canvas).toContain("position: relative");
+    expect(canvas).toContain("z-index: 0");
 
-    const minimap = declarations(".workflow-canvas .react-flow__minimap");
-    expect(minimap).toContain("width: 112px");
-    expect(minimap).toContain("height: 78px");
+    const minimap = declarations(
+      ".workflow-detail .workflow-builder .workflow-canvas .react-flow__minimap.workflow-minimap",
+    );
+    expect(minimap).toContain("width: 104px");
+    expect(minimap).toContain("height: 72px");
+
+    const minimapSvg = declarations(
+      ".workflow-detail .workflow-builder .workflow-canvas .workflow-minimap .react-flow__minimap-svg",
+    );
+    expect(minimapSvg).toContain("width: 104px");
+    expect(minimapSvg).toContain("height: 72px");
 
     expect(mobile).not.toContain("grid-template-columns");
+  });
+
+  it("outranks legacy workflow rules at the mobile breakpoint", () => {
+    const read = (path: string) =>
+      readFileSync(new URL(path, import.meta.url), "utf8");
+    const preview = read("./emailTemplatePreview.css");
+    const app = read("../../styles/app.css");
+    const views = read("./workflowViews.css");
+    const mobile = preview.slice(preview.indexOf("@media (max-width: 768px)"));
+
+    const specificity = (selector: string) => {
+      const ids = (selector.match(/#[\w-]+/g) ?? []).length;
+      const classes = (
+        selector.match(/\.[\w-]+|\[[^\]]+\]|:[\w-]+/g) ?? []
+      ).length;
+      const elements = (
+        selector.match(/(^|[\s>+~])[a-z][\w-]*/gi) ?? []
+      ).length;
+      return [ids, classes, elements] as const;
+    };
+    const compare = (a: readonly number[], b: readonly number[]) => {
+      for (let index = 0; index < a.length; index += 1) {
+        if (a[index] !== b[index]) return a[index] - b[index];
+      }
+      return 0;
+    };
+    const rules = (css: string) => {
+      const parsed: Array<{ selector: string; declarations: string }> = [];
+      const pattern = /([^{}]+)\{([^{}]*)\}/g;
+      for (let match = pattern.exec(css); match; match = pattern.exec(css)) {
+        const selector = match[1].trim();
+        if (!selector.startsWith("@"))
+          parsed.push({ selector, declarations: match[2] });
+      }
+      return parsed;
+    };
+
+    const legacy = [...rules(app), ...rules(views)].filter((rule) =>
+      /\.workflow-(builder|palette|canvas)/.test(rule.selector),
+    );
+    expect(legacy.length).toBeGreaterThan(0);
+    const legacyMax = legacy.reduce(
+      (max, rule) =>
+        compare(specificity(rule.selector), max) > 0
+          ? specificity(rule.selector)
+          : max,
+      [0, 0, 0] as readonly number[],
+    );
+
+    for (const selector of [
+      ".workflow-detail .workflow-builder.workflow-builder",
+      ".workflow-detail .workflow-builder > .workflow-palette.workflow-palette",
+      ".workflow-detail .workflow-builder > .workflow-canvas.workflow-canvas",
+      ".workflow-detail .workflow-builder .workflow-canvas .react-flow__minimap.workflow-minimap",
+    ]) {
+      expect(mobile).toContain(`${selector} {`);
+      expect(compare(specificity(selector), legacyMax)).toBeGreaterThan(0);
+    }
+
+    expect(mobile).toContain("flex-direction: column");
+    expect(mobile).toContain("height: auto");
+    expect(mobile).toContain("max-height: none");
+    expect(mobile).toContain("width: 104px");
+    expect(mobile).toContain("height: 72px");
   });
 });
