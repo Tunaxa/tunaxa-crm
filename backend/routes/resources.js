@@ -37,6 +37,7 @@ import { parseFilters, applyFilters } from "../services/queryFilter.js";
 import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
 import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
+import { messageScope, hasMessageScope } from "../services/messageScope.js";
 
 // Query params that are filters rather than paging controls. The legacy JSON
 // path applied these in JS after loading the whole file; forwarding them to the
@@ -396,6 +397,7 @@ export default function registerResourceRoutes(app) {
 
     // AXA-128: only return email messages when type=email is requested
     if (req.params.resource === "messages") {
+      rows = rows.filter((item) => hasMessageScope(item, req));
       const type = String(req.query.type || "").toLowerCase();
 
       if (type === "email") {
@@ -973,7 +975,7 @@ export default function registerResourceRoutes(app) {
     // ── Legacy JSON path ──────────────────────────────────────────────────
     const db = req.db || (await readDb());
     const rows = db[req.params.resource] || [];
-    const item = rows.find((x) => x.id === req.params.id);
+    const item = rows.find((x) => x.id === req.params.id && (req.params.resource !== "messages" || hasMessageScope(x, req)));
 
     if (!item) {
       return res.status(404).json({ error: "Record not found" });
@@ -1036,6 +1038,7 @@ export default function registerResourceRoutes(app) {
         const record = {
           id: id(resource.slice(0, -1) || "item"),
           ...coerceBuiltIns(resource, coerceCustomFields(db, resource, data)),
+          ...(resource === "messages" ? { workspaceId: messageScope(req) } : {}),
           createdAt,
           updatedAt: createdAt,
         };
@@ -1078,7 +1081,7 @@ export default function registerResourceRoutes(app) {
       broadcast(
         "record.created",
         { resource, item },
-        req.user.workspaceId || "default",
+        resource === "messages" ? messageScope(req) : req.user.workspaceId || "default",
       );
       cacheFlush(resource);
 
@@ -1160,7 +1163,7 @@ export default function registerResourceRoutes(app) {
       broadcast(
         "records.batch",
         { resource, count: saved.length },
-        req.user.workspaceId || "default",
+        resource === "messages" ? messageScope(req) : req.user.workspaceId || "default",
       );
       cacheFlush(resource);
 
@@ -1243,7 +1246,7 @@ export default function registerResourceRoutes(app) {
       let previous = null;
       let revisionId = null;
       const item = await mutateDb((db) => {
-        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        const index = db[resource].findIndex((x) => x.id === req.params.id && (resource !== "messages" || hasMessageScope(x, req)));
         if (index < 0) return null;
         previous = { ...db[resource][index] };
         const data = { ...req.body };
@@ -1274,7 +1277,11 @@ export default function registerResourceRoutes(app) {
       const event =
         eventFor(resource, previous, item) || updatedEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.updated", { resource, item, revisionId });
+      broadcast(
+        "record.updated",
+        { resource, item, revisionId },
+        resource === "messages" ? messageScope(req) : undefined,
+      );
       cacheFlush(resource);
       res.json(revisionId ? { ...item, revisionId } : item);
     },
@@ -1344,7 +1351,7 @@ export default function registerResourceRoutes(app) {
       let previous = null;
       let revisionId = null;
       const item = await mutateDb((db) => {
-        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        const index = db[resource].findIndex((x) => x.id === req.params.id && (resource !== "messages" || hasMessageScope(x, req)));
         if (index < 0) return null;
         previous = { ...db[resource][index] };
         const merged = applyPartialUpdate(
@@ -1378,7 +1385,11 @@ export default function registerResourceRoutes(app) {
       const event =
         eventFor(resource, previous, item) || updatedEvent(resource);
       if (event) triggerWorkflows(resource, event, item);
-      broadcast("record.updated", { resource, item, revisionId });
+      broadcast(
+        "record.updated",
+        { resource, item, revisionId },
+        resource === "messages" ? messageScope(req) : undefined,
+      );
       cacheFlush(resource);
       res.json(revisionId ? { ...item, revisionId } : item);
     },
@@ -1421,7 +1432,7 @@ export default function registerResourceRoutes(app) {
 
       // ── Legacy JSON path ──────────────────────────────────────────────────
       const result = await mutateDb((db) => {
-        const index = db[resource].findIndex((x) => x.id === req.params.id);
+        const index = db[resource].findIndex((x) => x.id === req.params.id && (resource !== "messages" || hasMessageScope(x, req)));
 
         if (index < 0) return null;
 
@@ -1500,7 +1511,7 @@ export default function registerResourceRoutes(app) {
       broadcast(
         "record.deleted",
         { resource, id: req.params.id },
-        req.user.workspaceId || "default",
+        resource === "messages" ? messageScope(req) : req.user.workspaceId || "default",
       );
       cacheFlush(resource);
 

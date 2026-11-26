@@ -6,6 +6,8 @@ export type SSEStatus = "connected" | "reconnecting" | "disconnected";
 export interface SSEEventMap {
   connected: { userId: string };
   "record.created": { resource: string; item: unknown };
+  "record.updated": { resource: string; item: unknown };
+  "record.deleted": { resource: string; id: string };
   "workflow.created": { id: string };
   "workflow.updated": { id: string };
   "workflow.deleted": { id: string };
@@ -40,6 +42,8 @@ export interface SSEEventMap {
 export type SSEHandlers = {
   [K in keyof SSEEventMap]?: (data: SSEEventMap[K]) => void;
 };
+
+export type ResourceChangedEvent = CustomEvent<{ resource?: string }>;
 
 const BASE_DELAY = 1000;
 const MAX_DELAY = 30000;

@@ -16,6 +16,7 @@ const ALL_IDS = [
   'companies',
   'deals',
   'leads',
+  'inbox',
   'tickets',
   'sequences',
   'reports',
@@ -30,12 +31,13 @@ const MEMBER_IDS = [
   'companies',
   'deals',
   'leads',
+  'inbox',
   'tickets',
   'sequences',
   'reports',
   'import_export',
 ];
-const VIEWER_IDS = ['dashboard', 'contacts', 'companies', 'deals', 'tickets', 'sequences', 'reports'];
+const VIEWER_IDS = ['dashboard', 'contacts', 'companies', 'deals', 'inbox', 'tickets', 'sequences', 'reports'];
 const CONTRACT_KEYS = [
   'icon',
   'id',
@@ -146,6 +148,18 @@ describe('GET /api/modules — role visibility matrix', () => {
       minRole: 'viewer',
     });
   });
+
+  it('exposes /inbox to viewers and to every higher role', async () => {
+    for (const id of ['usr_nav_viewer', 'usr_nav_member', 'usr_nav_admin', 'usr_nav_owner', 'usr_nav_wizard', 'usr_nav_norole']) {
+      const res = await getModules(tokenFor(id));
+      expect(res.status).toBe(200);
+      expect(res.body.modules.find((module) => module.id === 'inbox')).toMatchObject({
+        id: 'inbox',
+        path: '/inbox',
+        minRole: 'viewer',
+      });
+    }
+  });
 });
 
 describe('GET /api/modules — graceful degradation', () => {
@@ -213,6 +227,20 @@ describe('navigation service (pure)', () => {
     for (const module of MODULES) expect(Object.isFrozen(module)).toBe(true);
     const registryIds = MODULES.map((m) => m.id);
     expect(new Set(registryIds).size).toBe(registryIds.length);
+  });
+
+  it('registers /inbox with the viewer minimum role', () => {
+    expect(MODULES.find((module) => module.id === 'inbox')).toMatchObject({
+      id: 'inbox',
+      label: 'Inbox',
+      path: '/inbox',
+      icon: 'Inbox',
+      section: 'workspace',
+      minRole: 'viewer',
+    });
+    expect(getNavigationForUser({ role: 'viewer' }).some((module) => module.id === 'inbox')).toBe(true);
+    expect(getNavigationForUser({ role: 'member' }).some((module) => module.id === 'inbox')).toBe(true);
+    expect(getNavigationForUser({ role: 'Owner' }).some((module) => module.id === 'inbox')).toBe(true);
   });
 
   it('gates /integrations to administrators in the backend registry', () => {
