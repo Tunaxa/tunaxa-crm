@@ -1,6 +1,34 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Topbar } from "./Topbar";
+
+const notificationCss = readFileSync(
+  new URL("../modules/notifications/notifications.css", import.meta.url),
+  "utf8",
+);
+
+function cssBlock(marker: string) {
+  const start = notificationCss.indexOf(marker);
+  if (start < 0) return "";
+  const open = notificationCss.indexOf("{", start);
+  let depth = 0;
+  for (let index = open; index < notificationCss.length; index += 1) {
+    if (notificationCss[index] === "{") depth += 1;
+    if (notificationCss[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return notificationCss.slice(start, index + 1);
+    }
+  }
+  return "";
+}
+
+function centeredDeclarations(block: string) {
+  const match = block.match(
+    /\.topbar \.notification-btn\.notification-trigger\s*\{([^}]*)\}/,
+  );
+  return match?.[1] ?? "";
+}
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -49,5 +77,24 @@ describe("Topbar notification bell", () => {
     expect(html).toContain('aria-label="Notifications"');
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("notification-count");
+  });
+
+  it("centers the bell icon globally and at 768px or below", () => {
+    const globalRule = centeredDeclarations(
+      cssBlock(".topbar .notification-btn.notification-trigger"),
+    );
+    const mobileRule = centeredDeclarations(
+      cssBlock("@media (max-width: 768px)"),
+    );
+    for (const declarations of [globalRule, mobileRule]) {
+      expect(declarations).toMatch(/display:\s*inline-flex/);
+      expect(declarations).toMatch(/align-items:\s*center/);
+      expect(declarations).toMatch(/justify-content:\s*center/);
+      expect(declarations).toMatch(/position:\s*relative/);
+      expect(declarations).toMatch(/padding:\s*0/);
+    }
+    expect(notificationCss).toMatch(
+      /\.notification-count\s*\{[^}]*position:\s*absolute/,
+    );
   });
 });
