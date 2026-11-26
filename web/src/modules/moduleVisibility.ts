@@ -18,6 +18,7 @@ export const MODULE_CATALOG: Readonly<Record<string, string>> = Object.freeze({
   "/deals": "viewer",
   "/leads": "member",
   "/tickets": "viewer",
+  "/inbox": "viewer",
   "/sequences": "viewer",
   "/import": "member",
   "/integrations": "admin",

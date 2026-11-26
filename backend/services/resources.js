@@ -16,6 +16,7 @@ import {
   updatedEvent,
 } from "./workflows.js";
 import { broadcast } from "../routes/sse.js";
+import { messageScope, hasMessageScope } from "./messageScope.js";
 
 const SERVER_MANAGED_FIELDS = [
   "id",
@@ -83,7 +84,7 @@ export async function updateRecord(req, res, next) {
   let previous = null;
   let revisionId = null;
   const item = await mutateDb((db) => {
-    const index = db[resource].findIndex((record) => record.id === id);
+    const index = db[resource].findIndex((record) => record.id === id && (resource !== "messages" || hasMessageScope(record, req)));
     if (index < 0) return null;
 
     previous = { ...db[resource][index] };
@@ -113,7 +114,11 @@ export async function updateRecord(req, res, next) {
 
   const event = eventFor(resource, previous, item) || updatedEvent(resource);
   if (event) triggerWorkflows(resource, event, item);
-  broadcast("record.updated", { resource, item, revisionId }, req.user.workspaceId || "default");
+  broadcast(
+    "record.updated",
+    { resource, item, revisionId },
+    resource === "messages" ? messageScope(req) : req.user.workspaceId || "default",
+  );
   await cacheFlush(resource);
   return res.json(revisionId ? { ...item, revisionId } : item);
 }

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   allowedByRole,
   isModuleVisible,
+  MODULE_CATALOG,
   moduleBasePath,
   modulePathFromHash,
   modulePathsFromPayload,
@@ -49,6 +50,14 @@ describe("module visibility and deep links", () => {
     expect(isModuleVisible("/tickets/42", new Set(["/", "/tickets"]), "viewer")).toBe(true);
     expect(isModuleVisible("/tickets", null, "viewer")).toBe(true);
     expect(allowedByRole("/tickets", "viewer")).toBe(true);
+  });
+
+  it("gates /inbox through the module catalog for viewers", () => {
+    expect(MODULE_CATALOG["/inbox"]).toBe("viewer");
+    expect(allowedByRole("/inbox", "viewer")).toBe(true);
+    expect(isModuleVisible("/inbox", new Set(["/", "/inbox"]), "viewer")).toBe(true);
+    expect(isModuleVisible("/inbox", new Set(["/", "/contacts"]), "viewer")).toBe(false);
+    expect(isModuleVisible("/inbox", null, "viewer")).toBe(true);
   });
 
   it("gates /integrations to admin and Owner roles", () => {

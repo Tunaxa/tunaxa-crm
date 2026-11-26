@@ -55,6 +55,15 @@ export const MODULES = Object.freeze([
     minRole: 'member',
   }),
   Object.freeze({
+    id: 'inbox',
+    label: 'Inbox',
+    path: '/inbox',
+    icon: 'Inbox',
+    order: 52,
+    section: 'workspace',
+    minRole: 'viewer',
+  }),
+  Object.freeze({
     id: 'tickets',
     label: 'Tickets',
     path: '/tickets',

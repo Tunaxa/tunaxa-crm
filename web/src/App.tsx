@@ -73,7 +73,7 @@ import { HomePage } from "./pages/HomePage";
 import { PricingPage } from "./pages/PricingPage";
 import { ActivitiesPage } from "./pages/activities/ActivitiesPage";
 import { CallsPage } from "./pages/communication/CallsPage";
-import { InboxPage } from "./pages/communication/InboxPage";
+import { InboxPage } from "./modules/communications/inbox/InboxPage";
 import { RecordingsPage } from "./pages/communication/RecordingsPage";
 import { WebhooksPage } from "./pages/communication/WebhooksPage";
 import { ContractsPage } from "./pages/revenue/ContractsPage";
@@ -468,6 +468,18 @@ function AppRoutes() {
           detail: { resource: data.resource },
         }),
       ),
+    "record.updated": (data) =>
+      window.dispatchEvent(
+        new CustomEvent("tunaxa:resource-changed", {
+          detail: { resource: data.resource },
+        }),
+      ),
+    "record.deleted": (data) =>
+      window.dispatchEvent(
+        new CustomEvent("tunaxa:resource-changed", {
+          detail: { resource: data.resource },
+        }),
+      ),
     "workflow.created": refreshAll,
     "workflow.updated": refreshAll,
     "workflow.deleted": refreshAll,
@@ -742,7 +754,14 @@ return (
               <Route path="/workflows/:id" element={<WorkflowDetailPage key={location.pathname} />} />
               <Route path="/calls" element={<CallsPage />} />
               <Route path="/recordings" element={<RecordingsPage />} />
-              <Route path="/inbox" element={<InboxPage />} />
+              <Route
+                path="/inbox"
+                element={
+                  <ModuleGate path="/inbox">
+                    <InboxPage />
+                  </ModuleGate>
+                }
+              />
               <Route
                 path="/sequences"
                 element={

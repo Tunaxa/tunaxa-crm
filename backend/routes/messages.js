@@ -16,6 +16,8 @@ import {
   injectTrackingPixel,
   wrapTrackingLinks,
 } from '../services/tracking.js';
+import { broadcast } from './sse.js';
+import { messageScope, hasMessageScope } from '../services/messageScope.js';
 
 const providerLimiter = createRateLimiter({ windowMs: 60_000, max: 30, prefix: 'provider' });
 
@@ -44,13 +46,15 @@ export async function buildTrackedHtml(body, message, workspaceId, publicBaseUrl
 export default function registerMessageRoutes(app) {
   app.post('/api/messages/send', auth, requireRole('admin', 'member'), providerLimiter, validate(MessageSchema), async (req, res) => {
     const { id: existingId, idempotencyKey, channel = 'Email', to, subject, body, contact } = req.body;
+    const scope = messageScope(req);
     const settings = await getSettings();
     const createdAt = now();
     let message = null;
     let replay = false;
+    let created = false;
     await mutateDb((db) => {
       if (idempotencyKey) {
-        const found = db.messages.find((x) => x.idempotencyKey === idempotencyKey);
+        const found = db.messages.find((x) => x.idempotencyKey === idempotencyKey && hasMessageScope(x, req));
         if (found && found.status === 'Sent') {
           message = { ...found };
           replay = true;
@@ -64,11 +68,12 @@ export default function registerMessageRoutes(app) {
         if (found) message = found;
       }
       if (!message && existingId) {
-        const index = db.messages.findIndex((x) => x.id === existingId);
+        const index = db.messages.findIndex((x) => x.id === existingId && hasMessageScope(x, req));
         if (index >= 0) message = db.messages[index];
       }
       if (!message) {
-        message = { id: id('message'), channel, to: String(to).trim(), subject: subject || '', body: String(body), contact: contact || '', direction: 'Outbound', status: 'Queued', read: true, idempotencyKey: idempotencyKey || '', createdAt, updatedAt: createdAt };
+        message = { id: id('message'), workspaceId: scope, channel, to: String(to).trim(), subject: subject || '', body: String(body), contact: contact || '', direction: 'Outbound', status: 'Queued', read: true, idempotencyKey: idempotencyKey || '', createdAt, updatedAt: createdAt };
+        created = true;
         db.messages.unshift(message);
       } else {
         const index = db.messages.findIndex((x) => x.id === message.id);
@@ -108,6 +113,7 @@ export default function registerMessageRoutes(app) {
       return { ...db.messages[index] };
     });
     if (saved) triggerWorkflows('messages', 'message.sent', saved);
+    if (saved) broadcast(created ? 'record.created' : 'record.updated', { resource: 'messages', item: saved }, scope);
     res.json(saved);
   });
 }

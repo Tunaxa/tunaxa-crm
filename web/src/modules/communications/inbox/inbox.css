@@ -1,0 +1,260 @@
+.unified-inbox-page {
+  min-width: 0;
+}
+
+.inbox-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+.inbox-sidebar {
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+
+.inbox-search,
+.inbox-filters,
+.inbox-count {
+  margin: 16px;
+}
+
+.inbox-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inbox-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.inbox-thread-list {
+  min-width: 0;
+}
+
+.inbox-thread {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 18px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.inbox-thread.active {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  box-shadow: inset 3px 0 var(--primary);
+}
+
+.inbox-thread:hover {
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+}
+
+.inbox-thread:focus-visible,
+.inbox-filters button:focus-visible,
+.inbox-pagination button:focus-visible,
+.inbox-editor :focus-visible,
+.inbox-conversation-actions button:focus-visible,
+.inbox-message footer button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.inbox-thread-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inbox-thread-heading strong,
+.inbox-thread-subject,
+.inbox-message-body {
+  overflow-wrap: anywhere;
+}
+
+.inbox-thread-subject {
+  font-weight: 600;
+}
+
+.inbox-preview {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.inbox-thread-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.inbox-conversation {
+  min-width: 0;
+  padding: 24px;
+}
+
+.inbox-conversation-header {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.inbox-conversation-header h2 {
+  margin: 0 0 8px;
+}
+
+.inbox-conversation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inbox-message-list {
+  display: grid;
+  gap: 20px;
+  padding: 22px 0;
+}
+
+.inbox-message {
+  width: min(100%, 650px);
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.inbox-message.outbound {
+  margin-left: auto;
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+}
+
+.inbox-message header,
+.inbox-message footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+
+.inbox-message time,
+.inbox-message small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.inbox-message-body {
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
+.inbox-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.inbox-editor {
+  display: grid;
+  gap: 16px;
+  padding-top: 20px;
+  min-width: 0;
+}
+
+.inbox-editor h3,
+.inbox-editor p {
+  margin: 0;
+}
+
+.inbox-editor input,
+.inbox-editor select,
+.inbox-editor textarea {
+  width: 100%;
+  min-width: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.inbox-editor textarea {
+  resize: vertical;
+}
+
+.inbox-editor [role="alert"] {
+  color: #b91c1c;
+}
+
+html.dark .inbox-editor [role="alert"] {
+  color: #fca5a5;
+}
+
+html.dark .inbox-message.outbound {
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+}
+
+.inbox-reply-address {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.inbox-notice {
+  padding: 16px;
+  margin-bottom: 18px;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.inbox-conversation > .empty-state {
+  margin: 40px 0;
+}
+
+@media (max-width: 768px) {
+  .inbox-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .inbox-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .inbox-search,
+  .inbox-filters,
+  .inbox-count {
+    margin: 12px;
+  }
+
+  .inbox-thread {
+    padding: 14px 12px;
+  }
+
+  .inbox-conversation {
+    padding: 16px 12px;
+  }
+
+  .inbox-message {
+    width: 100%;
+    margin-left: 0;
+    padding: 14px;
+  }
+
+  .inbox-pagination {
+    justify-content: center;
+  }
+}
