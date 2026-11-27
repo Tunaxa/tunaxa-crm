@@ -5,6 +5,7 @@ import { closePool } from "../db/pg.js";
 import { resetTestDb, seedTestUser, loginAs } from "./setup.js";
 import { hashPassword } from "../helpers.js";
 import { broadcast, broadcastToUser } from "../routes/sse.js";
+import { broadcastTrackingUpdate } from "../routes/tracking.js";
 
 let app, token, httpServer, port;
 
@@ -183,6 +184,38 @@ describe("SSE connection authentication", () => {
 });
 
 describe("SSE scoped room delivery", () => {
+  it("delivers tracking record.updated only to the signed workspace", async () => {
+    const a = openStream("sse_token_ws_a");
+    const b = openStream("sse_token_ws_b");
+    try {
+      expect(await waitForEvent(a, "connected")).not.toBeNull();
+      expect(await waitForEvent(b, "connected")).not.toBeNull();
+
+      const delivered = broadcastTrackingUpdate({
+        workspaceId: "ws_a",
+        messageId: "msg_tracked",
+      });
+      expect(delivered).toBe(1);
+      const event = await waitForEvent(a, "record.updated");
+      expect(event).not.toBeNull();
+      expect(JSON.parse(event.data)).toEqual({
+        resource: "messages",
+        id: "msg_tracked",
+      });
+      await delay(150);
+      expect(b.events.some((item) => item.event === "record.updated")).toBe(false);
+      expect(
+        broadcastTrackingUpdate({ workspaceId: "ws_a", messageId: "" }),
+      ).toBe(0);
+      expect(
+        broadcastTrackingUpdate({ workspaceId: "", messageId: "msg_tracked" }),
+      ).toBe(0);
+    } finally {
+      a.close();
+      b.close();
+    }
+  });
+
   it("delivers workspace-scoped events only to that workspace", async () => {
     const a = openStream("sse_token_ws_a");
     const b = openStream("sse_token_ws_b");

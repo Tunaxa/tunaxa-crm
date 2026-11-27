@@ -38,6 +38,7 @@ import { fileURLToPath } from "node:url";
 import { repoFor } from "../db/repositories/index.js";
 import { PG_RESOURCES, pgToLegacy, legacyToPg } from "../db/legacy-shape.js";
 import { messageScope, hasMessageScope } from "../services/messageScope.js";
+import { hydrateMessageTracking } from "../services/messageTracking.js";
 
 // Query params that are filters rather than paging controls. The legacy JSON
 // path applied these in JS after loading the whole file; forwarding them to the
@@ -415,7 +416,11 @@ export default function registerResourceRoutes(app) {
       rows = rows.map((item) => applyFieldMasking(item, req.fieldPerms));
     }
 
-    res.json(paginateAndSort(rows, req.query));
+    const payload = paginateAndSort(rows, req.query);
+    if (req.params.resource === "messages") {
+      payload.data = await hydrateMessageTracking(payload.data, messageScope(req));
+    }
+    return res.json(payload);
   });
 
   /**

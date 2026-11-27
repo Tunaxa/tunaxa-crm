@@ -2,6 +2,7 @@ import { repoFor } from '../db/repositories/index.js';
 import { decodeTrackingToken, isSafeDestinationUrl } from '../services/tracking.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import { now } from '../helpers.js';
+import { broadcast } from './sse.js';
 
 const TRANSPARENT_1X1_GIF = Buffer.from(
   'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
@@ -17,6 +18,16 @@ export const trackingLimiter = createRateLimiter({
 });
 
 export { OPEN_THROTTLE_MS, MAX_RECENT_OPENS };
+
+export function broadcastTrackingUpdate(payload) {
+  if (!payload || typeof payload.workspaceId !== 'string' || !payload.workspaceId) return 0;
+  if (typeof payload.messageId !== 'string' || !payload.messageId) return 0;
+  return broadcast(
+    'record.updated',
+    { resource: 'messages', id: payload.messageId },
+    { workspaceId: payload.workspaceId },
+  );
+}
 
 export function pruneRecentOpens(map, nowMs = Date.now()) {
   for (const [key, seenAt] of map) {
@@ -96,6 +107,7 @@ export default function registerTrackingRoutes(app) {
           const contact = await resolveContact(payload);
           const description = `Recipient opened email${payload.messageId ? ` (${payload.messageId})` : ''}`;
           await recordActivity(payload, 'email_open', req, contact, {}, description);
+          broadcastTrackingUpdate(payload);
         }
       } catch (error) {
         console.error('[tracking] failed to record email_open:', error?.message || error);
@@ -118,6 +130,7 @@ export default function registerTrackingRoutes(app) {
       const contact = await resolveContact(payload);
       const description = `Recipient clicked link: ${targetUrl}`;
       await recordActivity(payload, 'email_click', req, contact, { targetUrl }, description);
+      broadcastTrackingUpdate(payload);
     } catch (error) {
       console.error('[tracking] failed to record email_click:', error?.message || error);
     }

@@ -18,7 +18,9 @@ export type Message = {
   createdAt: string;
   contact: string;
   openedAt: string;
+  openCount: number;
   clickedAt: string;
+  clickCount: number;
   deliveredAt: string;
   error: string;
 };
@@ -85,7 +87,8 @@ const messageFields = Object.freeze([
   "deliveredAt",
   "error",
 ] as const);
-const messageKeys = new Set<string>(messageFields);
+const messageCountFields = Object.freeze(["openCount", "clickCount"] as const);
+const messageKeys = new Set<string>([...messageFields, ...messageCountFields]);
 const payloadFields = Object.freeze([
   "channel",
   "to",
@@ -129,14 +132,48 @@ function readOwnText(
   return typeof value === "string" ? value : "";
 }
 
+function readOwnTimestamp(
+  row: Record<string, unknown>,
+  key: string,
+  allowed: ReadonlySet<string>,
+): string {
+  const value = readOwnText(row, key, allowed);
+  return value && Number.isFinite(Date.parse(value)) ? value : "";
+}
+
+function readOwnCount(
+  row: Record<string, unknown>,
+  key: string,
+  allowed: ReadonlySet<string>,
+): number {
+  const safeKey = sanitizeFieldKey(key, allowed);
+  if (!safeKey || !hasOwn(row, safeKey)) return 0;
+  const raw = row[safeKey];
+  const value = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : Number.NaN;
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(Math.floor(value), Number.MAX_SAFE_INTEGER);
+}
+
+export function validDate(value: string): boolean {
+  return Number.isFinite(Date.parse(value));
+}
+
+export const dateLabel = (value: string) =>
+  validDate(value) ? new Date(value).toLocaleString() : "Date unavailable";
+export const dateTime = (value: string) => (validDate(value) ? value : undefined);
+
 export function parseMessage(value: unknown): Message {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Invalid email response");
   }
   const row = value as Record<string, unknown>;
   const fields = Object.create(null) as Record<string, string>;
+  const counts = Object.create(null) as Record<string, number>;
   for (const key of messageFields) {
     fields[key] = readOwnText(row, key, messageKeys);
+  }
+  for (const key of messageCountFields) {
+    counts[key] = readOwnCount(row, key, messageKeys);
   }
   if (!fields.id || fields.channel.toLowerCase() !== "email") {
     throw new Error("Invalid email response");
@@ -154,9 +191,11 @@ export function parseMessage(value: unknown): Message {
     read: hasOwn(row, "read") && row.read === true,
     createdAt: fields.createdAt,
     contact: fields.contact,
-    openedAt: fields.openedAt,
-    clickedAt: fields.clickedAt,
-    deliveredAt: fields.deliveredAt,
+    openedAt: readOwnTimestamp(row, "openedAt", messageKeys),
+    openCount: counts.openCount,
+    clickedAt: readOwnTimestamp(row, "clickedAt", messageKeys),
+    clickCount: counts.clickCount,
+    deliveredAt: readOwnTimestamp(row, "deliveredAt", messageKeys),
     error: fields.error,
   };
 }
