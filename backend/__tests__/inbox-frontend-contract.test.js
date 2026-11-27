@@ -3,7 +3,7 @@ import request from 'supertest';
 import http from 'node:http';
 import { resetTestDb, cleanupTestDb, seedTestUser, loginAs } from './setup.js';
 import { mutateDb } from '../store.js';
-import { closePool } from '../db/pg.js';
+import { closePool, query } from '../db/pg.js';
 import { hashPassword } from '../helpers.js';
 import {
   fetchInbox,
@@ -12,6 +12,15 @@ import {
   normalizeDeliveryStatus,
   groupMessagesIntoThreads,
 } from '../../web/src/modules/communications/inbox/inboxModel.ts';
+import { broadcastTrackingUpdate } from '../routes/tracking.js';
+
+let pgReady = false;
+try {
+  await query('SELECT 1 FROM activities LIMIT 1');
+  pgReady = true;
+} catch {
+  pgReady = false;
+}
 
 const provider = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock('../services/smtp.js', () => ({ sendEmail: provider.send, resetTransporter: vi.fn() }));
@@ -175,6 +184,35 @@ describe('unified inbox API contract', () => {
     const templates = await read('/templates');
     expect(Object.keys(templates).sort()).toEqual(['data', 'limit', 'page', 'total']);
     expect(Array.isArray(templates.data)).toBe(true);
+
+    if (pgReady) {
+      const openedAt = stamp();
+      await query(
+        `INSERT INTO activities (workspace_id, type, title, metadata, created_at)
+         VALUES ($1, 'email_open', 'Email opened', $2, $3),
+                ($1, 'email_click', 'Email link clicked', $4, $3),
+                ($5, 'email_open', 'Email opened', $6, $3)`,
+        [
+          workspaceId,
+          JSON.stringify({ messageId: root.id, openedAt }),
+          openedAt,
+          JSON.stringify({ messageId: root.id, clickedAt: openedAt }),
+          foreignWorkspaceId,
+          JSON.stringify({ messageId: root.id, openedAt }),
+        ],
+      );
+      const rows = await fetchInbox(read);
+      const tracked = rows.find((item) => item.id === root.id);
+      expect(tracked.openCount).toBe(1);
+      expect(tracked.clickCount).toBe(1);
+      expect(tracked.openedAt).toBe(openedAt);
+      expect(tracked.clickedAt).toBe(openedAt);
+      const untracked = rows.find((item) => item.id !== root.id);
+      expect(untracked.openCount).toBe(0);
+      expect(untracked.clickCount).toBe(0);
+      expect(untracked.openedAt).toBe('');
+      expect(untracked.clickedAt).toBe('');
+    }
   });
 
   it('sends an inline reply once and groups it with the original conversation', async () => {
@@ -299,6 +337,15 @@ describe('unified inbox API contract', () => {
       const marked = await request(app).patch(`/api/messages/${root.id}`).set(auth()).send({ read: true });
       expect(marked.status).toBe(200);
       expect(await waitForEvent(own, 'record.updated')).not.toBeNull();
+
+      own.events.length = 0;
+      other.events.length = 0;
+      expect(broadcastTrackingUpdate({ workspaceId, messageId: root.id })).toBe(1);
+      const tracked = await waitForEvent(own, 'record.updated');
+      expect(tracked).not.toBeNull();
+      expect(JSON.parse(tracked.data)).toEqual({ resource: 'messages', id: root.id });
+      await delay(150);
+      expect(other.events.some((event) => event.event === 'record.updated')).toBe(false);
 
       const removed = await request(app).delete(`/api/messages/${root.id}`).set(auth());
       expect(removed.status).toBe(200);

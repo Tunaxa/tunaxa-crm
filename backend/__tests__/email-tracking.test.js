@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { resetTestDb, cleanupTestDb } from './setup.js';
 import { query } from '../db/pg.js';
+import { mutateDb } from '../store.js';
 import { getApiBaseUrl } from '../runtime.js';
 import {
   createTrackingToken,
@@ -19,6 +20,7 @@ import {
   pruneRecentOpens,
   MAX_RECENT_OPENS,
   OPEN_THROTTLE_MS,
+  broadcastTrackingUpdate,
 } from '../routes/tracking.js';
 import { buildTrackedHtml } from '../routes/messages.js';
 
@@ -174,6 +176,12 @@ describe('Tracking token & HTML utilities', () => {
     expect(big.size).toBeLessThan(MAX_RECENT_OPENS);
     expect(big.has('k0')).toBe(false);
     expect(typeof trackingLimiter).toBe('function');
+  });
+
+  it('only announces tracking refreshes with a signed workspace and message id', () => {
+    expect(broadcastTrackingUpdate({ workspaceId: ACME, messageId: '' })).toBe(0);
+    expect(broadcastTrackingUpdate({ workspaceId: '', messageId: 'msg_announce' })).toBe(0);
+    expect(broadcastTrackingUpdate(null)).toBe(0);
   });
 
   it('wraps outbound email HTML using the API base fallback and skips unsubscribe links', async () => {
@@ -350,5 +358,119 @@ describe.skipIf(!pgReady)('Email tracking endpoints', () => {
     expect(cross.contact_id).toBeNull();
     expect(result.rows.find((row) => row.workspace_id === ACME).contact_id).toBe(SARAH_ID);
     expect(result.rows.find((row) => row.workspace_id === GLOBEX && row.metadata.messageId === 'msg_tenant_globex').contact_id).toBe(GLOBEX_ID);
+  });
+
+  it('hydrates real workspace-scoped tracking counts and timestamps in GET /api/messages', async () => {
+    const deliveredAt = new Date().toISOString();
+    const inAnHour = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await mutateDb((db) => {
+      db.users.push({
+        id: 'usr_tracking',
+        name: 'Tracking User',
+        email: 'tracking@test.com',
+        password: '',
+        role: 'Owner',
+        workspaceId: ACME,
+        createdAt: deliveredAt,
+      });
+      db.sessions.push({
+        token: 'tracking-token',
+        userId: 'usr_tracking',
+        createdAt: deliveredAt,
+        expiresAt: inAnHour,
+      });
+      db.messages = [{
+        id: 'msg_hydrate',
+        workspaceId: ACME,
+        channel: 'Email',
+        to: SARAH_EMAIL,
+        from: '',
+        subject: 'Tracked proposal',
+        body: 'Hello',
+        direction: 'Outbound',
+        status: 'Sent',
+        read: true,
+        createdAt: deliveredAt,
+        deliveredAt,
+      }];
+    });
+
+    const openToken = generateOpenToken({ workspaceId: ACME, messageId: 'msg_hydrate' });
+    const clickToken = generateClickToken({
+      workspaceId: ACME,
+      messageId: 'msg_hydrate',
+      targetUrl: 'https://tunaxa.com/demo',
+    });
+    const foreignToken = generateOpenToken({ workspaceId: GLOBEX, messageId: 'msg_hydrate' });
+    await request(app).get(`/api/tracking/open/${openToken}`);
+    await request(app).get(`/api/tracking/click/${clickToken}`);
+    await request(app).get(`/api/tracking/open/${foreignToken}`);
+
+    const res = await request(app)
+      .get('/api/messages?type=email&page=1&limit=50')
+      .set('Authorization', 'Bearer tracking-token');
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body).sort()).toEqual(['data', 'limit', 'page', 'total']);
+    const row = res.body.data.find((item) => item.id === 'msg_hydrate');
+    expect(row).toBeTruthy();
+    expect(row.openCount).toBe(1);
+    expect(row.clickCount).toBe(1);
+    expect(row.openedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
+    expect(row.clickedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
+    expect(row.deliveredAt).toBe(deliveredAt);
+    const serialized = JSON.stringify(row);
+    expect(serialized).not.toContain(openToken);
+    expect(serialized).not.toContain(clickToken);
+    expect(serialized).not.toContain('userAgent');
+    expect(serialized).not.toContain('Mozilla/5.0');
+    expect(serialized).not.toContain('127.0.0.1');
+  });
+
+  it('defaults untracked messages to zero counts without cross-tenant bleed', async () => {
+    const stamp = new Date().toISOString();
+    const inAnHour = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await mutateDb((db) => {
+      db.users.push({
+        id: 'usr_tracking',
+        name: 'Tracking User',
+        email: 'tracking@test.com',
+        password: '',
+        role: 'Owner',
+        workspaceId: ACME,
+        createdAt: stamp,
+      });
+      db.sessions.push({
+        token: 'tracking-token',
+        userId: 'usr_tracking',
+        createdAt: stamp,
+        expiresAt: inAnHour,
+      });
+      db.messages = [{
+        id: 'msg_untracked',
+        workspaceId: ACME,
+        channel: 'Email',
+        to: SARAH_EMAIL,
+        from: '',
+        subject: 'Untracked',
+        body: 'Hello',
+        direction: 'Outbound',
+        status: 'Sent',
+        read: true,
+        createdAt: new Date().toISOString(),
+      }];
+    });
+    const foreignToken = generateOpenToken({ workspaceId: GLOBEX, messageId: 'msg_untracked' });
+    await request(app).get(`/api/tracking/open/${foreignToken}`);
+
+    const res = await request(app)
+      .get('/api/messages?type=email')
+      .set('Authorization', 'Bearer tracking-token');
+    expect(res.status).toBe(200);
+    const row = res.body.data.find((item) => item.id === 'msg_untracked');
+    expect(row.openCount).toBe(0);
+    expect(row.clickCount).toBe(0);
+    expect(row.openedAt).toBe('');
+    expect(row.clickedAt).toBe('');
+    expect(row.deliveredAt).toBe('');
   });
 });

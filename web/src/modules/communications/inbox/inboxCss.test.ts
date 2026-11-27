@@ -30,12 +30,16 @@ describe("unified inbox stylesheet", () => {
       "--primary",
       "--focus-ring",
       "--shadow-lg",
+      "--green",
+      "--amber",
+      "--red",
     ]) {
       expect(css).toContain(`var(${token})`);
     }
     expect(css).toContain("html.dark .inbox-message.outbound");
     expect(css).toContain(":focus-visible");
     expect(css).not.toContain("--surface-muted");
+    expect(css).not.toMatch(/#[0-9a-fA-F]{3,8}\b/u);
   });
 
   it("stacks the split pane without fixed heights or nested clipping at 375px", () => {
@@ -47,5 +51,16 @@ describe("unified inbox stylesheet", () => {
     expect(css).not.toContain("max-width: 850px");
     expect(mobile).not.toMatch(/height:\s*\d+px/u);
     expect(css).toContain("overflow-wrap: anywhere");
+  });
+
+  it("wraps tracking indicator pills safely at 375px", () => {
+    expect(css).toContain(".inbox-tracking-pill");
+    expect(css).toContain(".inbox-tracking-pill:focus-visible");
+    expect(css).toContain("html.dark");
+    expect(css).toContain("var(--focus-ring)");
+    expect(mobile).toContain(".inbox-tracking");
+    expect(mobile).toContain("min-width: 0");
+    expect(mobile).toContain("flex-wrap: wrap");
+    expect(mobile).toContain("overflow-wrap: anywhere");
   });
 });

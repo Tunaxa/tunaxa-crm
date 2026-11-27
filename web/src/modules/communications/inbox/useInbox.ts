@@ -10,7 +10,14 @@ import {
   type Message,
 } from "./inboxModel";
 
-type ReadEvent = CustomEvent<{ resource?: string }>;
+type ReadEvent = CustomEvent<{ resource?: unknown }>;
+
+function isInboxChange(event: Event): boolean {
+  const detail = (event as ReadEvent).detail;
+  if (!detail || typeof detail !== "object") return true;
+  const resource = detail.resource;
+  return resource === undefined || resource === "messages";
+}
 
 function confirmedState(value: unknown, id: string, read: boolean): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -63,8 +70,7 @@ export function useInbox() {
     alive.current = true;
     void load();
     const refresh = (event: Event) => {
-      const resource = (event as ReadEvent).detail?.resource;
-      if (!resource || resource === "messages") void load();
+      if (isInboxChange(event)) void load();
     };
     const focus = () => {
       void load();

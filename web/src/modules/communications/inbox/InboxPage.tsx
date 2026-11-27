@@ -5,6 +5,8 @@ import { Badge, Empty, Modal, PageHeader } from "../../../components/ui";
 import { useApp } from "../../../context/AppContext";
 import {
   buildThreads,
+  dateLabel,
+  dateTime,
   deliveryLabel,
   filterThreads,
   inboxFilters,
@@ -16,15 +18,8 @@ import {
 } from "./inboxModel";
 import { useInbox } from "./useInbox";
 import { MailEditor } from "./MailEditor";
+import { TrackingIndicators } from "./TrackingIndicators";
 import "./inbox.css";
-
-function validDate(value: string): boolean {
-  return Number.isFinite(Date.parse(value));
-}
-
-const dateLabel = (value: string) =>
-  validDate(value) ? new Date(value).toLocaleString() : "Date unavailable";
-const dateTime = (value: string) => (validDate(value) ? value : undefined);
 
 function Status({ message }: { message: Message }) {
   return (
@@ -42,7 +37,7 @@ function Status({ message }: { message: Message }) {
           {message.status}
         </Badge>
       )}
-      {(message.openedAt || message.clickedAt) && <small>Tracked</small>}
+      <TrackingIndicators message={message} />
     </>
   );
 }

@@ -7,6 +7,8 @@ import {
   buildEmailPayload,
   buildThreads,
   canSendEmail,
+  dateLabel,
+  dateTime,
   deliveryLabel,
   fetchInbox,
   filterThreads,
@@ -17,6 +19,7 @@ import {
   parseMessage,
   replyRecipient,
   replySubject,
+  validDate,
 } from "./inboxModel";
 
 const message = (value: Record<string, unknown> = {}) =>
@@ -118,6 +121,53 @@ describe("message parsing and hardening", () => {
     expect(() => parseMessage({ id: "sms", channel: "SMS" })).toThrow();
   });
 
+  it("keeps real tracking counts and validated timestamps with zero defaults", () => {
+    const tracked = message({
+      deliveredAt: "2026-10-10T09:00:00Z",
+      openedAt: "2026-10-10T10:00:00Z",
+      openCount: 3,
+      clickedAt: "2026-10-10T11:00:00Z",
+      clickCount: 2,
+    });
+    expect(tracked.openCount).toBe(3);
+    expect(tracked.clickCount).toBe(2);
+    expect(validDate(tracked.openedAt)).toBe(true);
+    expect(dateTime(tracked.clickedAt)).toBe("2026-10-10T11:00:00Z");
+    expect(dateLabel(tracked.deliveredAt)).not.toBe("Date unavailable");
+
+    const plain = message();
+    expect(plain.openCount).toBe(0);
+    expect(plain.clickCount).toBe(0);
+    expect(plain.openedAt).toBe("");
+    expect(plain.clickedAt).toBe("");
+    expect(dateTime(plain.openedAt)).toBeUndefined();
+  });
+
+  it.each([undefined, null, NaN, Infinity, -Infinity, -3, "not-a-number", {}, []])(
+    "clamps unsafe tracking count %p to zero",
+    (value) => {
+      expect(message({ openCount: value, clickCount: value }).openCount).toBe(0);
+      expect(message({ openCount: value, clickCount: value }).clickCount).toBe(0);
+    },
+  );
+
+  it("accepts positive numeric counts as whole non-negative integers", () => {
+    expect(message({ openCount: "4", clickCount: 2.9 }).openCount).toBe(4);
+    expect(message({ openCount: "4", clickCount: 2.9 }).clickCount).toBe(2);
+  });
+
+  it("rejects invalid tracking timestamps", () => {
+    const parsed = message({
+      openedAt: "not-a-date",
+      clickedAt: "",
+      deliveredAt: "bad",
+    });
+    expect(parsed.openedAt).toBe("");
+    expect(parsed.clickedAt).toBe("");
+    expect(parsed.deliveredAt).toBe("");
+    expect(validDate(parsed.openedAt)).toBe(false);
+  });
+
   it("normalizes delivery statuses conservatively", () => {
     expect(normalizeDeliveryStatus(" sent ")).toBe("Sent");
     expect(normalizeDeliveryStatus("received")).toBe("received");
@@ -163,10 +213,12 @@ describe("message parsing and hardening", () => {
 
   it("never copies prototype-polluting keys from untrusted responses", () => {
     const hostile = JSON.parse(
-      '{"id":"m1","channel":"Email","__proto__":{"polluted":true},"constructor":{"polluted":true},"prototype":{"polluted":true}}',
+      '{"id":"m1","channel":"Email","openCount":{"polluted":true},"openedAt":{"polluted":true},"__proto__":{"polluted":true},"constructor":{"polluted":true},"prototype":{"polluted":true}}',
     ) as Record<string, unknown>;
     const parsed = parseMessage(hostile);
     expect(parsed.id).toBe("m1");
+    expect(parsed.openCount).toBe(0);
+    expect(parsed.openedAt).toBe("");
     expect(Object.prototype.hasOwnProperty.call(parsed, "__proto__")).toBe(false);
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     for (const key of ["__proto__", "constructor", "prototype"]) {

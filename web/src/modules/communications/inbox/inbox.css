@@ -100,6 +100,59 @@
   font-size: 11px;
 }
 
+.inbox-tracking {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.inbox-tracking-pill {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.inbox-tracking-pill[data-tone="green"] {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.inbox-tracking-pill[data-tone="amber"] {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.inbox-tracking-pill[data-tone="blue"] {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.inbox-tracking-pill svg {
+  flex: 0 0 auto;
+}
+
+.inbox-tracking-pill time {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.inbox-tracking-pill:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .inbox-conversation {
   min-width: 0;
   padding: 24px;
@@ -197,11 +250,11 @@
 }
 
 .inbox-editor [role="alert"] {
-  color: #b91c1c;
+  color: var(--red);
 }
 
 html.dark .inbox-editor [role="alert"] {
-  color: #fca5a5;
+  color: var(--red);
 }
 
 html.dark .inbox-message.outbound {
@@ -256,5 +309,19 @@ html.dark .inbox-message.outbound {
 
   .inbox-pagination {
     justify-content: center;
+  }
+
+  .inbox-thread-meta,
+  .inbox-message footer {
+    min-width: 0;
+    flex-wrap: wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .inbox-tracking,
+  .inbox-tracking-pill {
+    min-width: 0;
+    flex-wrap: wrap;
+    overflow-wrap: anywhere;
   }
 }

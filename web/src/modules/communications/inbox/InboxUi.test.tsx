@@ -199,6 +199,77 @@ describe("inbox presentation", () => {
     expect(html).toContain(">Queued<");
   });
 
+  it("renders accessible delivered, opened and clicked indicators with real counts", () => {
+    const tracked = parseMessage({
+      id: "tracked",
+      channel: "Email",
+      direction: "Outbound",
+      to: "customer@example.com",
+      subject: "Proposal",
+      body: "<script>alert(1)</script>",
+      createdAt: "2026-10-10T09:00:00Z",
+      status: "Sent",
+      read: true,
+      deliveredAt: "2026-10-10T09:00:00Z",
+      openedAt: "2026-10-10T10:00:00Z",
+      openCount: 3,
+      clickedAt: "2026-10-10T11:00:00Z",
+      clickCount: 2,
+    });
+    const html = renderToStaticMarkup(
+      <Conversation
+        thread={buildThreads([tracked])[0]}
+        editable={false}
+        disabled={false}
+      />,
+    );
+    expect(html).toContain("Delivered");
+    expect(html).toContain("Opened");
+    expect(html).toContain("Clicked");
+    expect(html).toContain('dateTime="2026-10-10T10:00:00Z"');
+    expect(html).toContain('dateTime="2026-10-10T11:00:00Z"');
+    expect(html).toContain('dateTime="2026-10-10T09:00:00Z"');
+    expect(html).toContain('aria-label="Opened');
+    expect(html).toContain('aria-label="Clicked');
+    expect(html).toContain(">3×</");
+    expect(html).toContain(">2×</");
+    expect(html).not.toContain(">1×<");
+    expect(html).not.toContain('title="');
+    expect(html).toContain("&lt;script&gt;");
+    expect(html).not.toContain("<script>");
+    expect(html).not.toContain("mouse-pointer-click");
+  });
+
+  it("never fabricates a count badge for a single open or click", () => {
+    const tracked = parseMessage({
+      id: "tracked_once",
+      channel: "Email",
+      direction: "Outbound",
+      to: "customer@example.com",
+      subject: "Proposal",
+      body: "Hello",
+      createdAt: "2026-10-10T09:00:00Z",
+      status: "Sent",
+      read: true,
+      deliveredAt: "2026-10-10T09:00:00Z",
+      openedAt: "2026-10-10T10:00:00Z",
+      openCount: 1,
+      clickedAt: "2026-10-10T11:00:00Z",
+      clickCount: 1,
+    });
+    const html = renderToStaticMarkup(
+      <ThreadList
+        threads={buildThreads([tracked])}
+        selectedKey={null}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(html).toContain("Opened");
+    expect(html).toContain("Clicked");
+    expect(html).not.toContain(">1×<");
+    expect(html).not.toContain(">0×<");
+  });
+
   it("hides inbound-only and Failed conversations from the Sent filter", () => {
     const html = sentThreadList([
       parseMessage({
