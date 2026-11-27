@@ -1,0 +1,222 @@
+.revenue-ticker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow: hidden;
+  user-select: none;
+}
+
+.revenue-ticker__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-right: 12px;
+  border-right: 1px solid var(--border);
+  color: var(--primary);
+}
+
+.revenue-ticker__pixel {
+  width: 8px;
+  height: 8px;
+  background: var(--green);
+}
+
+.revenue-ticker__title {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.revenue-ticker__items {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-width: 0;
+}
+
+.revenue-ticker__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.revenue-ticker__icon {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+
+.revenue-ticker__icon--highlight {
+  color: var(--green);
+}
+
+.revenue-ticker__label {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.revenue-ticker__value {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.revenue-ticker__item--highlight .revenue-ticker__value {
+  color: var(--green);
+}
+
+.revenue-ticker__sub {
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.revenue-ticker--pulse .revenue-ticker__icon--highlight {
+  animation: revenueTickerPulse 900ms ease-out;
+}
+
+@keyframes revenueTickerPulse {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.25);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+.pipeline-column--won-flash {
+  box-shadow: 0 0 0 2px var(--green), var(--shadow-lg);
+}
+
+.win-flash-center-banner {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 60;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+  overflow-wrap: anywhere;
+  animation: winFlashBannerIn 220ms ease-out;
+}
+
+.win-flash-center-banner__badge {
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.win-flash-center-banner__title {
+  color: var(--text);
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.win-flash-center-banner__transition {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.win-flash-center-banner__value {
+  color: var(--primary);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+@keyframes winFlashBannerIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -46%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@media (max-width: 768px) {
+  .revenue-ticker {
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px;
+  }
+
+  .revenue-ticker__head {
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 8px;
+  }
+
+  .revenue-ticker__items {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+  }
+
+  .revenue-ticker__item {
+    padding-left: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .revenue-ticker__sub {
+    display: none;
+  }
+
+  .win-flash-center-banner {
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-win-flash,
+  .revenue-ticker--pulse .revenue-ticker__icon--highlight {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .win-flash-center-banner {
+    animation: none !important;
+  }
+
+  .pipeline-column--won-flash {
+    box-shadow: 0 0 0 2px var(--green);
+  }
+}
