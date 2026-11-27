@@ -92,6 +92,9 @@ vi.mock("../../../components/ui", () => ({
       {footer}
     </aside>
   ),
+  RevenueTicker: ({ total, count }: any) => (
+    <div aria-label="Live won revenue">{`ticker:${total}:${count}`}</div>
+  ),
 }));
 
 vi.mock("../../../components/Icon", () => ({
@@ -113,6 +116,7 @@ vi.mock("../../../components/records/RecordForm", () => ({
 }));
 
 vi.mock("./pipelines.css", () => ({}));
+vi.mock("../winFlashTicker.css", () => ({}));
 
 const renderers: ReactTestRenderer[] = [];
 
@@ -200,6 +204,11 @@ beforeEach(() => {
       store.delete(key);
     },
     clear: () => store.clear(),
+  });
+  vi.stubGlobal("window", {
+    matchMedia: () => ({ matches: true }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
   });
 });
 

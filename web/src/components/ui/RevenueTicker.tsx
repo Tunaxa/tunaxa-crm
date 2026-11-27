@@ -1,37 +1,95 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { TrendingUp, Zap, Clock, ShieldCheck, DollarSign, Activity } from 'lucide-react';
+import { money } from '../../components/ui';
 import { PixelIndicator } from './PixelIndicator';
+import '../../modules/sales/winFlashTicker.css';
 
 interface RevenueTickerProps {
   className?: string;
+  total?: number;
+  count?: number;
 }
 
-export const RevenueTicker: React.FC<RevenueTickerProps> = ({ className = '' }) => {
-  const [dealWonAmount, setDealWonAmount] = useState<number>(48500);
-  const [velocityDays] = useState<number>(14.2);
-  const [pulseWon, setPulseWon] = useState<boolean>(false);
+function reducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
-  // Periodic subtle simulated deal activity
+export const RevenueTicker: React.FC<RevenueTickerProps> = ({
+  className = '',
+  total,
+  count,
+}) => {
+  const safeTotal =
+    typeof total === 'number' && Number.isFinite(total) && total >= 0 ? total : 0;
+  const safeCount =
+    typeof count === 'number' && Number.isFinite(count) && count >= 0
+      ? Math.floor(count)
+      : 0;
+  const [displayTotal, setDisplayTotal] = useState(safeTotal);
+  const [pulse, setPulse] = useState(false);
+  const frameRef = useRef<number | null>(null);
+  const pulseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previousRef = useRef(safeTotal);
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      const delta = Math.floor(Math.random() * 6000) + 1500;
-      setDealWonAmount((prev) => prev + delta);
-      setPulseWon(true);
-      setTimeout(() => setPulseWon(false), 1200);
-    }, 8000);
-    return () => clearInterval(interval);
-  }, []);
+    const cancelFrame = () => {
+      if (frameRef.current !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
+    const clearPulse = () => {
+      if (pulseTimerRef.current !== null) {
+        clearTimeout(pulseTimerRef.current);
+        pulseTimerRef.current = null;
+      }
+    };
+
+    cancelFrame();
+    clearPulse();
+    const start = previousRef.current;
+    previousRef.current = safeTotal;
+    if (start === safeTotal || reducedMotion() || typeof requestAnimationFrame !== 'function') {
+      setDisplayTotal(safeTotal);
+      return () => {
+        cancelFrame();
+        clearPulse();
+      };
+    }
+
+    let startTime: number | null = null;
+    const duration = 450;
+    setPulse(true);
+    const step = (now: number) => {
+      if (startTime === null) startTime = now;
+      const progress = Math.min((now - startTime) / duration, 1);
+      setDisplayTotal(Math.round(start + (safeTotal - start) * progress));
+      if (progress < 1) {
+        frameRef.current = requestAnimationFrame(step);
+        return;
+      }
+      frameRef.current = null;
+      setDisplayTotal(safeTotal);
+      pulseTimerRef.current = setTimeout(() => setPulse(false), 900);
+    };
+    frameRef.current = requestAnimationFrame(step);
+    return () => {
+      cancelFrame();
+      clearPulse();
+    };
+  }, [safeTotal]);
 
   const items = [
-    { label: 'PIPELINE VELOCITY', val: `${velocityDays} DAYS`, sub: '-28% vs Industry', icon: Zap },
+    { label: 'PIPELINE VELOCITY', val: '14.2 DAYS', sub: '-28% vs Industry', icon: Zap },
     { label: 'WIN RATE', val: '42.6%', sub: '+8.4% YoY', icon: TrendingUp },
     { label: 'ARR RUN-RATE', val: '$3,420,000', sub: 'Healthy Trajectory', icon: DollarSign },
     { label: 'ACTIVE DEALS', val: '128 IN FLIGHT', sub: '$1.84M Value', icon: Activity },
     { label: 'LEAD SLA', val: '< 3.2 MIN', sub: 'Instant Routing', icon: Clock },
     {
-      label: 'CLOSED WON TODAY',
-      val: `$${dealWonAmount.toLocaleString()}`,
-      sub: 'Live Pipeline Win',
+      label: 'WON REVENUE',
+      val: money(displayTotal),
+      sub: `${safeCount} won deal${safeCount === 1 ? '' : 's'}`,
       icon: ShieldCheck,
       highlight: true,
     },
@@ -39,53 +97,32 @@ export const RevenueTicker: React.FC<RevenueTickerProps> = ({ className = '' }) 
 
   return (
     <div
-      className={`border border-[#d1d1d1] dark:border-[#263140] bg-white/90 dark:bg-[#0d1117]/90 backdrop-blur-xs py-2 px-4 font-mono text-[11px] overflow-hidden select-none ${className}`}
+      className={`revenue-ticker ${pulse ? 'revenue-ticker--pulse' : ''} ${className}`.trim()}
+      aria-label="Live won revenue"
     >
-      <div className="flex items-center justify-between gap-4 overflow-x-auto no-scrollbar whitespace-nowrap">
-        <div className="flex items-center gap-2 shrink-0 border-r border-[#d1d1d1] dark:border-[#263140] pr-3 text-[#3b82f6]">
-          <PixelIndicator colorClass="bg-[#10b981]" />
-          <span className="font-bold tracking-wider uppercase text-[10px]">
-            / SALES VELOCITY TELEMETRY
-          </span>
-        </div>
-
-        <div className="flex items-center gap-6 divide-x divide-[#e5e5e5] dark:divide-[#263140]">
-          {items.map((item, idx) => {
-            const Icon = item.icon;
-            const isHighlighted = item.highlight && pulseWon;
-            return (
-              <div
-                key={idx}
-                className={`flex items-center gap-2 pl-6 transition-all duration-300 ${
-                  isHighlighted ? 'scale-105' : ''
-                }`}
-              >
-                <Icon
-                  className={`w-3.5 h-3.5 ${
-                    item.highlight ? 'text-emerald-500 animate-bounce' : 'text-[#3b82f6]'
-                  }`}
-                />
-                <div>
-                  <span className="text-[9px] text-[#737373] dark:text-[#8b949e] uppercase block font-medium">
-                    {item.label}
-                  </span>
-                  <span
-                    className={`font-bold text-xs ${
-                      item.highlight
-                        ? 'text-emerald-600 dark:text-emerald-400'
-                        : 'text-[#171717] dark:text-white'
-                    }`}
-                  >
-                    {item.val}
-                  </span>
-                </div>
-                <span className="text-[9px] text-emerald-600 dark:text-emerald-400 hidden sm:inline ml-1 font-semibold">
-                  {item.sub}
-                </span>
+      <div className="revenue-ticker__head">
+        <PixelIndicator colorClass="revenue-ticker__pixel" />
+        <span className="revenue-ticker__title">/ Sales velocity telemetry</span>
+      </div>
+      <div className="revenue-ticker__items">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div
+              key={item.label}
+              className={`revenue-ticker__item ${item.highlight ? 'revenue-ticker__item--highlight' : ''}`.trim()}
+            >
+              <Icon
+                className={`revenue-ticker__icon ${item.highlight ? 'revenue-ticker__icon--highlight' : ''}`.trim()}
+              />
+              <div>
+                <span className="revenue-ticker__label">{item.label}</span>
+                <span className="revenue-ticker__value">{item.val}</span>
               </div>
-            );
-          })}
-        </div>
+              <span className="revenue-ticker__sub">{item.sub}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

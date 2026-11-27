@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useResource } from "../../lib/useResource";
 import { useApp } from "../../context/AppContext";
-import { PageHeader, money, Badge, Empty } from "../../components/ui";
+import { PageHeader, money, Badge, Empty, RevenueTicker } from "../../components/ui";
 import { Icon } from "../../components/Icon";
 import { CsvImportButton } from "../../components/imports/CsvImportWizard";
 import { RecordForm } from "../../components/records/RecordForm";
 import { useSchema } from "../../components/records/useSchema";
 import { canManageRecords } from "../../components/records/rbac";
+import { showMoney } from "../../components/records/formatters";
+import { hasOwn } from "../../components/records/urlSecurity";
 import type { FieldSpec, Row } from "../../components/records/types";
 import { dealFields } from "./fields";
 import { pipelineMoveMessage } from "./pipelineActions";
@@ -28,6 +30,15 @@ import {
   type PipelineDefinition,
 } from "./pipelines/pipelineDefinitions";
 import "./pipelines/pipelines.css";
+import "./winFlashTicker.css";
+import {
+  dealAmount,
+  isWonTransition,
+  resourceFromEvent,
+  safeDealRecord,
+  wonRevenue,
+  wonStageKey,
+} from "./winFlash";
 
 export function PipelinePage() {
   const deals = useResource<Row>("deals", { all: true });
@@ -49,7 +60,13 @@ export function PipelinePage() {
   const [savingDeal, setSavingDeal] = useState(false);
   const [moveError, setMoveError] = useState("");
   const [pipelineError, setPipelineError] = useState("");
+  const [winAnnouncement, setWinAnnouncement] = useState("");
+  const [flashStage, setFlashStage] = useState("");
   const dealBusy = useRef(false);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const announcedRef = useRef<Set<string>>(new Set());
+  const seenStagesRef = useRef<Map<string, string>>(new Map());
+  const initializedRef = useRef(false);
   const canEditDeals = canManageRecords(user?.role);
   const canConfigure = canManagePipelines(user?.role);
   const definitions = pipelines.definitions;
@@ -85,6 +102,82 @@ export function PipelinePage() {
       !importPipeline.stages.length ||
       (importTarget?.id && !definitions.some((row) => row.id === importTarget.id)) ||
       (pipelines.error && !(pipelines.unavailable && !definitions.length)),
+  );
+  const currentStages = current?.stages || [];
+  const canShowRevenue = canEditDeals && showMoney("value");
+  const revenue = wonRevenue(deals.items, currentStages);
+
+  const announceWin = useCallback(
+    (deal: unknown, previousStage?: unknown) => {
+      if (!canShowRevenue) return;
+      const record = safeDealRecord(deal);
+      const id = hasOwn(record, "id") && typeof record.id === "string" ? record.id : "";
+      const stage = hasOwn(record, "stage") ? record.stage : undefined;
+      const stageKey = wonStageKey(stage, currentStages);
+      if (!id || !stageKey || announcedRef.current.has(id)) return;
+      if (previousStage !== undefined && !isWonTransition(previousStage, stage, currentStages)) {
+        return;
+      }
+      const amount = hasOwn(record, "value") ? dealAmount(record.value) : null;
+      if (amount === null) return;
+      announcedRef.current.add(id);
+      const message = `🎉 Deal won: ${money(amount)}`;
+      setWinAnnouncement(message);
+      setFlashStage(stageKey);
+      if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => {
+        setFlashStage("");
+        flashTimerRef.current = null;
+      }, 1000);
+      toast(message);
+    },
+    [canShowRevenue, currentStages, toast],
+  );
+
+  const syncWins = useCallback(
+    (rows: readonly unknown[]) => {
+      if (!canShowRevenue) return;
+      const seen = seenStagesRef.current;
+      const liveIds = new Set<string>();
+      for (const row of rows) {
+        const record = safeDealRecord(row);
+        const id = hasOwn(record, "id") && typeof record.id === "string" ? record.id : "";
+        if (!id) continue;
+        liveIds.add(id);
+        const stage = hasOwn(record, "stage") && typeof record.stage === "string" ? record.stage : "";
+        const previous = seen.has(id) ? seen.get(id) : undefined;
+        seen.set(id, stage);
+        if (initializedRef.current && previous !== undefined && isWonTransition(previous, stage, currentStages)) {
+          announceWin(record, previous);
+        }
+      }
+      for (const id of Array.from(seen.keys())) {
+        if (!liveIds.has(id)) seen.delete(id);
+      }
+      initializedRef.current = true;
+    },
+    [announceWin, canShowRevenue, currentStages],
+  );
+
+  useEffect(() => {
+    syncWins(deals.items);
+  }, [deals.items, syncWins]);
+
+  useEffect(() => {
+    const onResourceChanged = (event: Event) => {
+      const resource = resourceFromEvent(event);
+      if (resource && resource !== "deals") return;
+      syncWins(deals.items);
+    };
+    window.addEventListener("tunaxa:resource-changed", onResourceChanged);
+    return () => window.removeEventListener("tunaxa:resource-changed", onResourceChanged);
+  }, [deals.items, syncWins]);
+
+  useEffect(
+    () => () => {
+      if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
+    },
+    [],
   );
 
   useEffect(() => {
@@ -160,10 +253,12 @@ export function PipelinePage() {
     dealBusy.current = true;
     setSavingDeal(true);
     try {
+      const previousStage = stageForDeal(row, current)?.key;
       const payload = dealPayload({ stage }, latestDefinition(current));
       const saved = await deals.update(row.id, payload);
       checkDealSave(saved, payload);
       await deals.load();
+      announceWin({ ...row, ...safeDealRecord(saved) }, previousStage);
     } catch (failure) {
       const message = pipelineMoveMessage(failure);
       setMoveError(message);
@@ -377,6 +472,10 @@ export function PipelinePage() {
           </button>
         ) : null}
       </PageHeader>
+      {canShowRevenue ? <RevenueTicker total={revenue.total} count={revenue.count} /> : null}
+      <p className="win-flash-announcement" role="status" aria-live="polite">
+        {winAnnouncement}
+      </p>
       <div className="pipeline-picker">
         <label className="field">
           <span>Pipeline</span>
@@ -480,7 +579,11 @@ export function PipelinePage() {
           <div className="pipeline-board">
             {columns.map((stage) => (
               <section
-                className="pipeline-column"
+                className={`pipeline-column ${
+                  stage.key === flashStage
+                    ? "pipeline-column--won-flash animate-win-flash"
+                    : ""
+                }`.trim()}
                 key={stage.key}
                 aria-label={`${stage.label} deals`}
                 onDragOver={(event) => {
