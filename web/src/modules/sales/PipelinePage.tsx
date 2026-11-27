@@ -34,11 +34,19 @@ import "./winFlashTicker.css";
 import {
   dealAmount,
   isWonTransition,
+  prefersReducedMotion,
   resourceFromEvent,
   safeDealRecord,
+  transitionLabel,
   wonRevenue,
   wonStageKey,
 } from "./winFlash";
+
+type WinBanner = {
+  title: string;
+  transition: string;
+  value: string;
+};
 
 export function PipelinePage() {
   const deals = useResource<Row>("deals", { all: true });
@@ -60,10 +68,13 @@ export function PipelinePage() {
   const [savingDeal, setSavingDeal] = useState(false);
   const [moveError, setMoveError] = useState("");
   const [pipelineError, setPipelineError] = useState("");
-  const [winAnnouncement, setWinAnnouncement] = useState("");
+  const [winBanner, setWinBanner] = useState<WinBanner | null>(null);
   const [flashStage, setFlashStage] = useState("");
   const dealBusy = useRef(false);
+  const columnRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const centeredRef = useRef<Map<string, string>>(new Map());
   const announcedRef = useRef<Set<string>>(new Set());
   const seenStagesRef = useRef<Map<string, string>>(new Map());
   const initializedRef = useRef(false);
@@ -107,6 +118,18 @@ export function PipelinePage() {
   const canShowRevenue = canEditDeals && showMoney("value");
   const revenue = wonRevenue(deals.items, currentStages);
 
+  const centerDealColumn = useCallback((id: string, stage: string) => {
+    if (centeredRef.current.get(id) === stage) return;
+    centeredRef.current.set(id, stage);
+    const columnEl = columnRefs.current.get(stage);
+    if (typeof columnEl?.scrollIntoView !== "function") return;
+    columnEl.scrollIntoView({
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, []);
+
   const announceWin = useCallback(
     (deal: unknown, previousStage?: unknown) => {
       if (!canShowRevenue) return;
@@ -121,15 +144,28 @@ export function PipelinePage() {
       const amount = hasOwn(record, "value") ? dealAmount(record.value) : null;
       if (amount === null) return;
       announcedRef.current.add(id);
-      const message = `🎉 Deal won: ${money(amount)}`;
-      setWinAnnouncement(message);
+      const title =
+        hasOwn(record, "title") && typeof record.title === "string"
+          ? record.title
+          : "Untitled deal";
+      const value = money(amount);
+      setWinBanner({
+        title,
+        transition: transitionLabel(previousStage, stageKey, currentStages),
+        value,
+      });
       setFlashStage(stageKey);
+      if (bannerTimerRef.current !== null) clearTimeout(bannerTimerRef.current);
+      bannerTimerRef.current = setTimeout(() => {
+        setWinBanner(null);
+        bannerTimerRef.current = null;
+      }, 2200);
       if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
       flashTimerRef.current = setTimeout(() => {
         setFlashStage("");
         flashTimerRef.current = null;
       }, 1000);
-      toast(message);
+      toast(`🎉 Deal won: ${value}`);
     },
     [canShowRevenue, currentStages, toast],
   );
@@ -148,6 +184,7 @@ export function PipelinePage() {
         const previous = seen.has(id) ? seen.get(id) : undefined;
         seen.set(id, stage);
         if (initializedRef.current && previous !== undefined && isWonTransition(previous, stage, currentStages)) {
+          centerDealColumn(id, stage);
           announceWin(record, previous);
         }
       }
@@ -156,7 +193,7 @@ export function PipelinePage() {
       }
       initializedRef.current = true;
     },
-    [announceWin, canShowRevenue, currentStages],
+    [announceWin, canShowRevenue, centerDealColumn, currentStages],
   );
 
   useEffect(() => {
@@ -175,6 +212,7 @@ export function PipelinePage() {
 
   useEffect(
     () => () => {
+      if (bannerTimerRef.current !== null) clearTimeout(bannerTimerRef.current);
       if (flashTimerRef.current !== null) clearTimeout(flashTimerRef.current);
     },
     [],
@@ -258,6 +296,7 @@ export function PipelinePage() {
       const saved = await deals.update(row.id, payload);
       checkDealSave(saved, payload);
       await deals.load();
+      centerDealColumn(row.id, stage);
       announceWin({ ...row, ...safeDealRecord(saved) }, previousStage);
     } catch (failure) {
       const message = pipelineMoveMessage(failure);
@@ -473,9 +512,14 @@ export function PipelinePage() {
         ) : null}
       </PageHeader>
       {canShowRevenue ? <RevenueTicker total={revenue.total} count={revenue.count} /> : null}
-      <p className="win-flash-announcement" role="status" aria-live="polite">
-        {winAnnouncement}
-      </p>
+      {winBanner ? (
+        <div className="win-flash-center-banner" role="status" aria-live="polite">
+          <span className="win-flash-center-banner__badge">🎉 Deal won</span>
+          <strong className="win-flash-center-banner__title">{winBanner.title}</strong>
+          <span className="win-flash-center-banner__transition">{winBanner.transition}</span>
+          <span className="win-flash-center-banner__value">{winBanner.value}</span>
+        </div>
+      ) : null}
       <div className="pipeline-picker">
         <label className="field">
           <span>Pipeline</span>
@@ -585,6 +629,10 @@ export function PipelinePage() {
                     : ""
                 }`.trim()}
                 key={stage.key}
+                ref={(element) => {
+                  if (element) columnRefs.current.set(stage.key, element);
+                  else columnRefs.current.delete(stage.key);
+                }}
                 aria-label={`${stage.label} deals`}
                 onDragOver={(event) => {
                   if (canMoveDeal && dragging) {

@@ -1,10 +1,13 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   dealAmount,
   isWonTransition,
+  prefersReducedMotion,
   resourceFromEvent,
   safeDealRecord,
+  stageLabel,
+  transitionLabel,
   wonRevenue,
   wonStageKey,
 } from "./winFlash";
@@ -61,6 +64,28 @@ describe("win flash safety helpers", () => {
     expect(resourceFromEvent(polluted)).toBe("deals");
     expect(resourceFromEvent({ detail: {} } as unknown as Event)).toBeNull();
   });
+
+  it("reads reduced-motion preference safely", () => {
+    vi.stubGlobal("window", {
+      matchMedia: (query: string) => ({ matches: query.includes("reduce") }),
+    });
+    expect(prefersReducedMotion()).toBe(true);
+    vi.stubGlobal("window", {});
+    expect(prefersReducedMotion()).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("builds stage transition labels with escaped stage text", () => {
+    const stages = [
+      { key: "negotiation", label: "<b>Negotiation</b>" },
+      { key: "won", label: "Won" },
+    ];
+    expect(stageLabel("negotiation", stages)).toBe("<b>Negotiation</b>");
+    expect(transitionLabel("negotiation", "won", stages)).toBe(
+      "<b>Negotiation</b> → Won",
+    );
+    expect(transitionLabel(undefined, "won", stages)).toBe("Moved to Won");
+  });
 });
 
 describe("win flash ticker styles", () => {
@@ -86,5 +111,22 @@ describe("win flash ticker styles", () => {
     expect(css).toContain(".animate-win-flash");
     expect(css).toContain("@media (max-width: 768px)");
     expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+  });
+
+  it("centers the win banner with viewport-safe width", () => {
+    for (const rule of [
+      ".win-flash-center-banner",
+      "top: 50%",
+      "left: 50%",
+      "transform: translate(-50%, -50%)",
+      "z-index: 60",
+      "pointer-events: none",
+      "max-width: min(420px, calc(100vw - 32px))",
+    ]) {
+      expect(css).toContain(rule);
+    }
+    const reduced = css.split("@media (prefers-reduced-motion: reduce)")[1];
+    expect(reduced).toContain(".win-flash-center-banner");
+    expect(reduced).toContain("animation: none !important");
   });
 });

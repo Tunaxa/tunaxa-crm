@@ -12,7 +12,9 @@ const harness = vi.hoisted(() => ({
   role: "admin" as string | undefined,
   deals: [] as any[],
   toast: vi.fn(),
+  reduced: true,
   listeners: new Map<string, Set<(event: any) => void>>(),
+  columns: new Map<string, { scrollIntoView: ReturnType<typeof vi.fn> }>(),
 }));
 
 vi.mock("../../lib/useResource", () => ({
@@ -113,9 +115,53 @@ function byAriaLabel(root: ReactTestInstance, label: string): ReactTestInstance 
   return found;
 }
 
+function bannerOf(root: ReactTestInstance): ReactTestInstance {
+  const found = root.findAll(
+    (node) => node.props.className === "win-flash-center-banner",
+  )[0];
+  if (!found) throw new Error("Centered win flash banner not found");
+  return found;
+}
+
 function emit(name: string, detail?: unknown): void {
   const event = { detail };
   for (const listener of harness.listeners.get(name) ?? []) listener(event);
+}
+
+function createNodeMock(element: any): any {
+  const label = element.props?.["aria-label"];
+  if (typeof label === "string" && label.endsWith(" deals")) {
+    const key = label.slice(0, -6);
+    let mock = harness.columns.get(key);
+    if (!mock) {
+      mock = { scrollIntoView: vi.fn() };
+      harness.columns.set(key, mock);
+    }
+    return mock;
+  }
+  return {};
+}
+
+function cardNode(root: ReactTestInstance, title: string): ReactTestInstance {
+  const found = root.findAll(
+    (node) =>
+      node.type === "article" &&
+      typeof node.props.className === "string" &&
+      node.props.className.includes("deal-card") &&
+      textOf(node).includes(title),
+  )[0];
+  if (!found) throw new Error(`Deal card not found: ${title}`);
+  return found;
+}
+
+function dragData() {
+  const data = new Map<string, string>();
+  return {
+    setData: (key: string, value: string) => data.set(key, String(value)),
+    getData: (key: string) => data.get(key) || "",
+    dropEffect: "none",
+    effectAllowed: "none",
+  };
 }
 
 const renderers: ReactTestRenderer[] = [];
@@ -123,7 +169,7 @@ const renderers: ReactTestRenderer[] = [];
 function renderPage(): ReactTestRenderer {
   let renderer!: ReactTestRenderer;
   act(() => {
-    renderer = create(<PipelinePage />);
+    renderer = create(<PipelinePage />, { createNodeMock });
   });
   renderers.push(renderer);
   return renderer;
@@ -132,6 +178,8 @@ function renderPage(): ReactTestRenderer {
 beforeEach(() => {
   vi.clearAllMocks();
   harness.listeners.clear();
+  harness.columns.clear();
+  harness.reduced = true;
   harness.role = "admin";
   harness.deals = [
     {
@@ -150,7 +198,7 @@ beforeEach(() => {
     clear: () => store.clear(),
   });
   vi.stubGlobal("window", {
-    matchMedia: () => ({ matches: true }),
+    matchMedia: () => ({ matches: harness.reduced }),
     addEventListener: (name: string, listener: (event: any) => void) => {
       const set = harness.listeners.get(name) ?? new Set();
       set.add(listener);
@@ -164,66 +212,161 @@ beforeEach(() => {
 
 afterEach(() => {
   renderers.splice(0).forEach((renderer) => act(() => renderer.unmount()));
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("win flash and live revenue ticker integration", () => {
-  it("celebrates a local move into won once and flashes the won column", async () => {
+  it("centers the won column and renders the centered banner on a select move", async () => {
     const renderer = renderPage();
-    const select = byAriaLabel(renderer.root, "Move Deal A to stage");
     await act(async () => {
-      select.props.onChange({ target: { value: "won" } });
+      byAriaLabel(renderer.root, "Move Deal A to stage").props.onChange({
+        target: { value: "won" },
+      });
     });
+    const banner = bannerOf(renderer.root);
+    expect(banner.props.role).toBe("status");
+    expect(banner.props["aria-live"]).toBe("polite");
+    expect(textOf(banner)).toContain("Deal A");
+    expect(textOf(banner)).toContain("New → Won");
+    expect(textOf(banner)).toContain("$2500");
     expect(harness.toast).toHaveBeenCalledTimes(1);
     expect(harness.toast).toHaveBeenCalledWith("🎉 Deal won: $2500");
-    expect(textOf(renderer.root)).toContain("🎉 Deal won: $2500");
     expect(textOf(renderer.root)).toContain("ticker:2500:1");
-    const flashing = renderer.root.findAll(
-      (node) =>
-        typeof node.props.className === "string" &&
-        node.props.className.includes("animate-win-flash"),
-    );
-    expect(flashing).toHaveLength(1);
+    expect(
+      renderer.root.findAll(
+        (node) =>
+          typeof node.props.className === "string" &&
+          node.props.className.includes("animate-win-flash"),
+      ),
+    ).toHaveLength(1);
+    expect(harness.columns.get("Won")?.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "auto",
+      inline: "center",
+      block: "nearest",
+    });
     act(() => emit("tunaxa:resource-changed", { resource: "deals" }));
+    expect(harness.toast).toHaveBeenCalledTimes(1);
+    expect(harness.columns.get("Won")?.scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("centers the won column and renders the centered banner on a drag-and-drop move", async () => {
+    const renderer = renderPage();
+    const data = dragData();
+    act(() => {
+      cardNode(renderer.root, "Deal A").props.onDragStart({
+        preventDefault() {},
+        dataTransfer: data,
+      });
+    });
+    await act(async () => {
+      byAriaLabel(renderer.root, "Won deals").props.onDrop({
+        preventDefault() {},
+        dataTransfer: data,
+      });
+    });
+    expect(textOf(bannerOf(renderer.root))).toContain("New → Won");
+    expect(harness.columns.get("Won")?.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "auto",
+      inline: "center",
+      block: "nearest",
+    });
     expect(harness.toast).toHaveBeenCalledTimes(1);
   });
 
-  it("celebrates a workspace-scoped remote win through the resource event", () => {
+  it("centers the won column for a workspace-scoped remote win", () => {
     const renderer = renderPage();
     harness.deals = harness.deals.map((deal) => ({ ...deal, stage: "won" }));
     act(() => {
       renderer.update(<PipelinePage />);
       emit("tunaxa:resource-changed");
     });
+    expect(textOf(bannerOf(renderer.root))).toContain("New → Won");
+    expect(harness.columns.get("Won")?.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "auto",
+      inline: "center",
+      block: "nearest",
+    });
     expect(harness.toast).toHaveBeenCalledTimes(1);
-    expect(harness.toast).toHaveBeenCalledWith("🎉 Deal won: $2500");
     expect(textOf(renderer.root)).toContain("ticker:2500:1");
     act(() => emit("tunaxa:resource-changed", { resource: "deals" }));
     expect(harness.toast).toHaveBeenCalledTimes(1);
   });
 
-  it("escapes script text and ignores polluted or non-finite amounts", () => {
+  it("uses smooth scrolling when motion reduction is not preferred", async () => {
+    harness.reduced = false;
+    const renderer = renderPage();
+    await act(async () => {
+      byAriaLabel(renderer.root, "Move Deal A to stage").props.onChange({
+        target: { value: "won" },
+      });
+    });
+    expect(harness.columns.get("Won")?.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  });
+
+  it("renders script titles as literal text and formats finite values", async () => {
     harness.deals = [
       {
         id: "d2",
         title: "<script>alert(1)</script>",
-        stage: "won",
+        stage: "new",
         pipelineId: "p1",
-        value: Number.NaN,
+        value: 1200,
       },
     ];
     const renderer = renderPage();
-    expect(textOf(renderer.root)).toContain("<script>alert(1)</script>");
-    expect(textOf(renderer.root)).toContain("ticker:0:0");
-    expect(harness.toast).not.toHaveBeenCalled();
+    await act(async () => {
+      byAriaLabel(renderer.root, "Move <script>alert(1)</script> to stage").props.onChange({
+        target: { value: "won" },
+      });
+    });
+    const banner = bannerOf(renderer.root);
+    expect(textOf(banner)).toContain("<script>alert(1)</script>");
+    expect(textOf(banner)).toContain("$1200");
+    expect(renderer.root.findAll((node) => node.type === "script")).toHaveLength(0);
+    expect(textOf(renderer.root)).toContain("ticker:1200:1");
   });
 
-  it("hides financial celebration from read-only viewers", () => {
+  it("clears banner and flash timers on re-trigger and unmount", async () => {
+    vi.useFakeTimers();
+    harness.deals = [
+      ...harness.deals,
+      { id: "d2", title: "Deal B", stage: "new", pipelineId: "p1", value: 3000 },
+    ];
+    const renderer = renderPage();
+    await act(async () => {
+      byAriaLabel(renderer.root, "Move Deal A to stage").props.onChange({
+        target: { value: "won" },
+      });
+    });
+    expect(vi.getTimerCount()).toBe(2);
+    await act(async () => {
+      byAriaLabel(renderer.root, "Move Deal B to stage").props.onChange({
+        target: { value: "won" },
+      });
+    });
+    expect(vi.getTimerCount()).toBe(2);
+    renderers.splice(renderers.indexOf(renderer), 1);
+    act(() => renderer.unmount());
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("hides the centered banner and ticker from read-only viewers", () => {
     harness.role = "viewer";
     const renderer = renderPage();
     expect(
       renderer.root.findAll(
         (node) => node.props["aria-label"] === "Live won revenue",
+      ),
+    ).toHaveLength(0);
+    expect(
+      renderer.root.findAll(
+        (node) => node.props.className === "win-flash-center-banner",
       ),
     ).toHaveLength(0);
     act(() => emit("tunaxa:resource-changed"));

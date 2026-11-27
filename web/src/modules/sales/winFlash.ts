@@ -9,7 +9,7 @@ const WON_STAGES = new Set([
 ]);
 
 export type DealSnapshot = Record<string, unknown>;
-export type WonStage = { key: string; probability?: number };
+export type WonStage = { key: string; label?: string; probability?: number };
 
 export function safeDealRecord(value: unknown): DealSnapshot {
   const result = Object.create(null) as DealSnapshot;
@@ -75,4 +75,33 @@ export function resourceFromEvent(event: Event): string | null {
   const detail = safeDealRecord((event as CustomEvent).detail);
   if (!hasOwn(detail, "resource")) return null;
   return sanitizeFieldKey(detail.resource);
+}
+
+export function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+export function stageLabel(
+  stage: unknown,
+  stages?: readonly WonStage[],
+): string {
+  if (typeof stage !== "string") return "";
+  const key = stage.trim();
+  if (!key) return "";
+  const matched = stages?.find((item) => item.key === key);
+  return matched?.label || key;
+}
+
+export function transitionLabel(
+  previous: unknown,
+  next: unknown,
+  stages?: readonly WonStage[],
+): string {
+  const to = stageLabel(next, stages);
+  if (!to) return "Moved to Won";
+  const from = stageLabel(previous, stages);
+  return from && from !== to ? `${from} → ${to}` : `Moved to ${to}`;
 }
