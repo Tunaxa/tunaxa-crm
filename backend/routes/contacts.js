@@ -3,6 +3,10 @@ import { loadRecords } from '../db/legacy-records.js';
 import { auth } from '../middleware/auth.js';
 import { createRateLimiter } from '../services/rateLimit.js';
 import { getFieldPermissions, applyFieldMasking } from './permissions.js';
+import { repoFor } from '../db/repositories/index.js';
+import { pgToLegacy } from '../db/legacy-shape.js';
+import { messageScope, hasMessageScope } from '../services/messageScope.js';
+import { contactEmailAnalytics } from '../services/messageTracking.js';
 
 // The 360 profile view calls this once per contact it opens, so the budget is
 // sized for browsing rather than scraping. Same shape as the other read-side
@@ -91,6 +95,30 @@ function hasCompanyName(record, field, companyName) {
   return companyName !== '' && textSet(record[field]).has(companyName);
 }
 
+function emailIdentity(contact) {
+  return new Set([...textSet(contact?.email), ...textSet(contact?.id)]);
+}
+
+function isOutboundEmail(message) {
+  const channel = text(message?.channel);
+  if (channel && channel !== 'email') return false;
+  const direction = text(message?.direction);
+  if (direction) return direction === 'outbound';
+  return text(message?.status) === 'sent';
+}
+
+function messageMatchesContact(message, identity) {
+  if (!identity.size) return false;
+  return [
+    ...textSet(message?.to),
+    ...textSet(message?.cc),
+    ...textSet(message?.contact),
+    ...textSet(message?.contactId),
+    ...textSet(message?.contactIds),
+    ...textSet(message?.recordId),
+  ].some((value) => identity.has(value));
+}
+
 export default function registerContactRoutes(app) {
   /**
    * GET /api/contacts/:id/associations
@@ -145,5 +173,39 @@ export default function registerContactRoutes(app) {
       tasks: mask(tasks, 'task'),
       meetings: mask(meetings, 'activity'),
     });
+  });
+
+  app.get('/api/contacts/:id/email-analytics', auth, associationsLimiter, async (req, res) => {
+    const contactId = String(req.params.id || '');
+    const workspaceId = messageScope(req);
+    let contact = null;
+    const repo = repoFor('contacts');
+    if (repo) {
+      try {
+        const row = await repo.findById(contactId, workspaceId);
+        if (row) contact = pgToLegacy(row, 'contacts');
+      } catch {
+        contact = null;
+      }
+    }
+    if (!contact) {
+      const db = await readDb();
+      const row = (db.contacts || []).find(
+        (item) => item && item.id === contactId && (item.workspaceId ?? item.workspace_id) === workspaceId,
+      );
+      if (row) contact = row;
+    }
+    if (!contact) return res.status(404).json({ error: 'Contact not found' });
+
+    const db = await readDb();
+    const identity = emailIdentity(contact);
+    const messages = (db.messages || []).filter(
+      (row) =>
+        hasMessageScope(row, req) &&
+        isOutboundEmail(row) &&
+        messageMatchesContact(row, identity),
+    );
+    const analytics = await contactEmailAnalytics({ contactId, messages, workspaceId });
+    return res.json({ data: analytics });
   });
 }

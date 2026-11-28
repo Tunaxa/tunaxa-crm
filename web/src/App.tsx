@@ -94,6 +94,7 @@ import { NotificationDrawer } from "./modules/notifications/NotificationCenter";
 import { useNotifications } from "./modules/notifications/useNotifications";
 import { canManageRecords } from "./components/records/rbac";
 import { ContactSequenceEnrollment } from "./modules/marketing/sequences/ContactSequenceEnrollment";
+import { ContactEmailAnalytics } from "./modules/sales/ContactEmailAnalytics";
 import i18n from "./i18n";
 
 const ModuleLeadsPage = lazyRoute(() => import("./modules/sales/LeadsPage"), "LeadsPage");
@@ -2975,6 +2976,7 @@ export function RecordDetailPage({
       </div>
 
       <div className="detail-body">
+        {resource === "contacts" && <ContactEmailAnalytics contactId={id} />}
         {tab === "Overview" && (
           <div className="detail-overview">
             {propertiesPanel}
